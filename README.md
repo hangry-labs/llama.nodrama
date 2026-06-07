@@ -91,12 +91,12 @@ To cut a release:
 
 ```sh
 task release
-git push origin HEAD --follow-tags
 ```
 
 `task release` requires a clean working tree. It removes `-SNAPSHOT`, commits
 and tags that finalized version, then bumps the minor version to the next
-`vX.Y.0-SNAPSHOT` and commits that.
+`vX.Y.0-SNAPSHOT`, commits that, and pushes `HEAD` plus tags to `origin`.
+Running this task is the manual decision point that makes the release official.
 
 Tags matching `v*` publish GitHub Release binaries for:
 

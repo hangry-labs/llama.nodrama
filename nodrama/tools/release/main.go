@@ -69,9 +69,11 @@ func run() error {
 	if err := git("commit", "-m", "chore: start "+next); err != nil {
 		return err
 	}
+	if err := git("push", "origin", "HEAD", "--follow-tags"); err != nil {
+		return err
+	}
 
-	fmt.Printf("released %s and opened %s\n", release, next)
-	fmt.Println("push with: git push origin HEAD --follow-tags")
+	fmt.Printf("released %s, opened %s, and pushed commits/tags\n", release, next)
 	return nil
 }
 

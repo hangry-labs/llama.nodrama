@@ -2,7 +2,7 @@ version: "3"
 
 tasks:
   release:
-    desc: Finalize VERSION, commit/tag release, then bump next minor snapshot
+    desc: Finalize VERSION, commit/tag release, bump next snapshot, and push
     dir: nodrama
     cmds:
       - go run ./tools/release
