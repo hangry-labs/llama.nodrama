@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -161,20 +160,22 @@ func registerLlamaProxy(mux *http.ServeMux, rawTarget string) error {
 
 func logStartup(cfg Config, info BuildInfo) {
 	openURL := dashboardOpenURL(cfg.Listen)
-	log.Printf("llama.nodrama %s", info.Version)
-	log.Printf("dashboard: %s", openURL)
-	log.Printf("listening: %s", cfg.Listen)
-	log.Printf("llama.cpp server: %s", cfg.Server)
-	log.Printf("poll interval: %s; upstream timeout: %s", cfg.PollInterval, cfg.Timeout)
+	logStartupBanner()
+	logInfof("llama.nodrama starting version=%s", info.Version)
+	logInfof("dashboard_url=%s", openURL)
+	logInfof("listen_address=%s", cfg.Listen)
+	logInfof("llama_cpp_server=%s", cfg.Server)
+	logInfof("poll_interval=%s upstream_timeout=%s", cfg.PollInterval, cfg.Timeout)
 	if cfg.LogPath == "" {
-		log.Printf("log tail: not configured")
-		log.Printf("log tail hint: restart with --log <path-to-llama-server.log> or set Log file path in the UI Settings")
+		logWarnf("log_tail=disabled reason=no_log_path_configured")
+		logInfof("log_tail_hint=\"restart with --log <path-to-llama-server.log> or set Log file path in the UI Settings\"")
 	} else if _, err := os.Stat(cfg.LogPath); err != nil {
-		log.Printf("log tail: %s (not readable yet: %v)", cfg.LogPath, err)
+		logWarnf("log_tail=unavailable path=%q error=%q", cfg.LogPath, err)
+		logInfof("log_tail_hint=\"check the log path or update it from the UI Settings\"")
 	} else {
-		log.Printf("log tail: %s", cfg.LogPath)
+		logInfof("log_tail=enabled path=%q", cfg.LogPath)
 	}
-	log.Printf("settings: open %s and click the Settings button to change server/log/poll/timeout at runtime", openURL)
+	logInfof("settings_hint=\"open %s and click Settings to change server/log/poll/timeout at runtime\"", openURL)
 }
 
 func dashboardOpenURL(listen string) string {
@@ -224,24 +225,25 @@ func logEndpointDiagnostics(parent context.Context, dashboard *Dashboard) {
 		}
 	}
 	if !online {
-		log.Printf("llama.cpp endpoints: nothing responded at %s", settings.Server)
-		log.Printf("llama.cpp hint: start llama-server with metrics enabled, for example:")
-		log.Printf("  llama-server --metrics --host 127.0.0.1 --port 8080 -m <model.gguf>")
-		log.Printf("llama.nodrama hint: if llama-server uses another port, restart with --server http://host:port or change Server URL in the UI Settings")
+		logWarnf("llama_cpp_connection=unavailable server=%q reason=no_probe_endpoint_responded", settings.Server)
+		logInfof("llama_cpp_start_hint=\"llama-server --metrics --host 127.0.0.1 --port 8080 -m <model.gguf>\"")
+		logInfof("llama_nodrama_config_hint=\"if llama-server uses another port, restart with --server http://host:port or change Server URL in the UI Settings\"")
 		return
 	}
 	for _, endpoint := range endpoints {
 		if endpoint.probe.OK {
-			log.Printf("llama.cpp endpoint /%s: ok (%d ms)", endpoint.label, endpoint.probe.LatencyMS)
+			logDebugf("llama_cpp_endpoint=ok path=%q latency_ms=%d", endpoint.path, endpoint.probe.LatencyMS)
 			continue
 		}
-		log.Printf("llama.cpp endpoint /%s: unavailable (%s)", endpoint.label, endpoint.probe.Error)
+		logWarnf("llama_cpp_endpoint=unavailable path=%q error=%q", endpoint.path, endpoint.probe.Error)
 	}
 	if !endpoints[2].probe.OK {
-		log.Printf("metrics hint: start llama-server with --metrics for throughput and queue cards")
+		logWarnf("metrics_degraded=true reason=metrics_endpoint_unavailable")
+		logInfof("metrics_hint=\"start llama-server with --metrics for throughput and queue cards\"")
 	}
 	if !endpoints[3].probe.OK {
-		log.Printf("slots hint: ensure llama-server exposes /slots; do not start it with --no-slots")
+		logWarnf("slots_degraded=true reason=slots_endpoint_unavailable")
+		logInfof("slots_hint=\"ensure llama-server exposes /slots; do not start it with --no-slots\"")
 	}
 }
 

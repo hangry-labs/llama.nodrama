@@ -84,6 +84,9 @@ The version label in the dashboard top bar links to the project repository. The
 backend periodically checks the newest GitHub Release; when a newer release
 exists, the version label highlights and links directly to that release.
 
+Runtime logs use explicit levels (`INFO`, `WARN`, `ERROR`). Set
+`LLAMA_NODRAMA_DEBUG=1` to include detailed endpoint probe logs.
+
 ## Releases
 
 CI runs Go formatting, vet, tests, and cross-platform builds on pushes and pull

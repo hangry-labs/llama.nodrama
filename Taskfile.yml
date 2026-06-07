@@ -1,6 +1,26 @@
 version: "3"
 
 tasks:
+  build:
+    desc: Build local binary for the current OS/architecture into nodrama/bin
+    dir: nodrama
+    cmds:
+      - go run ./tools/build
+
+  build-all:
+    desc: Build common Linux, macOS, and Windows binaries into nodrama/bin
+    dir: nodrama
+    cmds:
+      - go run ./tools/build --all
+
+  build-target:
+    desc: Build one target into nodrama/bin, for example task build-target OS=linux ARCH=amd64
+    dir: nodrama
+    requires:
+      vars: [OS, ARCH]
+    cmds:
+      - go run ./tools/build --os {{.OS}} --arch {{.ARCH}}
+
   windows-res:
     desc: Generate Windows icon/version resources
     dir: nodrama

@@ -72,7 +72,8 @@ func main() {
 	defer stop()
 
 	if err := app.Run(ctx, cfg, info); err != nil {
-		log.Fatal(err)
+		log.Printf("ERROR startup_failed error=%q", err)
+		os.Exit(1)
 	}
 }
 
