@@ -3,8 +3,11 @@ package app
 import "time"
 
 const (
-	DefaultServer = "http://127.0.0.1:8080"
-	DefaultListen = ":39080"
+	DefaultServer    = "http://127.0.0.1:8080"
+	DefaultListen    = ":39080"
+	RepositoryURL    = "https://github.com/hangry-labs/llama.nodrama"
+	LatestReleaseURL = RepositoryURL + "/releases/latest"
+	LatestReleaseAPI = "https://api.github.com/repos/hangry-labs/llama.nodrama/releases/latest"
 )
 
 type Config struct {

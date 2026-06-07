@@ -397,6 +397,29 @@
   header.app .last-update,
   header.app .version-display {
     color: var(--fg-mute); font-size: 11px; font-family: var(--mono);
+    text-decoration: none;
+    border-bottom: 1px dotted transparent;
+    transition: color 0.18s ease, border-color 0.18s ease, text-shadow 0.18s ease;
+  }
+  header.app .version-display:hover,
+  header.app .version-display:focus-visible {
+    color: var(--accent-2);
+    border-bottom-color: var(--accent);
+    outline: none;
+  }
+  header.app .version-display.update-available {
+    color: var(--warn);
+    border-bottom-color: #d2992288;
+    animation: update-sparkle 1.6s ease-in-out infinite;
+  }
+  header.app .version-display.update-available:hover,
+  header.app .version-display.update-available:focus-visible {
+    color: #f0d77b;
+    border-bottom-color: #f0d77b;
+  }
+  @keyframes update-sparkle {
+    0%, 100% { text-shadow: 0 0 0 #0000; }
+    50% { text-shadow: 0 0 9px #d2992299, 0 0 16px #58a6ff55; }
   }
   /* very narrow mobile */
   @media (max-width: 360px) {
@@ -409,6 +432,7 @@
   /* honor user reduced-motion preference */
   @media (prefers-reduced-motion: reduce) {
     .led, .pct-bar > span { transition: none; }
+    header.app .version-display.update-available { animation: none; }
   }
   /* responsive */
   @media (max-width: 480px) {
@@ -571,7 +595,7 @@
   <span id="status-text" class="status-pill" role="status" aria-live="polite" data-i18n="header.status.connecting">…</span>
   <span id="last-update" class="last-update" aria-live="polite"></span>
   <span class="grow"></span>
-  <span id="version-display" class="version-display" title=""></span>
+  <a id="version-display" class="version-display" href="https://github.com/hangry-labs/llama.nodrama" target="_blank" rel="noopener noreferrer" title=""></a>
   <span id="server-display" class="server" title=""></span>
   <button id="settings-button" title="Settings" aria-label="Settings">⚙</button>
   <select id="lang-select" aria-label="Language" title="Language">
@@ -612,6 +636,12 @@ const I18N = {
     "header.status.error":      "Error",
     "header.last_update":       "Last update",
     "header.settings":          "Settings",
+    "update.available":         "update available",
+    "update.latest":            "latest {version}",
+    "update.current":           "current {version}",
+    "update.repo":              "Open repository",
+    "update.open_release":      "Open release {version}",
+    "update.check_failed":      "Update check failed",
 
     "common.copy":      "Copy",
     "common.copied":    "Copied",
@@ -838,6 +868,13 @@ const I18N = {
     "header.status.offline":    "오프라인",
     "header.status.error":      "오류",
     "header.last_update":       "최근 업데이트",
+    "header.settings":          "설정",
+    "update.available":         "업데이트 가능",
+    "update.latest":            "최신 {version}",
+    "update.current":           "현재 {version}",
+    "update.repo":              "저장소 열기",
+    "update.open_release":      "릴리스 {version} 열기",
+    "update.check_failed":      "업데이트 확인 실패",
     "common.copy":      "복사",
     "common.copied":    "복사됨",
     "common.cancel":    "취소",
@@ -879,6 +916,7 @@ const I18N = {
     "slots.idle":            "유휴",
     "slots.active":          "활성",
     "slots.context_used":    "ctx",
+    "slots.context_bar":     "사용 ctx",
     "slots.params":          "샘플링 파라미터",
     "slots.show_params":     "파라미터 보기",
     "slots.hide_params":     "파라미터 숨기기",
@@ -889,6 +927,19 @@ const I18N = {
     "slots.confirm.restore": "슬롯 {id}의 KV 캐시를 파일에서 복원하시겠습니까?",
     "slots.confirm.erase":   "슬롯 {id}의 KV 캐시를 삭제하시겠습니까? 실행 중인 서버에 영향이 있습니다.",
     "slots.disabled":        "슬롯 엔드포인트가 비활성화되어 있습니다",
+    "queries.title":            "쿼리",
+    "queries.empty":            "아직 추적된 쿼리가 없습니다. llama.nodrama를 통해 보낸 요청이 여기에 표시됩니다.",
+    "queries.status.running":   "실행 중",
+    "queries.status.queued":    "대기 중",
+    "queries.status.complete":  "완료",
+    "queries.status.error":     "오류",
+    "queries.status.cached":    "캐시됨",
+    "queries.slot":             "슬롯",
+    "queries.task":             "작업",
+    "queries.tokens":           "토큰",
+    "queries.cache":            "캐시",
+    "queries.rate":             "속도",
+    "queries.duration":         "기간",
     "models.title":           "모델",
     "models.selector":        "활성 모델",
     "models.status.loaded":   "로드됨",
@@ -932,7 +983,18 @@ const I18N = {
     "log.search":           "필터…",
     "log.empty":            "(아직 줄이 없습니다)",
     "log.setup_help_title": "로그 tail 설정 안내",
-    "log.setup_help":       "The log panel reads from the llama.nodrama backend. Start with --log /path/to/server.log to enable it.",
+    "log.setup_help":       "로그 패널은 llama.nodrama 백엔드에서 읽습니다. 활성화하려면 --log /path/to/server.log 로 시작하세요.",
+    "settings.title":           "런타임 설정",
+    "settings.server":          "llama.cpp 서버 URL",
+    "settings.log_path":        "로그 파일 경로",
+    "settings.poll":            "백엔드 폴링 간격(ms)",
+    "settings.timeout":         "업스트림 타임아웃(ms)",
+    "settings.listen":          "수신 주소",
+    "settings.raw_proxy":       "원시 프록시",
+    "settings.startup_only":    "시작 시에만",
+    "settings.save":            "설정 저장",
+    "settings.saved":           "설정 저장됨",
+    "settings.note":            "서버 또는 로그 경로를 변경하면 이전 대상과 새 대상의 데이터가 섞이지 않도록 수집된 대시보드 기록이 초기화됩니다.",
     "guidance.title":         "추천 조치",
     "guidance.empty":         "현재 추천 조치가 없습니다 — 서버 상태가 양호합니다.",
     "guidance.no_data":       "서버에 연결할 수 없습니다 — 분석할 데이터가 없습니다.",
@@ -1016,6 +1078,13 @@ const I18N = {
     "header.status.offline":    "オフライン",
     "header.status.error":      "エラー",
     "header.last_update":       "最終更新",
+    "header.settings":          "設定",
+    "update.available":         "更新あり",
+    "update.latest":            "最新 {version}",
+    "update.current":           "現在 {version}",
+    "update.repo":              "リポジトリを開く",
+    "update.open_release":      "リリース {version} を開く",
+    "update.check_failed":      "更新確認に失敗",
     "common.copy":      "コピー",
     "common.copied":    "コピーしました",
     "common.cancel":    "キャンセル",
@@ -1057,6 +1126,7 @@ const I18N = {
     "slots.idle":            "アイドル",
     "slots.active":          "アクティブ",
     "slots.context_used":    "ctx",
+    "slots.context_bar":     "使用 ctx",
     "slots.params":          "サンプリングパラメータ",
     "slots.show_params":     "パラメータを表示",
     "slots.hide_params":     "パラメータを隠す",
@@ -1067,6 +1137,19 @@ const I18N = {
     "slots.confirm.restore": "スロット {id} の KV キャッシュをファイルから復元しますか?",
     "slots.confirm.erase":   "スロット {id} の KV キャッシュを消去しますか? 動作中のサーバーに影響します。",
     "slots.disabled":        "slots エンドポイントが無効です",
+    "queries.title":            "クエリ",
+    "queries.empty":            "追跡中のクエリはまだありません。llama.nodrama 経由のリクエストがここに表示されます。",
+    "queries.status.running":   "実行中",
+    "queries.status.queued":    "待機中",
+    "queries.status.complete":  "完了",
+    "queries.status.error":     "エラー",
+    "queries.status.cached":    "キャッシュ済み",
+    "queries.slot":             "スロット",
+    "queries.task":             "タスク",
+    "queries.tokens":           "トークン",
+    "queries.cache":            "キャッシュ",
+    "queries.rate":             "速度",
+    "queries.duration":         "期間",
     "models.title":           "モデル",
     "models.selector":        "アクティブモデル",
     "models.status.loaded":   "ロード済み",
@@ -1110,7 +1193,18 @@ const I18N = {
     "log.search":           "フィルタ…",
     "log.empty":            "(まだログ行はありません)",
     "log.setup_help_title": "ログ tail の設定",
-    "log.setup_help":       "The log panel reads from the llama.nodrama backend. Start with --log /path/to/server.log to enable it.",
+    "log.setup_help":       "ログパネルは llama.nodrama バックエンドから読み取ります。有効にするには --log /path/to/server.log で起動してください。",
+    "settings.title":           "実行時設定",
+    "settings.server":          "llama.cpp サーバー URL",
+    "settings.log_path":        "ログファイルパス",
+    "settings.poll":            "バックエンドのポーリング間隔 (ms)",
+    "settings.timeout":         "上流タイムアウト (ms)",
+    "settings.listen":          "待受アドレス",
+    "settings.raw_proxy":       "Raw プロキシ",
+    "settings.startup_only":    "起動時のみ",
+    "settings.save":            "設定を保存",
+    "settings.saved":           "設定を保存しました",
+    "settings.note":            "サーバーまたはログパスを変更すると、古い対象と新しい対象のデータが混ざらないように収集済みのダッシュボード履歴をリセットします。",
     "guidance.title":         "アクティブな提案",
     "guidance.empty":         "現在の提案はありません — サーバーは正常です。",
     "guidance.no_data":       "サーバーに接続できません — 分析対象のデータがありません。",
@@ -1194,6 +1288,13 @@ const I18N = {
     "header.status.offline":    "离线",
     "header.status.error":      "错误",
     "header.last_update":       "最近更新",
+    "header.settings":          "设置",
+    "update.available":         "有可用更新",
+    "update.latest":            "最新 {version}",
+    "update.current":           "当前 {version}",
+    "update.repo":              "打开仓库",
+    "update.open_release":      "打开版本 {version}",
+    "update.check_failed":      "更新检查失败",
     "common.copy":      "复制",
     "common.copied":    "已复制",
     "common.cancel":    "取消",
@@ -1235,6 +1336,7 @@ const I18N = {
     "slots.idle":            "空闲",
     "slots.active":          "活动",
     "slots.context_used":    "ctx",
+    "slots.context_bar":     "已用 ctx",
     "slots.params":          "采样参数",
     "slots.show_params":     "显示参数",
     "slots.hide_params":     "隐藏参数",
@@ -1245,6 +1347,19 @@ const I18N = {
     "slots.confirm.restore": "从文件恢复槽位 {id} 的 KV 缓存?",
     "slots.confirm.erase":   "清除槽位 {id} 的 KV 缓存? 这会影响运行中的服务器。",
     "slots.disabled":        "slots 端点已禁用",
+    "queries.title":            "查询",
+    "queries.empty":            "尚无跟踪的查询。通过 llama.nodrama 发送的请求会显示在这里。",
+    "queries.status.running":   "运行中",
+    "queries.status.queued":    "排队中",
+    "queries.status.complete":  "完成",
+    "queries.status.error":     "错误",
+    "queries.status.cached":    "已缓存",
+    "queries.slot":             "槽位",
+    "queries.task":             "任务",
+    "queries.tokens":           "tokens",
+    "queries.cache":            "缓存",
+    "queries.rate":             "速率",
+    "queries.duration":         "耗时",
     "models.title":           "模型",
     "models.selector":        "当前模型",
     "models.status.loaded":   "已加载",
@@ -1288,7 +1403,18 @@ const I18N = {
     "log.search":           "过滤…",
     "log.empty":            "(尚无日志行)",
     "log.setup_help_title": "日志 tail 设置",
-    "log.setup_help":       "The log panel reads from the llama.nodrama backend. Start with --log /path/to/server.log to enable it.",
+    "log.setup_help":       "日志面板从 llama.nodrama 后端读取。要启用它,请使用 --log /path/to/server.log 启动。",
+    "settings.title":           "运行时设置",
+    "settings.server":          "llama.cpp 服务器 URL",
+    "settings.log_path":        "日志文件路径",
+    "settings.poll":            "后端轮询间隔 (ms)",
+    "settings.timeout":         "上游超时 (ms)",
+    "settings.listen":          "监听地址",
+    "settings.raw_proxy":       "原始代理",
+    "settings.startup_only":    "仅启动时",
+    "settings.save":            "保存设置",
+    "settings.saved":           "设置已保存",
+    "settings.note":            "更改服务器或日志路径会重置已收集的仪表盘历史,避免新旧目标的数据混在一起。",
     "guidance.title":         "活动建议",
     "guidance.empty":         "暂无建议 — 服务器状态良好。",
     "guidance.no_data":       "无法连接到服务器 — 没有可分析的数据。",
@@ -1372,6 +1498,13 @@ const I18N = {
     "header.status.offline":    "Desconectado",
     "header.status.error":      "Error",
     "header.last_update":       "Última actualización",
+    "header.settings":          "Configuración",
+    "update.available":         "actualización disponible",
+    "update.latest":            "última {version}",
+    "update.current":           "actual {version}",
+    "update.repo":              "Abrir repositorio",
+    "update.open_release":      "Abrir release {version}",
+    "update.check_failed":      "Falló la comprobación de actualización",
     "common.copy":      "Copiar",
     "common.copied":    "Copiado",
     "common.cancel":    "Cancelar",
@@ -1413,6 +1546,7 @@ const I18N = {
     "slots.idle":            "inactivo",
     "slots.active":          "activo",
     "slots.context_used":    "ctx",
+    "slots.context_bar":     "ctx usado",
     "slots.params":          "Parámetros de muestreo",
     "slots.show_params":     "Mostrar parámetros",
     "slots.hide_params":     "Ocultar parámetros",
@@ -1423,6 +1557,19 @@ const I18N = {
     "slots.confirm.restore": "¿Restaurar la caché KV del slot {id} desde un archivo?",
     "slots.confirm.erase":   "¿Borrar la caché KV del slot {id}? Afectará al servidor en ejecución.",
     "slots.disabled":        "Endpoint de slots deshabilitado",
+    "queries.title":            "Consultas",
+    "queries.empty":            "Aún no hay consultas rastreadas. Las peticiones enviadas mediante llama.nodrama aparecerán aquí.",
+    "queries.status.running":   "ejecutando",
+    "queries.status.queued":    "en cola",
+    "queries.status.complete":  "completa",
+    "queries.status.error":     "error",
+    "queries.status.cached":    "en caché",
+    "queries.slot":             "slot",
+    "queries.task":             "tarea",
+    "queries.tokens":           "tokens",
+    "queries.cache":            "caché",
+    "queries.rate":             "velocidad",
+    "queries.duration":         "duración",
     "models.title":           "Modelos",
     "models.selector":        "Modelo activo",
     "models.status.loaded":   "cargado",
@@ -1466,7 +1613,18 @@ const I18N = {
     "log.search":           "Filtrar…",
     "log.empty":            "(aún no hay líneas)",
     "log.setup_help_title": "Configuración del tail de logs",
-    "log.setup_help":       "The log panel reads from the llama.nodrama backend. Start with --log /path/to/server.log to enable it.",
+    "log.setup_help":       "El panel de logs lee desde el backend de llama.nodrama. Inicia con --log /path/to/server.log para habilitarlo.",
+    "settings.title":           "Configuración en ejecución",
+    "settings.server":          "URL del servidor llama.cpp",
+    "settings.log_path":        "Ruta del archivo de log",
+    "settings.poll":            "Intervalo de sondeo del backend (ms)",
+    "settings.timeout":         "Timeout upstream (ms)",
+    "settings.listen":          "Dirección de escucha",
+    "settings.raw_proxy":       "Proxy raw",
+    "settings.startup_only":    "solo al iniciar",
+    "settings.save":            "Guardar configuración",
+    "settings.saved":           "Configuración guardada",
+    "settings.note":            "Cambiar el servidor o la ruta del log reinicia el historial recopilado del dashboard para no mezclar destinos antiguos y nuevos.",
     "guidance.title":         "Sugerencias activas",
     "guidance.empty":         "Sin sugerencias ahora — el servidor parece sano.",
     "guidance.no_data":       "No se puede contactar el servidor — sin datos para analizar.",
@@ -1700,7 +1858,7 @@ function applyI18n(root) {
 function initHeader() {
   $("#server-display").textContent = state.serverBase;
   $("#server-display").title = state.serverBase;
-  setBuildDisplay(null);
+  setBuildDisplay(null, null);
   const settingsButton = $("#settings-button");
   if (settingsButton) {
     settingsButton.title = t("header.settings");
@@ -1989,6 +2147,7 @@ function installDemoShim(mode) {
     if (path === "/api/snapshot") return Promise.resolve(json({
       app: "llama.nodrama",
       build: { version: "demo", commit: "demo", date: new Date(t0).toISOString() },
+      update: { currentVersion: "demo", repoUrl: "https://github.com/hangry-labs/llama.nodrama", latestUrl: "https://github.com/hangry-labs/llama.nodrama/releases/latest", available: false },
       mode: mode === "router" ? "router" : "single",
       server: "demo",
       pollIntervalMs: state.params.poll,
@@ -2190,7 +2349,7 @@ function applySnapshot(snapshot, opts) {
     $("#server-display").textContent = snapshot.server;
     $("#server-display").title = snapshot.server;
   }
-  setBuildDisplay(snapshot && snapshot.build);
+  setBuildDisplay(snapshot && snapshot.build, snapshot && snapshot.update);
 
   if (state.mode === "router") {
     if (!state.selectedModel) {
@@ -2230,14 +2389,33 @@ function applySnapshot(snapshot, opts) {
   }
 }
 
-function setBuildDisplay(build) {
+function setBuildDisplay(build, update) {
   const node = $("#version-display");
   if (!node) return;
   const version = build && build.version ? String(build.version) : "dev";
-  node.textContent = "version " + version;
+  const repoURL = (update && update.repoUrl) || "https://github.com/hangry-labs/llama.nodrama";
+  const latestVersion = update && update.latestVersion ? String(update.latestVersion) : "";
+  const latestURL = (update && update.latestUrl) || repoURL;
+  const available = !!(update && update.available && latestVersion);
+  node.classList.toggle("update-available", available);
+  node.href = available ? latestURL : repoURL;
+  if (available) {
+    node.textContent = "version " + version + " · " + t("update.available");
+  } else {
+    node.textContent = "version " + version;
+  }
   const details = [];
   if (build && build.commit) details.push("commit " + build.commit);
   if (build && build.date) details.push("built " + build.date);
+  if (available) {
+    details.push(t("update.open_release", { version: latestVersion }));
+  } else if (latestVersion) {
+    details.push(t("update.latest", { version: latestVersion }));
+  } else if (update && update.error) {
+    details.push(t("update.check_failed") + ": " + update.error);
+  } else {
+    details.push(t("update.repo"));
+  }
   node.title = details.length ? details.join(" · ") : "local development build";
 }
 

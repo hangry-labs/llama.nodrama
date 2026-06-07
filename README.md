@@ -76,8 +76,13 @@ Useful flags:
 --poll       polling interval, default 1s
 --raw-proxy  expose selected raw llama.cpp proxy routes for debugging
 --timeout    upstream request timeout, default 5s
+--update     print repository and latest release links, then exit
 --version    print build version and exit
 ```
+
+The version label in the dashboard top bar links to the project repository. The
+backend periodically checks the newest GitHub Release; when a newer release
+exists, the version label highlights and links directly to that release.
 
 ## Releases
 

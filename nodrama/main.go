@@ -27,6 +27,7 @@ var (
 func main() {
 	var cfg app.Config
 	var showVersion bool
+	var showUpdate bool
 
 	flag.Usage = func() {
 		out := flag.CommandLine.Output()
@@ -50,11 +51,18 @@ func main() {
 	flag.BoolVar(&cfg.RawProxy, "raw-proxy", false, "expose selected raw llama.cpp proxy routes for debugging")
 	flag.DurationVar(&cfg.PollInterval, "poll", time.Second, "llama.cpp polling interval")
 	flag.DurationVar(&cfg.Timeout, "timeout", 5*time.Second, "upstream request timeout")
+	flag.BoolVar(&showUpdate, "update", false, "print repository and latest release links, then exit")
 	flag.BoolVar(&showVersion, "version", false, "print version and exit")
 	flag.Parse()
 
 	version = resolvedVersion()
 	info := app.BuildInfo{Version: version, Commit: commit, Date: date}
+	if showUpdate {
+		fmt.Printf("llama-nodrama %s %s %s\n", info.Version, info.Commit, info.Date)
+		fmt.Printf("Repository: %s\n", app.RepositoryURL)
+		fmt.Printf("Latest release: %s\n", app.LatestReleaseURL)
+		return
+	}
 	if showVersion {
 		fmt.Printf("llama-nodrama %s %s %s\n", info.Version, info.Commit, info.Date)
 		return

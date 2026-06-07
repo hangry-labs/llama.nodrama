@@ -41,6 +41,7 @@ type Snapshot struct {
 	Warnings       []string                  `json:"warnings"`
 	RawMetrics     map[string]float64        `json:"rawMetrics,omitempty"`
 	LastErrors     map[string]string         `json:"lastErrors,omitempty"`
+	Update         UpdateInfo                `json:"update"`
 }
 
 type SnapshotHistory struct {
@@ -186,6 +187,10 @@ type Dashboard struct {
 	lastSlotQuery   map[int]string
 	seenQueryEvents map[string]bool
 
+	updateMu        sync.Mutex
+	updateInfo      UpdateInfo
+	updateCheckedAt time.Time
+
 	sustainedSince map[string]time.Time
 }
 
@@ -248,7 +253,9 @@ func NewDashboard(client *llamacpp.Client, cfg Config, build BuildInfo) *Dashboa
 			Suggestions:    []Suggestion{},
 			Requests:       []RequestSummary{},
 			Warnings:       []string{"Waiting for first poll."},
+			Update:         defaultUpdateInfo(build.Version),
 		},
+		updateInfo: defaultUpdateInfo(build.Version),
 	}
 }
 
@@ -640,6 +647,33 @@ func (m *Dashboard) ResetHistory() {
 	m.queryMu.Unlock()
 }
 
+func (m *Dashboard) updateReleaseInfo(ctx context.Context, now time.Time) UpdateInfo {
+	m.updateMu.Lock()
+	if !m.updateCheckedAt.IsZero() && now.Sub(m.updateCheckedAt) < updateCheckInterval {
+		info := m.updateInfo
+		m.updateMu.Unlock()
+		return info
+	}
+	m.updateCheckedAt = now
+	m.updateMu.Unlock()
+
+	info := checkLatestRelease(ctx, m.build.Version)
+
+	m.updateMu.Lock()
+	m.updateInfo = info
+	m.updateMu.Unlock()
+	return info
+}
+
+func (m *Dashboard) currentUpdateInfo() UpdateInfo {
+	m.updateMu.Lock()
+	defer m.updateMu.Unlock()
+	if m.updateInfo.RepoURL == "" {
+		m.updateInfo = defaultUpdateInfo(m.build.Version)
+	}
+	return m.updateInfo
+}
+
 func (m *Dashboard) StartRequest(route, model string, stream bool) string {
 	now := time.Now()
 	seq := atomic.AddUint64(&m.requestSeq, 1)
@@ -771,6 +805,7 @@ func (m *Dashboard) poll(parent context.Context) {
 	pollSlow := m.lastSlowPoll.IsZero() || pollAt.Sub(m.lastSlowPoll) >= slowPollInterval
 	endpoints := copyProbes(previous.Endpoints)
 	lastErrors := copyStringMap(previous.LastErrors)
+	update := m.currentUpdateInfo()
 	warnings := []string{}
 	mode := previous.Mode
 	if mode == "" {
@@ -917,6 +952,7 @@ func (m *Dashboard) poll(parent context.Context) {
 	gpuSnapshot := previous.GPU
 	if pollSlow {
 		gpuSnapshot = gpu.Collect(ctx)
+		update = m.updateReleaseInfo(ctx, pollAt)
 		m.lastSlowPoll = pollAt
 	}
 	if probe, ok := endpoints["props"]; ok && !probe.OK {
@@ -1019,6 +1055,7 @@ func (m *Dashboard) poll(parent context.Context) {
 		Warnings:       warnings,
 		RawMetrics:     rawMetrics,
 		LastErrors:     lastErrors,
+		Update:         update,
 	}
 
 	m.mu.Lock()
