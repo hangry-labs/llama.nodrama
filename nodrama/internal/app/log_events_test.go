@@ -168,6 +168,41 @@ func TestUpdateQueriesDoesNotSmearConcurrentRequestTasks(t *testing.T) {
 	}
 }
 
+func TestUpdateQueriesRunningSlotUsesCurrentIdentity(t *testing.T) {
+	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
+	now := time.Unix(1_700_000_000, 0)
+
+	dashboard.queries = map[string]QuerySummary{
+		"task_77": {
+			ID:              "task_77",
+			Status:          "complete",
+			StartedAt:       now.Add(-time.Minute),
+			SlotIDs:         []int{1, 2},
+			TaskIDs:         []int{77, 88},
+			LastCacheAction: "invalidate",
+		},
+	}
+
+	queries := dashboard.updateQueries(now, "model-a", []llamacpp.Slot{{
+		ID:           2,
+		TaskID:       77,
+		IsProcessing: true,
+		State:        "generating",
+	}}, nil, nil)
+	if len(queries) != 1 {
+		t.Fatalf("queries = %d", len(queries))
+	}
+	if len(queries[0].SlotIDs) != 1 || queries[0].SlotIDs[0] != 2 {
+		t.Fatalf("slot ids = %#v", queries[0].SlotIDs)
+	}
+	if len(queries[0].TaskIDs) != 1 || queries[0].TaskIDs[0] != 77 {
+		t.Fatalf("task ids = %#v", queries[0].TaskIDs)
+	}
+	if queries[0].LastCacheAction == "invalidate" {
+		t.Fatal("running query should clear stale invalidate action")
+	}
+}
+
 func TestUpdateQueriesMarksUnassignedRequestQueued(t *testing.T) {
 	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
 	now := time.Unix(1_700_000_000, 0)
@@ -184,6 +219,35 @@ func TestUpdateQueriesMarksUnassignedRequestQueued(t *testing.T) {
 	}
 	if queries[0].Status != "queued" {
 		t.Fatalf("status = %q", queries[0].Status)
+	}
+}
+
+func TestUpdateQueriesDoesNotShowInvalidateActionForRunningQuery(t *testing.T) {
+	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
+	now := time.Unix(1_700_000_000, 0)
+
+	queries := dashboard.updateQueries(now, "model-a", []llamacpp.Slot{{
+		ID:           1,
+		TaskID:       77,
+		IsProcessing: true,
+		State:        "generating",
+	}}, nil, []llamacpp.LogEvent{{
+		ID:       "evt_invalidate",
+		At:       now,
+		Kind:     "warning",
+		Severity: "W",
+		SlotID:   1,
+		TaskID:   77,
+		Message:  "slot update_slots: id  1 | task 77 | erased invalidated context checkpoint",
+	}})
+	if len(queries) != 1 {
+		t.Fatalf("queries = %d", len(queries))
+	}
+	if queries[0].Status != "running" {
+		t.Fatalf("status = %q", queries[0].Status)
+	}
+	if queries[0].LastCacheAction == "invalidate" {
+		t.Fatalf("running query should not show invalidate cache action: %#v", queries[0])
 	}
 }
 

@@ -625,6 +625,7 @@ const I18N = {
     "slots.idle":               "idle",
     "slots.active":             "active",
     "slots.context_used":       "ctx",
+    "slots.context_bar":        "ctx used",
     "slots.params":             "Sampling parameters",
     "slots.show_params":        "Show parameters",
     "slots.hide_params":        "Hide parameters",
@@ -2062,6 +2063,29 @@ function slotContextTokens(slot) {
   return (slot && (slot.contextTokens || slot.n_ctx)) || 0;
 }
 
+function slotContextEstimateTokens(slot) {
+  if (slot && typeof slot.contextEstimateTokens === "number") return slot.contextEstimateTokens;
+  const prompt = slot && typeof slot.promptTokens === "number" ? slot.promptTokens : num(slot && slot.n_prompt_tokens, 0);
+  const processed = slot && typeof slot.promptProcessedTokens === "number" ? slot.promptProcessedTokens : num(slot && slot.n_prompt_tokens_processed, 0);
+  const cache = slot && typeof slot.promptCacheTokens === "number" ? slot.promptCacheTokens : num(slot && slot.n_prompt_tokens_cache, 0);
+  return Math.max(prompt, processed, cache) + slotDecodedTokens(slot);
+}
+
+function slotPromptTokens(slot) {
+  if (slot && typeof slot.promptTokens === "number") return slot.promptTokens;
+  return num(slot && slot.n_prompt_tokens, 0);
+}
+
+function slotPromptProcessedTokens(slot) {
+  if (slot && typeof slot.promptProcessedTokens === "number") return slot.promptProcessedTokens;
+  return num(slot && slot.n_prompt_tokens_processed, 0);
+}
+
+function slotPromptCacheTokens(slot) {
+  if (slot && typeof slot.promptCacheTokens === "number") return slot.promptCacheTokens;
+  return num(slot && slot.n_prompt_tokens_cache, 0);
+}
+
 function slotTaskID(slot) {
   return (slot && (slot.taskId || slot.id_task)) || 0;
 }
@@ -3320,22 +3344,25 @@ function updateSlotNode(node, s) {
 
   const p = isActive ? (s.params || {}) : {};
   const nDecoded = isActive ? slotDecodedTokens(s) : 0;
-  const nRemain  = isActive ? slotRemainingTokens(s) : NaN;
-  const nPredict = num(p.n_predict, NaN);
-  const total = isFinite(nPredict) && nPredict > 0
-    ? nPredict
-    : (isFinite(nDecoded + nRemain) ? nDecoded + Math.max(0, nRemain) : 0);
+  const contextCapacity = slotContextTokens(s);
+  const contextEstimate = isActive ? slotContextEstimateTokens(s) : 0;
+  const promptTokens = isActive ? slotPromptTokens(s) : 0;
+  const promptProcessed = isActive ? slotPromptProcessedTokens(s) : 0;
+  const promptCache = isActive ? slotPromptCacheTokens(s) : 0;
 
   const progress = node.querySelector('[data-role="progress"]');
   progress.hidden = !isActive;
   const pctSpan = node.querySelector('.pct-bar > span');
-  const pct = total > 0 ? Math.max(0, Math.min(100, (nDecoded / total) * 100)) : 0;
+  const pct = contextCapacity > 0 ? Math.max(0, Math.min(100, (contextEstimate / contextCapacity) * 100)) : 0;
   pctSpan.style.width = pct.toFixed(1) + "%";
   node.querySelector('[data-role="ratio"]').textContent =
-    isActive ? (nDecoded + " / " + (total || "?")) : "—";
+    isActive ? (t("slots.context_bar") + ": " + contextEstimate + " / " + (contextCapacity || "?") + " (" + pct.toFixed(1) + "%)") : "—";
 
   const ctx = node.querySelector('[data-role="ctx"]');
-  ctx.textContent = t("slots.context_used") + ": " + (slotContextTokens(s) || "?");
+  ctx.textContent = isActive
+    ? (t("slots.context_used") + ": prompt " + promptProcessed + "/" + (promptTokens || "?") +
+       " · cache " + promptCache + " · gen " + nDecoded)
+    : (t("slots.context_used") + ": " + (contextCapacity || "?"));
 
   const historyHost = node.querySelector('[data-role="slot-history"]');
   if (historyHost) {

@@ -145,13 +145,17 @@ func (m *Dashboard) updateQueries(now time.Time, model string, slots []llamacpp.
 		if model != "" {
 			query.Model = model
 		}
-		query.SlotIDs = appendUniqueInt(query.SlotIDs, slot.ID)
-		query.TaskIDs = appendUniqueInt(query.TaskIDs, slot.TaskID)
+		query.SlotIDs = []int{slot.ID}
+		query.TaskIDs = []int{slot.TaskID}
 		query.PromptTokens = maxInt(query.PromptTokens, slot.PromptTokens)
 		query.CompletionTokens = maxInt(query.CompletionTokens, slot.DecodedTokens)
 		query.TotalTokens = maxInt(query.TotalTokens, query.PromptTokens+query.CompletionTokens)
 		query.PromptCacheTokens = maxInt(query.PromptCacheTokens, slot.PromptCacheTokens)
 		query.EndedAt = nil
+		if query.LastCacheAction == "invalidate" {
+			query.LastCacheAction = ""
+			query.LastCacheEventAt = nil
+		}
 		query.DurationMS = now.Sub(query.StartedAt).Milliseconds()
 		query.LastEventAt = timePtr(now)
 		if request, ok := requestByTask[slot.TaskID]; ok {
@@ -259,8 +263,10 @@ func (m *Dashboard) applyEventToQuery(event llamacpp.LogEvent, fallbackTime time
 		}
 	case "warning", "error":
 		if strings.Contains(strings.ToLower(event.Message), "erased invalidated context checkpoint") {
-			query.LastCacheAction = "invalidate"
-			query.LastCacheEventAt = timePtr(eventAt)
+			if query.Status != "running" {
+				query.LastCacheAction = "invalidate"
+				query.LastCacheEventAt = timePtr(eventAt)
+			}
 			query.CacheResident = false
 		}
 		if event.Kind == "error" {
