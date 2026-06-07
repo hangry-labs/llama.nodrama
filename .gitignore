@@ -1,0 +1,44 @@
+# Local editor state
+AGENTS.md
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local config and secrets
+.env
+.env.*
+!.env.example
+*.local.*
+config.local.*
+secrets/
+keys/
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Runtime output
+logs/
+runtime/
+tmp/
+temp/
+captures/
+profiles/
+*.log
+*.pid
+
+# Private fixtures and scratch data
+fixtures/private/
+testdata/private/
+scratch/
+
+# Go build output
+bin/
+dist/
+coverage.out
+*.test
+
+# OS files
+.DS_Store
+Thumbs.db

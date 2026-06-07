@@ -1,0 +1,4224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>llama.nodrama</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg-2: #161b22;
+    --bg-3: #1f242c;
+    --fg: #e6edf3;
+    --fg-dim: #9aa4b2;
+    --fg-mute: #6b7785;
+    --border: #30363d;
+    --accent: #58a6ff;
+    --accent-2: #79c0ff;
+    --good: #3fb950;
+    --warn: #d29922;
+    --bad: #f85149;
+    --info: #58a6ff;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --shadow: 0 1px 0 #ffffff08 inset, 0 0 0 1px var(--border);
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, "Noto Sans", "Noto Sans CJK KR",
+          "Noto Sans CJK JP", "Noto Sans CJK SC", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); }
+  code, pre, kbd { font-family: var(--mono); }
+  button {
+    font: inherit; color: inherit;
+    background: var(--bg-3); border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 10px; cursor: pointer;
+  }
+  button:hover { background: #232a33; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  select, input {
+    font: inherit; color: inherit;
+    background: var(--bg-3); border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 8px;
+  }
+  /* layout */
+  header.app {
+    display: flex; gap: 12px; align-items: center;
+    padding: 10px 14px; background: var(--bg-2);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 10;
+    flex-wrap: wrap;
+  }
+  header.app .brand { font-weight: 600; letter-spacing: 0.2px; }
+  header.app .brand .dot { color: var(--accent); }
+  header.app .grow { flex: 1; }
+  header.app .server {
+    font-family: var(--mono); color: var(--fg-dim);
+    background: var(--bg-3); padding: 2px 8px; border-radius: 6px;
+    border: 1px solid var(--border);
+    max-width: 320px; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .led {
+    display: inline-block; width: 10px; height: 10px;
+    border-radius: 50%; background: var(--fg-mute); vertical-align: middle;
+    box-shadow: 0 0 0 0 #0000;
+    transition: background 0.2s, box-shadow 0.4s;
+  }
+  .led.on    { background: var(--good); box-shadow: 0 0 8px #3fb95066; }
+  .led.warn  { background: var(--warn); box-shadow: 0 0 8px #d2992266; }
+  .led.bad   { background: var(--bad);  box-shadow: 0 0 8px #f8514966; }
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 2px 8px; border-radius: 999px;
+    background: var(--bg-3); border: 1px solid var(--border);
+    color: var(--fg-dim); font-size: 12px;
+  }
+  main {
+    padding: 14px;
+    display: grid; gap: 14px;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    align-items: start;
+  }
+  .full { grid-column: 1 / -1; }
+  .card {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    display: flex; flex-direction: column; gap: 8px;
+    min-width: 0;
+  }
+  .card h2 {
+    margin: 0; font-size: 12px; text-transform: uppercase;
+    letter-spacing: 0.5px; color: var(--fg-dim); font-weight: 600;
+  }
+  .card .value {
+    font-size: 28px; font-weight: 600; font-family: var(--mono);
+    color: var(--fg); line-height: 1.1;
+  }
+  .card .sub { font-size: 12px; color: var(--fg-dim); }
+  .banner {
+    background: #2d1517; border: 1px solid #5e2329; color: #ffb4ac;
+    padding: 8px 12px; border-radius: 8px; margin: 10px 14px 0;
+    font-size: 13px;
+  }
+  .banner.warn { background: #2b240b; border-color: #5a4a14; color: #f0d77b; }
+  .empty-hint {
+    color: var(--fg-mute); font-size: 12px; padding: 12px 14px;
+  }
+  /* metrics */
+  .metric-card .row {
+    display: flex; align-items: baseline; gap: 8px;
+    flex-wrap: wrap;
+  }
+  .metric-card .metric-title {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px;
+  }
+  .metric-card .metric-title h2 { min-width: 0; }
+  .metric-card .metric-title .info-btn {
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--fg-dim);
+    flex: 0 0 auto;
+    font-size: 11px;
+    height: 20px;
+    line-height: 18px;
+    padding: 0;
+    text-align: center;
+    width: 20px;
+  }
+  .metric-card .metric-title .info-btn:hover,
+  .metric-card .metric-title .info-btn:focus-visible {
+    border-color: var(--accent);
+    color: var(--accent-2);
+  }
+  .metric-card .unit { color: var(--fg-mute); font-size: 13px; font-family: var(--mono); }
+  .metric-card svg { width: 100%; height: 36px; display: block; }
+  .metric-card .spark-area  { fill: #58a6ff22; }
+  .metric-card .spark-line  { fill: none; stroke: var(--accent); stroke-width: 1.5; }
+  .metric-card .spark-grid  { stroke: var(--border); stroke-width: 1; }
+  .metric-card.warn .value  { color: var(--warn); }
+  .metric-card.bad  .value  { color: var(--bad); }
+  .metric-card.warn .spark-line { stroke: var(--warn); }
+  .metric-card.warn .spark-area { fill: #d2992233; }
+  .metric-card.bad  .spark-line { stroke: var(--bad); }
+  .metric-card.bad  .spark-area { fill: #f8514933; }
+  .metric-card.disabled .value { color: var(--fg-mute); }
+  .pct-bar {
+    height: 6px; background: var(--bg-3);
+    border-radius: 3px; overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .pct-bar > span { display: block; height: 100%; background: var(--accent); transition: width 0.2s; }
+  .pct-bar.warn > span { background: var(--warn); }
+  .pct-bar.bad  > span { background: var(--bad); }
+  /* slots */
+  .slot-grid {
+    display: grid; gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  }
+  .slot {
+    background: var(--bg-2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 10px 12px;
+    display: flex; flex-direction: column; gap: 6px;
+    min-width: 0;
+  }
+  .slot.idle { opacity: 0.7; }
+  .slot.active { border-color: #2f6db1; box-shadow: 0 0 0 1px #2f6db166 inset; }
+  .slot-head {
+    display: flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 13px;
+  }
+  .slot-head .id { color: var(--fg-dim); }
+  .slot-head .badge {
+    font-size: 11px; padding: 1px 6px; border-radius: 999px;
+    background: var(--bg-3); color: var(--fg-dim);
+    border: 1px solid var(--border);
+  }
+  .slot-head .badge.active { background: #1d3a5c; color: #9cc3ff; border-color: #2f6db1; }
+  .slot-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .slot-actions button { font-size: 11px; padding: 2px 8px; }
+  .slot .progress {
+    display: grid; grid-template-columns: 1fr auto;
+    gap: 8px; align-items: center;
+    font-family: var(--mono); font-size: 12px; color: var(--fg-dim);
+  }
+  .slot .params {
+    margin-top: 4px;
+    background: var(--bg-3); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 8px;
+    font-family: var(--mono); font-size: 11.5px; color: var(--fg-dim);
+    display: grid; grid-template-columns: max-content 1fr;
+    gap: 2px 10px; max-height: 40vh; overflow: auto;
+  }
+  .slot .params .k { color: var(--fg-mute); }
+  .slot .params .v { color: var(--fg); word-break: break-all; }
+  .slot details > summary {
+    cursor: pointer; color: var(--accent); font-size: 12px;
+    list-style: none; user-select: none;
+  }
+  .slot details > summary::-webkit-details-marker { display: none; }
+  .slot details > summary::before { content: "▸ "; }
+  .slot details[open] > summary::before { content: "▾ "; }
+  /* models / config */
+  .kv-table {
+    display: grid; grid-template-columns: max-content 1fr;
+    gap: 4px 12px; font-family: var(--mono); font-size: 12px;
+  }
+  .kv-table .k { color: var(--fg-mute); }
+  .kv-table .v { color: var(--fg); word-break: break-all; }
+  .model-list {
+    display: grid; gap: 8px;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  }
+  .model-card {
+    background: var(--bg-3); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .model-card.active { border-color: #2f6db1; }
+  .model-card .name {
+    font-family: var(--mono); font-size: 13px; word-break: break-all;
+  }
+  .badge {
+    display: inline-block; font-size: 11px;
+    padding: 1px 6px; border-radius: 999px;
+    background: var(--bg-3); color: var(--fg-dim);
+    border: 1px solid var(--border);
+  }
+  .badge.status-loaded   { background: #11321b; color: #6dd590; border-color: #2a6234; }
+  .badge.status-loading  { background: #2c2611; color: #e6c963; border-color: #5a4a14; }
+  .badge.status-unloaded { background: var(--bg-3); color: var(--fg-mute); }
+  .badge.status-sleeping { background: #1d2a3d; color: #8eb0d6; border-color: #2f4969; }
+  .badge.status-failed   { background: #3a1216; color: #ff9a93; border-color: #5e2329; }
+  .args-block {
+    background: #0a0d12; border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 8px;
+    font-family: var(--mono); font-size: 11.5px; color: var(--fg-dim);
+    overflow: auto; white-space: pre-wrap; word-break: break-all;
+    max-height: 200px;
+  }
+  .row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .row-actions button { font-size: 11px; padding: 2px 8px; }
+  /* modal */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: #000a;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; padding: 20px;
+  }
+  .modal {
+    background: var(--bg-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px 18px; min-width: 280px;
+    max-width: 480px; box-shadow: 0 10px 40px #000c;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .modal h3 { margin: 0; font-size: 14px; }
+  .modal .body { color: var(--fg-dim); font-size: 13px; line-height: 1.5; }
+  .modal .body code { color: var(--fg); }
+  .modal .actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .modal .actions button.primary { background: #1f4a7a; border-color: #2f6db1; color: #cfe3ff; }
+  .modal .warn { color: var(--warn); font-size: 12px; }
+  /* log panel */
+  .log-card { gap: 6px; }
+  .log-toolbar {
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  }
+  .log-toolbar input[type="search"] { min-width: 160px; flex: 1; }
+  .log-view {
+    background: #07090c; border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px;
+    font-family: var(--mono); font-size: 12px; line-height: 1.45;
+    color: #c5d2dd;
+    max-height: 50vh; overflow: auto;
+    white-space: pre-wrap; word-break: break-all;
+  }
+  .log-view .ln { display: block; }
+  .log-view .ln.hidden { display: none; }
+  .ansi-30 { color: #6b7785; } .ansi-31 { color: #f85149; }
+  .ansi-32 { color: #3fb950; } .ansi-33 { color: #d29922; }
+  .ansi-34 { color: #58a6ff; } .ansi-35 { color: #d29df0; }
+  .ansi-36 { color: #56d4dd; } .ansi-37 { color: #c5d2dd; }
+  .ansi-90 { color: #6e7681; } .ansi-91 { color: #ff7b72; }
+  .ansi-92 { color: #56d364; } .ansi-93 { color: #e3b341; }
+  .ansi-94 { color: #79c0ff; } .ansi-95 { color: #d2a8ff; }
+  .ansi-96 { color: #76e3ea; } .ansi-97 { color: #f0f6fc; }
+  .ansi-bold { font-weight: 600; }
+  .info-btn {
+    cursor: pointer; color: var(--fg-mute); background: transparent;
+    border: none; padding: 0 4px; font-size: 13px;
+  }
+  .info-btn:hover { color: var(--fg); }
+  /* guidance */
+  .guidance-list {
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .suggestion {
+    border: 1px solid var(--border);
+    background: var(--bg-3);
+    border-radius: 8px;
+    padding: 8px 10px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .suggestion .head {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; font-weight: 600;
+  }
+  .suggestion .body {
+    font-size: 12px; color: var(--fg-dim); line-height: 1.5;
+  }
+  .suggestion .body strong { color: var(--fg); }
+  .suggestion.severity-info { border-color: #2f4969; }
+  .suggestion.severity-warn { border-color: #5a4a14; background: #1f1d10; }
+  .suggestion.severity-bad  { border-color: #5e2329; background: #1f1112; }
+  .sev-badge {
+    font-size: 10px; padding: 1px 6px; border-radius: 999px;
+    background: var(--bg-2); color: var(--fg-dim); border: 1px solid var(--border);
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .sev-badge.info { color: #79c0ff; border-color: #2f4969; }
+  .sev-badge.warn { color: #e3b341; border-color: #5a4a14; }
+  .sev-badge.bad  { color: #ff7b72; border-color: #5e2329; }
+  /* a11y / focus */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  /* footer */
+  footer.app {
+    padding: 14px; color: var(--fg-mute); font-size: 12px;
+    text-align: center; border-top: 1px solid var(--border);
+    margin-top: 10px;
+  }
+  footer.app a { color: var(--accent); text-decoration: none; }
+  footer.app a:hover { text-decoration: underline; }
+  /* header last-update */
+  header.app .last-update {
+    color: var(--fg-mute); font-size: 11px; font-family: var(--mono);
+  }
+  /* very narrow mobile */
+  @media (max-width: 360px) {
+    header.app .brand { font-size: 13px; }
+    header.app .server { display: none; }
+    main { padding: 8px; gap: 8px; }
+    .card { padding: 10px; }
+    .card .value { font-size: 20px; }
+  }
+  /* honor user reduced-motion preference */
+  @media (prefers-reduced-motion: reduce) {
+    .led, .pct-bar > span { transition: none; }
+  }
+  /* responsive */
+  @media (max-width: 480px) {
+    header.app { padding: 8px 10px; gap: 8px; }
+    header.app .server { max-width: 160px; font-size: 12px; }
+    main { padding: 10px; gap: 10px; }
+    .card .value { font-size: 22px; }
+  }
+
+  /* chat */
+  .chat-card { padding: 0; overflow: hidden; }
+  .chat-head {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; background: var(--bg-2);
+    border-bottom: 1px solid var(--border);
+    cursor: pointer; user-select: none;
+  }
+  .chat-head h2 { margin: 0; font-size: 13px; letter-spacing: 0.5px;
+                  color: var(--fg-dim); text-transform: uppercase; }
+  .chat-head .pill {
+    font-size: 11px; padding: 1px 7px; border-radius: 999px;
+    background: var(--bg-3); color: var(--fg-dim); border: 1px solid var(--border);
+  }
+  .chat-head .grow { flex: 1; }
+  .chat-body {
+    display: grid; grid-template-columns: 1fr 280px; gap: 0;
+    min-height: 360px; max-height: 75vh;
+  }
+  .chat-body[hidden] { display: none; }
+  .chat-main {
+    display: flex; flex-direction: column;
+    border-right: 1px solid var(--border);
+    min-height: 0;
+  }
+  .chat-side {
+    display: flex; flex-direction: column; gap: 10px;
+    padding: 10px 12px; overflow: auto;
+    background: var(--bg-2);
+  }
+  .chat-side label {
+    font-size: 11px; color: var(--fg-mute);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .chat-side input[type="range"] { width: 100%; }
+  .chat-side .row {
+    display: grid; grid-template-columns: 1fr auto;
+    gap: 6px; align-items: center;
+  }
+  .chat-side .row .v {
+    font-family: var(--mono); font-size: 12px; color: var(--fg-dim);
+    min-width: 36px; text-align: right;
+  }
+  .chat-side textarea {
+    font: inherit; color: inherit;
+    background: var(--bg-3); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 8px; resize: vertical;
+    min-height: 60px;
+  }
+  .chat-msgs {
+    flex: 1; overflow-y: auto; padding: 12px 14px;
+    display: flex; flex-direction: column; gap: 14px;
+    scroll-behavior: smooth;
+  }
+  .chat-msg { display: flex; flex-direction: column; gap: 4px; max-width: 100%; }
+  .chat-msg .who {
+    font-size: 11px; color: var(--fg-mute);
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .chat-msg.user .who { color: var(--accent-2); }
+  .chat-msg.assistant .who { color: var(--good); }
+  .chat-msg .body {
+    background: var(--bg-2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 12px;
+    word-wrap: break-word; overflow-wrap: break-word;
+  }
+  .chat-msg.user .body { background: #14202e; border-color: #2a425d; }
+  .chat-msg .stats {
+    font-family: var(--mono); font-size: 11px; color: var(--fg-mute);
+  }
+  .chat-msg .body > *:first-child { margin-top: 0; }
+  .chat-msg .body > *:last-child { margin-bottom: 0; }
+  .chat-msg .body p { margin: 6px 0; }
+  .chat-msg .body h1, .chat-msg .body h2, .chat-msg .body h3,
+  .chat-msg .body h4, .chat-msg .body h5, .chat-msg .body h6 {
+    margin: 12px 0 4px; line-height: 1.25;
+  }
+  .chat-msg .body h1 { font-size: 18px; }
+  .chat-msg .body h2 { font-size: 16px; }
+  .chat-msg .body h3 { font-size: 15px; }
+  .chat-msg .body h4, .chat-msg .body h5, .chat-msg .body h6 { font-size: 14px; }
+  .chat-msg .body code {
+    background: var(--bg-3); padding: 1px 5px; border-radius: 4px;
+    font-size: 12.5px;
+  }
+  .chat-msg .body pre {
+    background: var(--bg-3); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 10px;
+    overflow-x: auto; margin: 6px 0;
+  }
+  .chat-msg .body pre code { background: transparent; padding: 0; font-size: 12px; }
+  .chat-msg .body ul, .chat-msg .body ol { margin: 6px 0; padding-left: 24px; }
+  .chat-msg .body li { margin: 2px 0; }
+  .chat-msg .body blockquote {
+    margin: 6px 0; padding: 4px 12px;
+    border-left: 3px solid var(--border); color: var(--fg-dim);
+  }
+  .chat-msg .body hr {
+    border: 0; border-top: 1px solid var(--border); margin: 10px 0;
+  }
+  .chat-msg .body table {
+    border-collapse: collapse; margin: 8px 0;
+    font-size: 12.5px;
+  }
+  .chat-msg .body th, .chat-msg .body td {
+    border: 1px solid var(--border); padding: 4px 8px; text-align: left;
+  }
+  .chat-msg .body th { background: var(--bg-3); }
+  .chat-msg .body a { color: var(--accent); }
+  .chat-msg .body strong { color: var(--fg); }
+  .chat-msg .body em { font-style: italic; }
+  .chat-input-row {
+    display: grid; grid-template-columns: 1fr auto auto;
+    gap: 8px; padding: 10px 12px;
+    border-top: 1px solid var(--border); background: var(--bg-2);
+  }
+  .chat-input-row textarea {
+    font: inherit; color: inherit;
+    background: var(--bg-3); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 10px;
+    resize: none; min-height: 38px; max-height: 200px;
+  }
+  .chat-input-row button { white-space: nowrap; }
+  .chat-input-row button.primary {
+    background: #1d3a5c; border-color: #2f6db1; color: #cfe3ff;
+  }
+  .chat-input-row button.primary:hover { background: #234a76; }
+  .chat-input-row button.danger {
+    background: #3a1d1d; border-color: #6e2a2a; color: #ffd3cf;
+  }
+  .chat-empty {
+    color: var(--fg-mute); font-size: 12px; text-align: center;
+    padding: 30px 20px;
+  }
+  .chat-typing {
+    color: var(--fg-mute); font-size: 11px; font-family: var(--mono);
+  }
+  @media (max-width: 720px) {
+    .chat-body { grid-template-columns: 1fr; max-height: 90vh; }
+    .chat-side { border-top: 1px solid var(--border); border-right: none; }
+    .chat-main { border-right: none; }
+  }
+</style>
+</head>
+<body>
+
+<header class="app">
+  <span class="brand">zero<span class="dot">·</span>llama</span>
+  <span id="status-led" class="led" aria-hidden="true"></span>
+  <span id="status-text" class="status-pill" role="status" aria-live="polite" data-i18n="header.status.connecting">…</span>
+  <span id="last-update" class="last-update" aria-live="polite"></span>
+  <span class="grow"></span>
+  <span id="server-display" class="server" title=""></span>
+  <select id="lang-select" aria-label="Language" title="Language">
+    <option value="en">EN</option>
+    <option value="ko">한국어</option>
+    <option value="ja">日本語</option>
+    <option value="zh-CN">中文</option>
+    <option value="es">Español</option>
+  </select>
+</header>
+
+<div id="banners"></div>
+
+<main id="root">
+  <div class="empty-hint" data-i18n="boot.preparing">Preparing…</div>
+</main>
+
+<footer class="app">
+  <span data-i18n="footer.attribution">llama.nodrama dashboard</span>
+</footer>
+
+<script>
+"use strict";
+
+/* ──────────────────────────────────────────────────────────────────────
+ *  i18n table — English is the source. Other languages filled in Phase 8.
+ *  Always add new keys here with an English value before using them.
+ * ──────────────────────────────────────────────────────────────────── */
+const I18N = {
+  en: {
+    "app.title": "llama.nodrama",
+
+    "boot.preparing": "Preparing…",
+
+    "header.status.connecting": "Connecting…",
+    "header.status.online":     "Online",
+    "header.status.offline":    "Offline",
+    "header.status.error":      "Error",
+    "header.last_update":       "Last update",
+
+    "common.copy":      "Copy",
+    "common.copied":    "Copied",
+    "common.cancel":    "Cancel",
+    "common.confirm":   "Confirm",
+    "common.close":     "Close",
+    "common.refresh":   "Refresh",
+    "common.pause":     "Pause",
+    "common.resume":    "Resume",
+    "common.reset":     "Reset",
+    "common.unknown":   "unknown",
+    "common.disabled":  "disabled",
+    "common.enabled":   "enabled",
+    "common.loading":   "Loading…",
+    "common.empty":     "(empty)",
+    "common.expand":    "Expand",
+    "common.collapse":  "Collapse",
+    "common.yes":       "yes",
+    "common.no":        "no",
+
+    "error.fetch_failed":       "Request failed",
+    "error.parse_failed":       "Could not parse response",
+    "error.metrics_disabled":   "metrics endpoint not available — start llama-server with --metrics",
+    "error.slots_disabled":     "slots endpoint not available — start llama-server without --no-slots",
+    "error.bad_url":            "Bad server URL",
+    "error.cors":               "Could not reach server (CORS or network)",
+
+    "metrics.title":            "Metrics",
+    "metrics.gen_tps":          "Generation tok/s",
+    "metrics.prompt_tps":       "Prompt tok/s",
+    "metrics.processing":       "Processing",
+    "metrics.deferred":         "Deferred",
+    "metrics.busy_slots":       "Busy slots / decode",
+    "metrics.n_tokens_max":     "Tokens max",
+    "metrics.prompt_total":     "Prompt total",
+    "metrics.predicted_total":  "Predicted total",
+    "metrics.decode_total":     "Decode calls",
+    "metrics.prompt_seconds_total":    "Prompt time total",
+    "metrics.predicted_seconds_total": "Generation time total",
+    "metrics.no_data":          "no data yet",
+
+    "slots.title":              "Slots",
+    "slots.idle":               "idle",
+    "slots.active":             "active",
+    "slots.context_used":       "ctx",
+    "slots.params":             "Sampling parameters",
+    "slots.show_params":        "Show parameters",
+    "slots.hide_params":        "Hide parameters",
+    "slots.actions.save":       "Save KV",
+    "slots.actions.restore":    "Restore KV",
+    "slots.actions.erase":      "Erase KV",
+    "slots.confirm.save":       "Save KV cache for slot {id} to file?",
+    "slots.confirm.restore":    "Restore KV cache for slot {id} from file?",
+    "slots.confirm.erase":      "Erase KV cache for slot {id}? This affects the running server.",
+    "slots.disabled":           "Slot endpoint disabled",
+
+    "models.title":             "Models",
+    "models.selector":          "Active model",
+    "models.status.loaded":     "loaded",
+    "models.status.loading":    "loading",
+    "models.status.unloaded":   "unloaded",
+    "models.status.sleeping":   "sleeping",
+    "models.status.failed":     "failed",
+    "models.status.unknown":    "unknown",
+    "models.exit_code":         "exit code",
+    "models.actions.load":      "Load",
+    "models.actions.unload":    "Unload",
+    "models.confirm.load":      "Load model {name}? This consumes server resources.",
+    "models.confirm.unload":    "Unload model {name}? In-flight requests may fail.",
+    "models.no_models":         "No models found",
+    "models.no_data":           "No model info — couldn't reach the server.",
+    "models.cached":            "cached",
+    "modal.warn_router":        "This will modify the running router.",
+    "modal.warn_server":        "This will affect the running server.",
+    "model.path":               "Path",
+    "model.template":           "Chat template",
+    "model.modalities":         "Modalities",
+    "model.build":              "Build",
+    "model.is_sleeping":        "Sleeping (next request reloads)",
+    "model.n_vocab":            "Vocab",
+    "model.n_ctx_train":        "Context (training)",
+    "model.n_embd":             "Embedding dim",
+    "model.n_params":           "Parameters",
+    "model.size":               "Size",
+
+    "lora.title":               "LoRA adapters",
+    "lora.empty":               "No LoRA adapters loaded",
+    "lora.id":                  "ID",
+    "lora.path":                "Path",
+    "lora.scale":               "Scale",
+
+    "config.title":             "Server launch options",
+    "config.router_args":       "CLI args (from /models)",
+    "config.effective_subset":  "Effective config (subset)",
+    "config.no_data":           "No config available — couldn't reach /props.",
+    "config.effective_note":    "llama-server does not expose CLI args in single-model mode. For complete launch-option visibility, use router mode (start llama-server without -m).",
+
+    "log.title":                "Server log (tail)",
+    "log.follow":               "Follow tail",
+    "log.search":               "Filter…",
+    "log.empty":                "(no lines yet)",
+    "log.setup_help_title":     "Log tail setup",
+    "log.setup_help":           "The log panel reads a static file via HTTP Range. Three conditions must hold: (1) llama-server logs are redirected to a file, (2) that file is served from the same origin, (3) the HTTP server supports Range. Example: llama-server ... --path ./public > ./public/server.log 2>&1",
+
+    "guidance.title":           "Active suggestions",
+    "guidance.empty":           "No suggestions right now — server looks healthy.",
+    "guidance.no_data":         "Cannot reach the server — no data to analyse.",
+    "hint.no_server.title":     "Nothing to monitor here.",
+    "hint.no_server.body":      "Add ?demo=1 to see synthetic data, or ?server=http://your-llama-server:8080 to point at a real one.",
+    "guidance.severity.info":   "info",
+    "guidance.severity.warn":   "warn",
+    "guidance.severity.bad":    "action",
+    "guidance.tooltip_more":    "Tap for details",
+
+    /* guidance rules — Phase 7 fills out title/explain/suggest per id */
+    "rule.slots_saturated.title":   "Slots saturated",
+    "rule.slots_saturated.explain": "Almost every slot is currently processing a request. The server has no headroom; the next request will start queueing.",
+    "rule.slots_saturated.suggest": "Raise --parallel from {total} to {suggested} (each extra slot costs about ctx_size tokens of KV memory), or reduce client concurrency.",
+
+    "rule.deferred.title":         "Requests waiting in queue",
+    "rule.deferred.explain":       "requests_deferred is the queue of requests waiting for a free slot. Sustained > 0 means clients are facing latency from queueing, not inference.",
+    "rule.deferred.suggest":       "Raise --parallel to {suggested} (currently {total}) so the queue clears, or lower client concurrency. Each slot needs roughly ctx_size tokens of KV memory.",
+
+    "rule.idle_slow.title":        "Generation throughput dropped sharply",
+    "rule.idle_slow.explain":      "predicted_tokens_seconds is currently {current} tok/s, less than half of the recent 60-second median ({baseline} tok/s). Something is slowing inference — common causes are CPU-bound layers, KV-cache shifting, or contention with another process.",
+    "rule.idle_slow.suggest":      "If the model spilled to CPU, raise --n-gpu-layers (or -ngl) until VRAM is the limit. Otherwise check for another process competing for the GPU.",
+
+    "rule.sleeping.title":         "Model is sleeping",
+    "rule.sleeping.explain":       "The model has been unloaded after --sleep-idle-seconds of inactivity. The next request will reload it (multi-second delay).",
+    "rule.sleeping.suggest":       "If reload latency is unacceptable, raise --sleep-idle-seconds or remove the flag.",
+
+    "rule.temp_zero.title":        "Greedy sampling",
+    "rule.temp_zero.explain":      "temperature = 0 selects the most-likely token every step (deterministic). Useful for tests and structured output, monotonous for chat.",
+    "rule.temp_zero.suggest":      "If you want diversity, try temperature ≈ 0.7.",
+
+    "rule.temp_high.title":        "Temperature is very high",
+    "rule.temp_high.explain":      "temperature > 1.5 flattens the distribution heavily — output may become incoherent.",
+    "rule.temp_high.suggest":      "Most chat models work best with temperature ≤ 1.0.",
+
+    "rule.repeat_high.title":      "Repeat penalty is aggressive",
+    "rule.repeat_high.explain":    "repeat_penalty > 1.3 strongly discourages reusing tokens, which can break code, JSON, or any structured format.",
+    "rule.repeat_high.suggest":    "Try 1.05–1.15.",
+
+    "rule.mirostat.title":         "Mirostat sampler active",
+    "rule.mirostat.explain":       "When mirostat ≠ 0, top_p / top_k are ignored — output entropy is targeted directly via mirostat_tau.",
+    "rule.mirostat.suggest":       "Tune mirostat_tau (3–6 typical) instead of top_p / top_k.",
+
+    "rule.dry.title":              "DRY anti-repetition active",
+    "rule.dry.explain":            "Don't Repeat Yourself penalty (dry_multiplier > 0) detects sequence repeats and damps them — preferred over repeat_penalty for chat.",
+    "rule.dry.suggest":            "Typical: dry_multiplier 0.8, dry_base 1.75, dry_allowed_length 2.",
+
+    "rule.lora_scale.title":       "Unusual LoRA scale",
+    "rule.lora_scale.explain":     "LoRA scale > 1 amplifies the adapter beyond its trained range, often producing artifacts.",
+    "rule.lora_scale.suggest":     "Stay between 0 and 1 unless you know what you are doing.",
+
+    "rule.failed_model.title":     "Model failed to launch",
+    "rule.failed_model.explain":   "The router tried to start this model and the process exited non-zero.",
+    "rule.failed_model.suggest":   "Check exit_code and the model's args; common causes are bad path, insufficient VRAM, or invalid quantization.",
+
+    "rule.loading_long.title":     "Model has been loading for a while",
+    "rule.loading_long.explain":   "Loading > 60s usually means slow disk I/O, swapping, or VRAM pressure forcing partial offload.",
+    "rule.loading_long.suggest":   "Check disk speed and free GPU memory; consider a smaller quantization.",
+
+    "demo.banner_single":      "Demo mode — every endpoint is synthetic. No llama-server is involved.",
+    "demo.banner_router":      "Demo mode (router) — every endpoint is synthetic. No llama-server is involved.",
+
+    "chat.title":              "Chat",
+    "chat.expand":             "expand",
+    "chat.collapse":           "collapse",
+    "chat.empty":              "No messages yet — type below and press Enter to send.",
+    "chat.placeholder":        "Type a message — Enter to send, Shift+Enter for newline",
+    "chat.send":               "Send",
+    "chat.stop":               "Stop",
+    "chat.clear":              "Clear conversation",
+    "chat.system_prompt":      "System prompt",
+    "chat.system_placeholder": "Optional. Sets the assistant's behavior.",
+    "chat.temperature":        "Temperature",
+    "chat.top_p":              "Top-p",
+    "chat.max_tokens":         "Max tokens",
+    "chat.fanout":             "Parallel requests (stress test)",
+    "chat.you":                "You",
+    "chat.assistant":          "Assistant",
+    "chat.streaming":          "streaming…",
+    "chat.error":              "error",
+    "chat.cancelled":          "cancelled",
+    "chat.tok":                "tok",
+    "chat.tok_per_s":          "tok/s",
+    "chat.chars":              "chars",
+
+    "footer.attribution":          "llama.nodrama dashboard"
+  },
+  ko: {
+    "app.title": "llama.nodrama",
+    "boot.preparing": "준비 중…",
+    "header.status.connecting": "연결 중…",
+    "header.status.online":     "온라인",
+    "header.status.offline":    "오프라인",
+    "header.status.error":      "오류",
+    "header.last_update":       "최근 업데이트",
+    "common.copy":      "복사",
+    "common.copied":    "복사됨",
+    "common.cancel":    "취소",
+    "common.confirm":   "확인",
+    "common.close":     "닫기",
+    "common.refresh":   "새로고침",
+    "common.pause":     "일시정지",
+    "common.resume":    "재개",
+    "common.reset":     "초기화",
+    "common.unknown":   "알 수 없음",
+    "common.disabled":  "비활성",
+    "common.enabled":   "활성",
+    "common.loading":   "로딩 중…",
+    "common.empty":     "(없음)",
+    "common.expand":    "펼치기",
+    "common.collapse":  "접기",
+    "common.yes":       "예",
+    "common.no":        "아니오",
+    "error.fetch_failed":     "요청 실패",
+    "error.parse_failed":     "응답을 해석할 수 없음",
+    "error.metrics_disabled": "metrics 엔드포인트를 사용할 수 없습니다 — llama-server를 --metrics 옵션으로 실행하세요",
+    "error.slots_disabled":   "slots 엔드포인트를 사용할 수 없습니다 — --no-slots 없이 실행하세요",
+    "error.bad_url":          "잘못된 서버 URL",
+    "error.cors":             "서버에 도달할 수 없음 (CORS 또는 네트워크)",
+    "metrics.title":           "메트릭",
+    "metrics.gen_tps":         "생성 tok/s",
+    "metrics.prompt_tps":      "프롬프트 tok/s",
+    "metrics.processing":      "처리 중",
+    "metrics.deferred":        "대기 중",
+    "metrics.busy_slots":      "디코드당 busy 슬롯",
+    "metrics.decode_total":    "디코드 호출",
+    "metrics.prompt_seconds_total":    "프롬프트 처리 누계",
+    "metrics.predicted_seconds_total": "생성 시간 누계",
+    "metrics.n_tokens_max":    "최대 토큰",
+    "metrics.prompt_total":    "프롬프트 누계",
+    "metrics.predicted_total": "생성 누계",
+    "metrics.no_data":         "데이터 없음",
+    "slots.title":           "슬롯",
+    "slots.idle":            "유휴",
+    "slots.active":          "활성",
+    "slots.context_used":    "ctx",
+    "slots.params":          "샘플링 파라미터",
+    "slots.show_params":     "파라미터 보기",
+    "slots.hide_params":     "파라미터 숨기기",
+    "slots.actions.save":    "KV 저장",
+    "slots.actions.restore": "KV 복원",
+    "slots.actions.erase":   "KV 삭제",
+    "slots.confirm.save":    "슬롯 {id}의 KV 캐시를 파일로 저장하시겠습니까?",
+    "slots.confirm.restore": "슬롯 {id}의 KV 캐시를 파일에서 복원하시겠습니까?",
+    "slots.confirm.erase":   "슬롯 {id}의 KV 캐시를 삭제하시겠습니까? 실행 중인 서버에 영향이 있습니다.",
+    "slots.disabled":        "슬롯 엔드포인트가 비활성화되어 있습니다",
+    "models.title":           "모델",
+    "models.selector":        "활성 모델",
+    "models.status.loaded":   "로드됨",
+    "models.status.loading":  "로딩 중",
+    "models.status.unloaded": "언로드됨",
+    "models.status.sleeping": "슬립",
+    "models.status.failed":   "실패",
+    "models.status.unknown":  "알 수 없음",
+    "models.exit_code":       "종료 코드",
+    "models.actions.load":    "로드",
+    "models.actions.unload":  "언로드",
+    "models.confirm.load":    "{name} 모델을 로드하시겠습니까? 서버 자원이 사용됩니다.",
+    "models.confirm.unload":  "{name} 모델을 언로드하시겠습니까? 진행 중인 요청이 실패할 수 있습니다.",
+    "models.no_models":       "모델이 없습니다",
+    "models.no_data":         "모델 정보 없음 — 서버에 연결하지 못했습니다.",
+    "models.cached":          "캐시됨",
+    "modal.warn_router":      "이 작업은 실행 중인 라우터의 상태를 변경합니다.",
+    "modal.warn_server":      "이 작업은 실행 중인 서버에 영향을 줍니다.",
+    "model.path":             "경로",
+    "model.template":         "채팅 템플릿",
+    "model.modalities":       "모달리티",
+    "model.build":            "빌드",
+    "model.is_sleeping":      "슬립 (다음 요청 시 재로딩)",
+    "model.n_vocab":          "어휘 크기",
+    "model.n_ctx_train":      "컨텍스트(학습)",
+    "model.n_embd":           "임베딩 차원",
+    "model.n_params":         "파라미터 수",
+    "model.size":             "크기",
+    "lora.title": "LoRA 어댑터",
+    "lora.empty": "로드된 LoRA 어댑터가 없습니다",
+    "lora.id":    "ID",
+    "lora.path":  "경로",
+    "lora.scale": "스케일",
+    "config.title":            "서버 실행 옵션",
+    "config.router_args":      "CLI 인수 (/models 응답)",
+    "config.effective_subset": "유효 설정 (일부)",
+    "config.no_data":         "설정을 가져올 수 없습니다 — /props에 연결하지 못했습니다.",
+    "config.effective_note":   "llama-server는 단일 모델 모드에서 CLI 인수를 노출하지 않습니다. 완전한 실행 옵션 가시화가 필요하면 라우터 모드를 사용하세요 (-m 없이 실행).",
+    "log.title":            "서버 로그 (tail)",
+    "log.follow":           "Tail 따라가기",
+    "log.search":           "필터…",
+    "log.empty":            "(아직 줄이 없습니다)",
+    "log.setup_help_title": "로그 tail 설정 안내",
+    "log.setup_help":       "로그 패널은 정적 파일을 HTTP Range로 읽습니다. 세 가지 조건이 모두 충족되어야 합니다: (1) llama-server 로그가 파일로 리다이렉트되어 있어야 함, (2) 그 파일이 이 대시보드와 같은 origin에서 서빙되어야 함, (3) HTTP 서버가 Range 헤더를 지원해야 함. 예: llama-server ... --path ./public > ./public/server.log 2>&1",
+    "guidance.title":         "추천 조치",
+    "guidance.empty":         "현재 추천 조치가 없습니다 — 서버 상태가 양호합니다.",
+    "guidance.no_data":       "서버에 연결할 수 없습니다 — 분석할 데이터가 없습니다.",
+    "hint.no_server.title":   "여기서 모니터링할 대상이 없습니다.",
+    "hint.no_server.body":    "?demo=1을 붙이면 합성 데이터를 볼 수 있고, ?server=http://여러분의-llama-server:8080으로 실제 서버를 가리킬 수 있습니다.",
+    "guidance.severity.info": "정보",
+    "guidance.severity.warn": "주의",
+    "guidance.severity.bad":  "조치 필요",
+    "guidance.tooltip_more":  "탭하면 자세히",
+    "rule.slots_saturated.title":   "슬롯 포화",
+    "rule.slots_saturated.explain": "거의 모든 슬롯이 현재 요청을 처리 중입니다. 서버에 여유가 없어 다음 요청은 큐에 쌓입니다.",
+    "rule.slots_saturated.suggest": "--parallel을 {total}에서 {suggested}로 올리세요(슬롯당 약 ctx_size 토큰의 KV 메모리 필요). 또는 클라이언트 동시성을 줄이세요.",
+    "rule.deferred.title":         "큐에서 대기 중인 요청",
+    "rule.deferred.explain":       "requests_deferred는 빈 슬롯을 기다리는 요청 수입니다. 0보다 큰 상태가 지속되면 클라이언트는 추론이 아니라 큐 대기로 인한 지연을 겪습니다.",
+    "rule.deferred.suggest":       "--parallel을 {suggested}로 올려 큐를 비우세요(현재 {total}). 또는 클라이언트 동시성을 줄이세요. 슬롯당 약 ctx_size 토큰의 KV 메모리가 필요합니다.",
+    "rule.idle_slow.title":        "생성 속도가 급격히 하락",
+    "rule.idle_slow.explain":      "현재 predicted_tokens_seconds는 {current} tok/s로, 최근 60초 중간값({baseline} tok/s)의 절반에도 못 미칩니다. 무언가 추론을 늦추고 있습니다 — 주요 원인은 CPU로 떨어진 레이어, KV 캐시 시프팅, 다른 프로세스와의 GPU 경합입니다.",
+    "rule.idle_slow.suggest":      "모델이 CPU로 흘러내렸다면 VRAM 한계까지 --n-gpu-layers (-ngl)를 올리세요. 그렇지 않다면 GPU를 함께 사용하는 다른 프로세스를 점검하세요.",
+    "rule.sleeping.title":         "모델이 슬립 상태",
+    "rule.sleeping.explain":       "--sleep-idle-seconds 동안 활동이 없어 모델이 언로드되었습니다. 다음 요청 시 재로딩됩니다(수 초 지연).",
+    "rule.sleeping.suggest":       "재로딩 지연을 받아들일 수 없다면 --sleep-idle-seconds를 늘리거나 옵션을 제거하세요.",
+    "rule.temp_zero.title":        "Greedy 샘플링",
+    "rule.temp_zero.explain":      "temperature = 0은 매 단계 가장 높은 확률 토큰을 선택합니다(결정적). 테스트와 구조화된 출력에 유용하지만 채팅에는 단조롭습니다.",
+    "rule.temp_zero.suggest":      "다양성을 원하면 temperature ≈ 0.7을 시도하세요.",
+    "rule.temp_high.title":        "온도가 매우 높음",
+    "rule.temp_high.explain":      "temperature > 1.5는 분포를 강하게 평탄화하여 출력이 일관성을 잃을 수 있습니다.",
+    "rule.temp_high.suggest":      "대부분의 채팅 모델은 temperature ≤ 1.0에서 가장 잘 동작합니다.",
+    "rule.repeat_high.title":      "반복 패널티가 강함",
+    "rule.repeat_high.explain":    "repeat_penalty > 1.3은 토큰 재사용을 강하게 억제하여 코드/JSON 등 구조화된 포맷이 깨질 수 있습니다.",
+    "rule.repeat_high.suggest":    "1.05–1.15 범위를 권장합니다.",
+    "rule.mirostat.title":         "Mirostat 샘플러 활성",
+    "rule.mirostat.explain":       "mirostat ≠ 0이면 top_p / top_k는 무시되고, mirostat_tau로 출력 엔트로피를 직접 제어합니다.",
+    "rule.mirostat.suggest":       "top_p / top_k 대신 mirostat_tau (보통 3–6)를 조절하세요.",
+    "rule.dry.title":              "DRY 반복 억제 활성",
+    "rule.dry.explain":            "DRY(dry_multiplier > 0)는 시퀀스 반복을 감지해 감쇠시킵니다. 채팅에서는 repeat_penalty보다 권장됩니다.",
+    "rule.dry.suggest":            "일반적 값: dry_multiplier 0.8, dry_base 1.75, dry_allowed_length 2.",
+    "rule.lora_scale.title":       "비정상적인 LoRA scale",
+    "rule.lora_scale.explain":     "scale > 1은 학습 범위를 벗어나 어댑터를 증폭하여 결과물에 아티팩트가 발생할 수 있습니다.",
+    "rule.lora_scale.suggest":     "확실한 의도가 없다면 0과 1 사이를 유지하세요.",
+    "rule.failed_model.title":     "모델 실행 실패",
+    "rule.failed_model.explain":   "라우터가 이 모델을 띄우려 했으나 프로세스가 비정상 종료되었습니다.",
+    "rule.failed_model.suggest":   "exit_code와 모델의 args를 확인하세요. 흔한 원인: 잘못된 경로, VRAM 부족, 잘못된 양자화.",
+    "rule.loading_long.title":     "모델 로딩이 오래 걸림",
+    "rule.loading_long.explain":   "로딩이 60초 이상 지속되면 보통 디스크 I/O 지연, 스왑, VRAM 부족으로 인한 부분 오프로드가 원인입니다.",
+    "rule.loading_long.suggest":   "디스크 속도와 GPU 여유 메모리를 확인하고, 더 작은 양자화를 고려하세요.",
+
+    "demo.banner_single":      "데모 모드 — 모든 엔드포인트가 합성 데이터입니다. llama-server는 실제로 동작하지 않습니다.",
+    "demo.banner_router":      "데모 모드 (라우터) — 모든 엔드포인트가 합성 데이터입니다. llama-server는 실제로 동작하지 않습니다.",
+
+    "chat.title":              "채팅",
+    "chat.expand":             "펼치기",
+    "chat.collapse":           "접기",
+    "chat.empty":              "아직 메시지 없음 — 아래에 입력 후 Enter로 전송",
+    "chat.placeholder":        "메시지 입력 — Enter로 전송, Shift+Enter로 줄바꿈",
+    "chat.send":               "보내기",
+    "chat.stop":               "중지",
+    "chat.clear":              "대화 비우기",
+    "chat.system_prompt":      "시스템 프롬프트",
+    "chat.system_placeholder": "선택. 어시스턴트의 동작을 지정합니다.",
+    "chat.temperature":        "Temperature",
+    "chat.top_p":              "Top-p",
+    "chat.max_tokens":         "최대 토큰",
+    "chat.fanout":             "병렬 요청 (스트레스 테스트)",
+    "chat.you":                "사용자",
+    "chat.assistant":          "어시스턴트",
+    "chat.streaming":          "스트리밍 중…",
+    "chat.error":              "오류",
+    "chat.cancelled":          "취소됨",
+    "chat.tok":                "tok",
+    "chat.tok_per_s":          "tok/s",
+    "chat.chars":              "글자",
+
+    "footer.attribution": "llama.nodrama 대시보드"
+  },
+
+  ja: {
+    "app.title": "llama.nodrama",
+    "boot.preparing": "準備中…",
+    "header.status.connecting": "接続中…",
+    "header.status.online":     "オンライン",
+    "header.status.offline":    "オフライン",
+    "header.status.error":      "エラー",
+    "header.last_update":       "最終更新",
+    "common.copy":      "コピー",
+    "common.copied":    "コピーしました",
+    "common.cancel":    "キャンセル",
+    "common.confirm":   "確認",
+    "common.close":     "閉じる",
+    "common.refresh":   "更新",
+    "common.pause":     "一時停止",
+    "common.resume":    "再開",
+    "common.reset":     "リセット",
+    "common.unknown":   "不明",
+    "common.disabled":  "無効",
+    "common.enabled":   "有効",
+    "common.loading":   "読み込み中…",
+    "common.empty":     "(空)",
+    "common.expand":    "展開",
+    "common.collapse":  "折りたたむ",
+    "common.yes":       "はい",
+    "common.no":        "いいえ",
+    "error.fetch_failed":     "リクエスト失敗",
+    "error.parse_failed":     "レスポンスを解析できません",
+    "error.metrics_disabled": "metrics エンドポイントが利用できません — llama-server を --metrics で起動してください",
+    "error.slots_disabled":   "slots エンドポイントが利用できません — --no-slots を付けないでください",
+    "error.bad_url":          "サーバー URL が不正です",
+    "error.cors":             "サーバーに到達できません (CORS またはネットワーク)",
+    "metrics.title":           "メトリクス",
+    "metrics.gen_tps":         "生成 tok/s",
+    "metrics.prompt_tps":      "プロンプト tok/s",
+    "metrics.processing":      "処理中",
+    "metrics.deferred":        "待機中",
+    "metrics.busy_slots":      "デコード毎の使用中スロット",
+    "metrics.decode_total":    "デコード呼び出し",
+    "metrics.prompt_seconds_total":    "プロンプト処理時間 累計",
+    "metrics.predicted_seconds_total": "生成時間 累計",
+    "metrics.n_tokens_max":    "最大トークン",
+    "metrics.prompt_total":    "プロンプト累計",
+    "metrics.predicted_total": "生成累計",
+    "metrics.no_data":         "データなし",
+    "slots.title":           "スロット",
+    "slots.idle":            "アイドル",
+    "slots.active":          "アクティブ",
+    "slots.context_used":    "ctx",
+    "slots.params":          "サンプリングパラメータ",
+    "slots.show_params":     "パラメータを表示",
+    "slots.hide_params":     "パラメータを隠す",
+    "slots.actions.save":    "KV を保存",
+    "slots.actions.restore": "KV を復元",
+    "slots.actions.erase":   "KV を消去",
+    "slots.confirm.save":    "スロット {id} の KV キャッシュをファイルに保存しますか?",
+    "slots.confirm.restore": "スロット {id} の KV キャッシュをファイルから復元しますか?",
+    "slots.confirm.erase":   "スロット {id} の KV キャッシュを消去しますか? 動作中のサーバーに影響します。",
+    "slots.disabled":        "slots エンドポイントが無効です",
+    "models.title":           "モデル",
+    "models.selector":        "アクティブモデル",
+    "models.status.loaded":   "ロード済み",
+    "models.status.loading":  "ロード中",
+    "models.status.unloaded": "未ロード",
+    "models.status.sleeping": "スリープ",
+    "models.status.failed":   "失敗",
+    "models.status.unknown":  "不明",
+    "models.exit_code":       "終了コード",
+    "models.actions.load":    "ロード",
+    "models.actions.unload":  "アンロード",
+    "models.confirm.load":    "モデル {name} をロードしますか? サーバーリソースを消費します。",
+    "models.confirm.unload":  "モデル {name} をアンロードしますか? 進行中のリクエストが失敗する可能性があります。",
+    "models.no_models":       "モデルが見つかりません",
+    "models.no_data":         "モデル情報なし — サーバに接続できませんでした。",
+    "models.cached":          "キャッシュ済み",
+    "modal.warn_router":      "この操作は動作中のルーターの状態を変更します。",
+    "modal.warn_server":      "この操作は動作中のサーバーに影響します。",
+    "model.path":             "パス",
+    "model.template":         "チャットテンプレート",
+    "model.modalities":       "モダリティ",
+    "model.build":            "ビルド",
+    "model.is_sleeping":      "スリープ中 (次のリクエストで再ロード)",
+    "model.n_vocab":          "語彙数",
+    "model.n_ctx_train":      "コンテキスト (学習時)",
+    "model.n_embd":           "埋め込み次元",
+    "model.n_params":         "パラメータ数",
+    "model.size":             "サイズ",
+    "lora.title": "LoRA アダプタ",
+    "lora.empty": "ロードされた LoRA アダプタはありません",
+    "lora.id":    "ID",
+    "lora.path":  "パス",
+    "lora.scale": "スケール",
+    "config.title":            "サーバー起動オプション",
+    "config.router_args":      "CLI 引数 (/models から)",
+    "config.effective_subset": "有効設定 (サブセット)",
+    "config.no_data":         "設定を取得できません — /props に接続できませんでした。",
+    "config.effective_note":   "llama-server は単一モデルモードで CLI 引数を公開しません。完全な起動オプション可視化が必要であれば、ルーターモード (-m なし) を使用してください。",
+    "log.title":            "サーバーログ (tail)",
+    "log.follow":           "末尾を追従",
+    "log.search":           "フィルタ…",
+    "log.empty":            "(まだログ行はありません)",
+    "log.setup_help_title": "ログ tail の設定",
+    "log.setup_help":       "ログパネルは静的ファイルを HTTP Range で読み取ります。三つの条件すべてが必要です: (1) llama-server のログがファイルにリダイレクトされている、(2) そのファイルが同じ origin で配信されている、(3) HTTP サーバーが Range をサポートしている。例: llama-server ... --path ./public > ./public/server.log 2>&1",
+    "guidance.title":         "アクティブな提案",
+    "guidance.empty":         "現在の提案はありません — サーバーは正常です。",
+    "guidance.no_data":       "サーバーに接続できません — 分析対象のデータがありません。",
+    "hint.no_server.title":   "ここには監視対象がありません。",
+    "hint.no_server.body":    "?demo=1 を付けると合成データを表示します。実サーバを指定するには ?server=http://your-llama-server:8080 を付けてください。",
+    "guidance.severity.info": "情報",
+    "guidance.severity.warn": "注意",
+    "guidance.severity.bad":  "対応推奨",
+    "guidance.tooltip_more":  "タップで詳細",
+    "rule.slots_saturated.title":   "スロット飽和",
+    "rule.slots_saturated.explain": "ほぼ全てのスロットが現在リクエストを処理しています。余裕がなく、次のリクエストはキューに溜まり始めます。",
+    "rule.slots_saturated.suggest": "--parallel を {total} から {suggested} に増やしてください(追加スロットごとに約 ctx_size 分の KV メモリが必要)。あるいはクライアント並行度を下げてください。",
+    "rule.deferred.title":         "リクエストが待機中",
+    "rule.deferred.explain":       "requests_deferred は空きスロットを待つキューの長さです。継続して 0 を超えると、推論ではなくキュー待ちが遅延の主因になります。",
+    "rule.deferred.suggest":       "--parallel を {suggested} に上げてキューを解消してください(現在 {total})。またはクライアントの同時実行を減らしてください。各スロットは約 ctx_size 分の KV メモリを必要とします。",
+    "rule.idle_slow.title":        "生成スループットが急落",
+    "rule.idle_slow.explain":      "現在 predicted_tokens_seconds は {current} tok/s で、直近 60 秒の中央値({baseline} tok/s)の半分以下です。推論を遅らせる何かが起きています — よくある原因は CPU に落ちたレイヤー、KV キャッシュのシフト、他プロセスとの GPU 競合です。",
+    "rule.idle_slow.suggest":      "モデルが CPU に溢れたなら、VRAM の限界まで --n-gpu-layers (-ngl) を増やしてください。そうでなければ GPU を奪う別プロセスを確認してください。",
+    "rule.sleeping.title":         "モデルがスリープ中",
+    "rule.sleeping.explain":       "--sleep-idle-seconds の経過後にモデルがアンロードされました。次のリクエストで再ロードされます (数秒の遅延)。",
+    "rule.sleeping.suggest":       "再ロード遅延が許容できない場合は --sleep-idle-seconds を増やすか、フラグを削除してください。",
+    "rule.temp_zero.title":        "Greedy サンプリング",
+    "rule.temp_zero.explain":      "temperature = 0 は毎ステップ最尤トークンを選びます (決定的)。テストや構造化出力には便利ですが、チャットでは単調になりがちです。",
+    "rule.temp_zero.suggest":      "多様性が欲しい場合は temperature ≈ 0.7 を試してください。",
+    "rule.temp_high.title":        "温度が非常に高い",
+    "rule.temp_high.explain":      "temperature > 1.5 は分布を強く平坦化し、出力が支離滅裂になる可能性があります。",
+    "rule.temp_high.suggest":      "ほとんどのチャットモデルは temperature ≤ 1.0 が最適です。",
+    "rule.repeat_high.title":      "繰り返しペナルティが強い",
+    "rule.repeat_high.explain":    "repeat_penalty > 1.3 はトークン再利用を強く抑制し、コード・JSON など構造化フォーマットが壊れることがあります。",
+    "rule.repeat_high.suggest":    "1.05–1.15 を試してください。",
+    "rule.mirostat.title":         "Mirostat サンプラー有効",
+    "rule.mirostat.explain":       "mirostat ≠ 0 のとき top_p / top_k は無視され、mirostat_tau で出力エントロピーを直接制御します。",
+    "rule.mirostat.suggest":       "top_p / top_k ではなく mirostat_tau (3–6 程度) を調整してください。",
+    "rule.dry.title":              "DRY 反復抑制が有効",
+    "rule.dry.explain":            "DRY(dry_multiplier > 0) は系列の繰り返しを検出して減衰させます。チャットでは repeat_penalty より推奨されます。",
+    "rule.dry.suggest":            "推奨値: dry_multiplier 0.8, dry_base 1.75, dry_allowed_length 2",
+    "rule.lora_scale.title":       "異常な LoRA スケール",
+    "rule.lora_scale.explain":     "scale > 1 は学習範囲を超えてアダプタを増幅し、出力にアーティファクトを生むことがあります。",
+    "rule.lora_scale.suggest":     "意図がない限り 0–1 の範囲に留めてください。",
+    "rule.failed_model.title":     "モデルの起動に失敗",
+    "rule.failed_model.explain":   "ルーターがこのモデルを起動しようとしましたが、プロセスが非ゼロ終了しました。",
+    "rule.failed_model.suggest":   "exit_code とモデルの args を確認してください。よくある原因: パス誤り、VRAM 不足、無効な量子化。",
+    "rule.loading_long.title":     "モデルのロードが長時間続いています",
+    "rule.loading_long.explain":   "60 秒を超えるロードは、通常 ディスク I/O 遅延、スワップ、VRAM 圧迫による部分オフロードが原因です。",
+    "rule.loading_long.suggest":   "ディスク速度と GPU 空きメモリを確認し、より小さい量子化を検討してください。",
+
+    "demo.banner_single":      "デモモード — すべてのエンドポイントは合成データです。実際の llama-server は動いていません。",
+    "demo.banner_router":      "デモモード(ルーター)— すべてのエンドポイントは合成データです。実際の llama-server は動いていません。",
+
+    "chat.title":              "チャット",
+    "chat.expand":             "展開",
+    "chat.collapse":           "折りたたむ",
+    "chat.empty":              "まだメッセージがありません — 下に入力して Enter で送信",
+    "chat.placeholder":        "メッセージを入力 — Enter で送信、Shift+Enter で改行",
+    "chat.send":               "送信",
+    "chat.stop":               "中止",
+    "chat.clear":              "会話をクリア",
+    "chat.system_prompt":      "システムプロンプト",
+    "chat.system_placeholder": "任意。アシスタントの動作を指定します。",
+    "chat.temperature":        "Temperature",
+    "chat.top_p":              "Top-p",
+    "chat.max_tokens":         "最大トークン",
+    "chat.fanout":             "並列リクエスト(負荷試験)",
+    "chat.you":                "ユーザー",
+    "chat.assistant":          "アシスタント",
+    "chat.streaming":          "ストリーミング中…",
+    "chat.error":              "エラー",
+    "chat.cancelled":          "中止しました",
+    "chat.tok":                "tok",
+    "chat.tok_per_s":          "tok/s",
+    "chat.chars":              "文字",
+
+    "footer.attribution": "llama.nodrama ダッシュボード"
+  },
+
+  "zh-CN": {
+    "app.title": "llama.nodrama",
+    "boot.preparing": "准备中…",
+    "header.status.connecting": "连接中…",
+    "header.status.online":     "在线",
+    "header.status.offline":    "离线",
+    "header.status.error":      "错误",
+    "header.last_update":       "最近更新",
+    "common.copy":      "复制",
+    "common.copied":    "已复制",
+    "common.cancel":    "取消",
+    "common.confirm":   "确认",
+    "common.close":     "关闭",
+    "common.refresh":   "刷新",
+    "common.pause":     "暂停",
+    "common.resume":    "继续",
+    "common.reset":     "重置",
+    "common.unknown":   "未知",
+    "common.disabled":  "已禁用",
+    "common.enabled":   "已启用",
+    "common.loading":   "加载中…",
+    "common.empty":     "(空)",
+    "common.expand":    "展开",
+    "common.collapse":  "收起",
+    "common.yes":       "是",
+    "common.no":        "否",
+    "error.fetch_failed":     "请求失败",
+    "error.parse_failed":     "无法解析响应",
+    "error.metrics_disabled": "metrics 端点不可用 — 启动 llama-server 时请加 --metrics",
+    "error.slots_disabled":   "slots 端点不可用 — 启动时请勿使用 --no-slots",
+    "error.bad_url":          "服务器 URL 无效",
+    "error.cors":             "无法访问服务器 (CORS 或网络问题)",
+    "metrics.title":           "指标",
+    "metrics.gen_tps":         "生成 tok/s",
+    "metrics.prompt_tps":      "提示 tok/s",
+    "metrics.processing":      "处理中",
+    "metrics.deferred":        "排队",
+    "metrics.busy_slots":      "每次解码繁忙槽位",
+    "metrics.decode_total":    "解码调用次数",
+    "metrics.prompt_seconds_total":    "提示处理累计时间",
+    "metrics.predicted_seconds_total": "生成累计时间",
+    "metrics.n_tokens_max":    "最大 tokens",
+    "metrics.prompt_total":    "提示累计",
+    "metrics.predicted_total": "生成累计",
+    "metrics.no_data":         "暂无数据",
+    "slots.title":           "槽位",
+    "slots.idle":            "空闲",
+    "slots.active":          "活动",
+    "slots.context_used":    "ctx",
+    "slots.params":          "采样参数",
+    "slots.show_params":     "显示参数",
+    "slots.hide_params":     "隐藏参数",
+    "slots.actions.save":    "保存 KV",
+    "slots.actions.restore": "恢复 KV",
+    "slots.actions.erase":   "清除 KV",
+    "slots.confirm.save":    "将槽位 {id} 的 KV 缓存保存到文件?",
+    "slots.confirm.restore": "从文件恢复槽位 {id} 的 KV 缓存?",
+    "slots.confirm.erase":   "清除槽位 {id} 的 KV 缓存? 这会影响运行中的服务器。",
+    "slots.disabled":        "slots 端点已禁用",
+    "models.title":           "模型",
+    "models.selector":        "当前模型",
+    "models.status.loaded":   "已加载",
+    "models.status.loading":  "加载中",
+    "models.status.unloaded": "未加载",
+    "models.status.sleeping": "休眠",
+    "models.status.failed":   "失败",
+    "models.status.unknown":  "未知",
+    "models.exit_code":       "退出码",
+    "models.actions.load":    "加载",
+    "models.actions.unload":  "卸载",
+    "models.confirm.load":    "加载模型 {name}? 将占用服务器资源。",
+    "models.confirm.unload":  "卸载模型 {name}? 进行中的请求可能失败。",
+    "models.no_models":       "未找到模型",
+    "models.no_data":         "无模型信息 — 无法连接到服务器。",
+    "models.cached":          "已缓存",
+    "modal.warn_router":      "该操作会修改运行中的路由器状态。",
+    "modal.warn_server":      "该操作会影响运行中的服务器。",
+    "model.path":             "路径",
+    "model.template":         "对话模板",
+    "model.modalities":       "模态",
+    "model.build":            "构建",
+    "model.is_sleeping":      "休眠中 (下次请求会重新加载)",
+    "model.n_vocab":          "词汇表",
+    "model.n_ctx_train":      "上下文(训练)",
+    "model.n_embd":           "嵌入维度",
+    "model.n_params":         "参数量",
+    "model.size":             "大小",
+    "lora.title": "LoRA 适配器",
+    "lora.empty": "未加载任何 LoRA 适配器",
+    "lora.id":    "ID",
+    "lora.path":  "路径",
+    "lora.scale": "缩放",
+    "config.title":            "服务器启动选项",
+    "config.router_args":      "CLI 参数 (来自 /models)",
+    "config.effective_subset": "有效配置 (子集)",
+    "config.no_data":         "无配置可显示 — /props 不可达。",
+    "config.effective_note":   "llama-server 在单模型模式下不暴露 CLI 参数。如需完整启动选项可见性,请使用路由模式 (启动时不指定 -m)。",
+    "log.title":            "服务器日志 (tail)",
+    "log.follow":           "跟踪末尾",
+    "log.search":           "过滤…",
+    "log.empty":            "(尚无日志行)",
+    "log.setup_help_title": "日志 tail 设置",
+    "log.setup_help":       "日志面板通过 HTTP Range 读取静态文件。需同时满足三个条件: (1) llama-server 日志重定向到文件; (2) 该文件由相同 origin 提供; (3) HTTP 服务器支持 Range。示例: llama-server ... --path ./public > ./public/server.log 2>&1",
+    "guidance.title":         "活动建议",
+    "guidance.empty":         "暂无建议 — 服务器状态良好。",
+    "guidance.no_data":       "无法连接到服务器 — 没有可分析的数据。",
+    "hint.no_server.title":   "这里没有可监控的对象。",
+    "hint.no_server.body":    "添加 ?demo=1 查看合成数据,或使用 ?server=http://你的-llama-server:8080 指向真实服务器。",
+    "guidance.severity.info": "信息",
+    "guidance.severity.warn": "注意",
+    "guidance.severity.bad":  "需处理",
+    "guidance.tooltip_more":  "点击查看详情",
+    "rule.slots_saturated.title":   "槽位饱和",
+    "rule.slots_saturated.explain": "几乎所有槽位都在处理请求。服务器没有余量,下一个请求将开始排队。",
+    "rule.slots_saturated.suggest": "将 --parallel 从 {total} 提升到 {suggested}(每多一个槽位约需 ctx_size 个 token 的 KV 内存),或降低客户端并发。",
+    "rule.deferred.title":         "请求在队列中等待",
+    "rule.deferred.explain":       "requests_deferred 是等待空闲槽位的请求队列。持续大于 0 表示客户端延迟来自排队,而非推理本身。",
+    "rule.deferred.suggest":       "将 --parallel 提升至 {suggested}(当前 {total})以清空队列,或降低客户端并发。每个槽位约需要 ctx_size 个 token 的 KV 内存。",
+    "rule.idle_slow.title":        "生成吞吐急剧下降",
+    "rule.idle_slow.explain":      "当前 predicted_tokens_seconds 为 {current} tok/s,不到最近 60 秒中位数({baseline} tok/s)的一半。某种因素正在拖慢推理 — 常见原因有 CPU 上的层、KV 缓存平移,以及另一个进程占用 GPU。",
+    "rule.idle_slow.suggest":      "如果模型部分溢出到 CPU,请在 VRAM 允许范围内提高 --n-gpu-layers (-ngl)。否则检查是否有其他进程在抢占 GPU。",
+    "rule.sleeping.title":         "模型处于休眠",
+    "rule.sleeping.explain":       "经过 --sleep-idle-seconds 闲置,模型已被卸载。下次请求会触发重新加载 (数秒延迟)。",
+    "rule.sleeping.suggest":       "若不接受重载延迟,请增大 --sleep-idle-seconds 或移除该选项。",
+    "rule.temp_zero.title":        "贪婪采样",
+    "rule.temp_zero.explain":      "temperature = 0 每步选最高概率 token (确定性)。适合测试与结构化输出,聊天会显得单调。",
+    "rule.temp_zero.suggest":      "若需要多样性,可尝试 temperature ≈ 0.7。",
+    "rule.temp_high.title":        "温度偏高",
+    "rule.temp_high.explain":      "temperature > 1.5 会强烈平坦化分布,输出可能不连贯。",
+    "rule.temp_high.suggest":      "大多数聊天模型在 temperature ≤ 1.0 表现最佳。",
+    "rule.repeat_high.title":      "重复惩罚过强",
+    "rule.repeat_high.explain":    "repeat_penalty > 1.3 强烈抑制 token 复用,可能破坏代码、JSON 等结构化格式。",
+    "rule.repeat_high.suggest":    "建议 1.05–1.15。",
+    "rule.mirostat.title":         "Mirostat 采样器已激活",
+    "rule.mirostat.explain":       "mirostat ≠ 0 时,top_p / top_k 被忽略;通过 mirostat_tau 直接控制输出熵。",
+    "rule.mirostat.suggest":       "调整 mirostat_tau (3–6 较常见),而非 top_p / top_k。",
+    "rule.dry.title":              "DRY 反复抑制已激活",
+    "rule.dry.explain":            "DRY (dry_multiplier > 0) 检测序列重复并加以抑制,聊天场景下优于 repeat_penalty。",
+    "rule.dry.suggest":            "常用值: dry_multiplier 0.8, dry_base 1.75, dry_allowed_length 2。",
+    "rule.lora_scale.title":       "异常的 LoRA scale",
+    "rule.lora_scale.explain":     "scale > 1 会超出训练范围放大适配器,可能产生伪影。",
+    "rule.lora_scale.suggest":     "除非明确需要,否则保持在 0 到 1 之间。",
+    "rule.failed_model.title":     "模型启动失败",
+    "rule.failed_model.explain":   "路由器尝试启动该模型,但进程以非零状态退出。",
+    "rule.failed_model.suggest":   "检查 exit_code 与模型 args;常见原因: 路径错误、VRAM 不足、不合法的量化。",
+    "rule.loading_long.title":     "模型加载耗时过长",
+    "rule.loading_long.explain":   "加载超过 60 秒,通常是磁盘 I/O 慢、内存交换或 VRAM 压力导致部分卸载。",
+    "rule.loading_long.suggest":   "检查磁盘速度与 GPU 可用显存;考虑使用更小的量化。",
+
+    "demo.banner_single":      "演示模式 — 所有接口均为合成数据,并未连接真实的 llama-server。",
+    "demo.banner_router":      "演示模式(路由)— 所有接口均为合成数据,并未连接真实的 llama-server。",
+
+    "chat.title":              "聊天",
+    "chat.expand":             "展开",
+    "chat.collapse":           "折叠",
+    "chat.empty":              "还没有消息 — 在下面输入并按 Enter 发送",
+    "chat.placeholder":        "输入消息 — Enter 发送,Shift+Enter 换行",
+    "chat.send":               "发送",
+    "chat.stop":               "停止",
+    "chat.clear":              "清空对话",
+    "chat.system_prompt":      "系统提示词",
+    "chat.system_placeholder": "可选。设定助手的行为。",
+    "chat.temperature":        "Temperature",
+    "chat.top_p":              "Top-p",
+    "chat.max_tokens":         "最大 token 数",
+    "chat.fanout":             "并发请求(压力测试)",
+    "chat.you":                "你",
+    "chat.assistant":          "助手",
+    "chat.streaming":          "流式输出中…",
+    "chat.error":              "错误",
+    "chat.cancelled":          "已取消",
+    "chat.tok":                "tok",
+    "chat.tok_per_s":          "tok/s",
+    "chat.chars":              "字符",
+
+    "footer.attribution": "llama.nodrama 仪表盘"
+  },
+
+  es: {
+    "app.title": "llama.nodrama",
+    "boot.preparing": "Preparando…",
+    "header.status.connecting": "Conectando…",
+    "header.status.online":     "En línea",
+    "header.status.offline":    "Desconectado",
+    "header.status.error":      "Error",
+    "header.last_update":       "Última actualización",
+    "common.copy":      "Copiar",
+    "common.copied":    "Copiado",
+    "common.cancel":    "Cancelar",
+    "common.confirm":   "Confirmar",
+    "common.close":     "Cerrar",
+    "common.refresh":   "Actualizar",
+    "common.pause":     "Pausar",
+    "common.resume":    "Reanudar",
+    "common.reset":     "Reiniciar",
+    "common.unknown":   "desconocido",
+    "common.disabled":  "deshabilitado",
+    "common.enabled":   "habilitado",
+    "common.loading":   "Cargando…",
+    "common.empty":     "(vacío)",
+    "common.expand":    "Expandir",
+    "common.collapse":  "Contraer",
+    "common.yes":       "sí",
+    "common.no":        "no",
+    "error.fetch_failed":     "La petición falló",
+    "error.parse_failed":     "No se pudo analizar la respuesta",
+    "error.metrics_disabled": "El endpoint metrics no está disponible — inicia llama-server con --metrics",
+    "error.slots_disabled":   "El endpoint slots no está disponible — inicia sin --no-slots",
+    "error.bad_url":          "URL de servidor inválida",
+    "error.cors":             "No se puede alcanzar el servidor (CORS o red)",
+    "metrics.title":           "Métricas",
+    "metrics.gen_tps":         "Generación tok/s",
+    "metrics.prompt_tps":      "Prompt tok/s",
+    "metrics.processing":      "Procesando",
+    "metrics.deferred":        "En cola",
+    "metrics.busy_slots":      "Slots ocupados / decode",
+    "metrics.decode_total":    "Llamadas a decode",
+    "metrics.prompt_seconds_total":    "Tiempo total prompt",
+    "metrics.predicted_seconds_total": "Tiempo total generación",
+    "metrics.n_tokens_max":    "Tokens máx.",
+    "metrics.prompt_total":    "Prompt total",
+    "metrics.predicted_total": "Generado total",
+    "metrics.no_data":         "sin datos",
+    "slots.title":           "Slots",
+    "slots.idle":            "inactivo",
+    "slots.active":          "activo",
+    "slots.context_used":    "ctx",
+    "slots.params":          "Parámetros de muestreo",
+    "slots.show_params":     "Mostrar parámetros",
+    "slots.hide_params":     "Ocultar parámetros",
+    "slots.actions.save":    "Guardar KV",
+    "slots.actions.restore": "Restaurar KV",
+    "slots.actions.erase":   "Borrar KV",
+    "slots.confirm.save":    "¿Guardar la caché KV del slot {id} en un archivo?",
+    "slots.confirm.restore": "¿Restaurar la caché KV del slot {id} desde un archivo?",
+    "slots.confirm.erase":   "¿Borrar la caché KV del slot {id}? Afectará al servidor en ejecución.",
+    "slots.disabled":        "Endpoint de slots deshabilitado",
+    "models.title":           "Modelos",
+    "models.selector":        "Modelo activo",
+    "models.status.loaded":   "cargado",
+    "models.status.loading":  "cargando",
+    "models.status.unloaded": "descargado",
+    "models.status.sleeping": "inactivo",
+    "models.status.failed":   "falló",
+    "models.status.unknown":  "desconocido",
+    "models.exit_code":       "código de salida",
+    "models.actions.load":    "Cargar",
+    "models.actions.unload":  "Descargar",
+    "models.confirm.load":    "¿Cargar el modelo {name}? Consume recursos del servidor.",
+    "models.confirm.unload":  "¿Descargar el modelo {name}? Las peticiones en curso pueden fallar.",
+    "models.no_models":       "No se encontraron modelos",
+    "models.no_data":         "Sin info de modelo — no se pudo contactar el servidor.",
+    "models.cached":          "en caché",
+    "modal.warn_router":      "Esta acción modificará el router en ejecución.",
+    "modal.warn_server":      "Esta acción afectará al servidor en ejecución.",
+    "model.path":             "Ruta",
+    "model.template":         "Plantilla de chat",
+    "model.modalities":       "Modalidades",
+    "model.build":            "Build",
+    "model.is_sleeping":      "Inactivo (la próxima petición lo recargará)",
+    "model.n_vocab":          "Vocabulario",
+    "model.n_ctx_train":      "Contexto (entrenamiento)",
+    "model.n_embd":           "Dim. de embedding",
+    "model.n_params":         "Parámetros",
+    "model.size":             "Tamaño",
+    "lora.title": "Adaptadores LoRA",
+    "lora.empty": "No hay adaptadores LoRA cargados",
+    "lora.id":    "ID",
+    "lora.path":  "Ruta",
+    "lora.scale": "Escala",
+    "config.title":            "Opciones de arranque del servidor",
+    "config.router_args":      "Argumentos CLI (de /models)",
+    "config.effective_subset": "Configuración efectiva (subconjunto)",
+    "config.no_data":         "Sin configuración disponible — no se pudo contactar /props.",
+    "config.effective_note":   "llama-server no expone los argumentos CLI en modo de modelo único. Para una visibilidad completa, usa el modo router (inicia llama-server sin -m).",
+    "log.title":            "Log del servidor (tail)",
+    "log.follow":           "Seguir el final",
+    "log.search":           "Filtrar…",
+    "log.empty":            "(aún no hay líneas)",
+    "log.setup_help_title": "Configuración del tail de logs",
+    "log.setup_help":       "El panel de logs lee un archivo estático mediante HTTP Range. Deben cumplirse tres condiciones: (1) los logs de llama-server se redirigen a un archivo, (2) ese archivo se sirve desde el mismo origen, (3) el servidor HTTP soporta Range. Ejemplo: llama-server ... --path ./public > ./public/server.log 2>&1",
+    "guidance.title":         "Sugerencias activas",
+    "guidance.empty":         "Sin sugerencias ahora — el servidor parece sano.",
+    "guidance.no_data":       "No se puede contactar el servidor — sin datos para analizar.",
+    "hint.no_server.title":   "Aquí no hay nada que monitorizar.",
+    "hint.no_server.body":    "Añade ?demo=1 para ver datos sintéticos, o ?server=http://tu-llama-server:8080 para apuntar a un servidor real.",
+    "guidance.severity.info": "info",
+    "guidance.severity.warn": "atención",
+    "guidance.severity.bad":  "acción",
+    "guidance.tooltip_more":  "Toca para más detalle",
+    "rule.slots_saturated.title":   "Slots saturados",
+    "rule.slots_saturated.explain": "Casi todos los slots están procesando peticiones. El servidor no tiene margen; la próxima petición empezará a encolarse.",
+    "rule.slots_saturated.suggest": "Sube --parallel de {total} a {suggested} (cada slot adicional cuesta ~ctx_size tokens de memoria KV), o reduce la concurrencia del cliente.",
+    "rule.deferred.title":         "Peticiones en cola",
+    "rule.deferred.explain":       "requests_deferred es la cola de peticiones esperando un slot libre. > 0 sostenido implica latencia por cola, no por inferencia.",
+    "rule.deferred.suggest":       "Sube --parallel a {suggested} (actual {total}) para vaciar la cola, o reduce la concurrencia del cliente. Cada slot consume ~ctx_size tokens de memoria KV.",
+    "rule.idle_slow.title":        "El throughput de generación cayó bruscamente",
+    "rule.idle_slow.explain":      "predicted_tokens_seconds está en {current} tok/s, menos de la mitad de la mediana de los últimos 60 segundos ({baseline} tok/s). Algo está frenando la inferencia — causas comunes: layers en CPU, KV-cache shifting, u otro proceso compitiendo por la GPU.",
+    "rule.idle_slow.suggest":      "Si el modelo se desbordó a CPU, sube --n-gpu-layers (-ngl) hasta el límite de la VRAM. Si no, busca otro proceso compitiendo por la GPU.",
+    "rule.sleeping.title":         "El modelo está dormido",
+    "rule.sleeping.explain":       "El modelo se descargó tras --sleep-idle-seconds de inactividad. La próxima petición lo recargará (varios segundos).",
+    "rule.sleeping.suggest":       "Si la latencia de recarga no es aceptable, sube --sleep-idle-seconds o quita el flag.",
+    "rule.temp_zero.title":        "Muestreo greedy",
+    "rule.temp_zero.explain":      "temperature = 0 elige el token más probable en cada paso (determinista). Útil para tests y salida estructurada; monótono para chat.",
+    "rule.temp_zero.suggest":      "Si quieres diversidad, prueba temperature ≈ 0.7.",
+    "rule.temp_high.title":        "Temperatura muy alta",
+    "rule.temp_high.explain":      "temperature > 1.5 aplana mucho la distribución — la salida puede volverse incoherente.",
+    "rule.temp_high.suggest":      "La mayoría de modelos de chat funciona mejor con temperature ≤ 1.0.",
+    "rule.repeat_high.title":      "Penalización por repetición agresiva",
+    "rule.repeat_high.explain":    "repeat_penalty > 1.3 desincentiva fuertemente reusar tokens, lo que puede romper código, JSON o cualquier formato estructurado.",
+    "rule.repeat_high.suggest":    "Prueba 1.05–1.15.",
+    "rule.mirostat.title":         "Sampler Mirostat activo",
+    "rule.mirostat.explain":       "Cuando mirostat ≠ 0, top_p / top_k se ignoran — la entropía de salida se controla directamente con mirostat_tau.",
+    "rule.mirostat.suggest":       "Ajusta mirostat_tau (3–6 típico) en lugar de top_p / top_k.",
+    "rule.dry.title":              "Anti-repetición DRY activo",
+    "rule.dry.explain":            "DRY (dry_multiplier > 0) detecta repeticiones de secuencias y las amortigua — preferible a repeat_penalty para chat.",
+    "rule.dry.suggest":            "Típico: dry_multiplier 0.8, dry_base 1.75, dry_allowed_length 2.",
+    "rule.lora_scale.title":       "Escala LoRA inusual",
+    "rule.lora_scale.explain":     "scale > 1 amplifica el adaptador más allá de su rango entrenado, a menudo produciendo artefactos.",
+    "rule.lora_scale.suggest":     "Mantente entre 0 y 1 salvo que sepas lo que haces.",
+    "rule.failed_model.title":     "El modelo no pudo iniciarse",
+    "rule.failed_model.explain":   "El router intentó arrancar este modelo y el proceso terminó con código no cero.",
+    "rule.failed_model.suggest":   "Revisa exit_code y los args del modelo; causas comunes: ruta errónea, VRAM insuficiente, cuantización inválida.",
+    "rule.loading_long.title":     "El modelo lleva demasiado cargando",
+    "rule.loading_long.explain":   "Cargas > 60s suelen significar I/O de disco lento, swap o presión de VRAM forzando offload parcial.",
+    "rule.loading_long.suggest":   "Revisa la velocidad de disco y la memoria libre de la GPU; considera una cuantización menor.",
+
+    "demo.banner_single":      "Modo demo — todas las respuestas son sintéticas. No hay un llama-server real detrás.",
+    "demo.banner_router":      "Modo demo (router) — todas las respuestas son sintéticas. No hay un llama-server real detrás.",
+
+    "chat.title":              "Chat",
+    "chat.expand":             "expandir",
+    "chat.collapse":           "contraer",
+    "chat.empty":              "Aún no hay mensajes — escribe abajo y pulsa Enter para enviar",
+    "chat.placeholder":        "Escribe un mensaje — Enter para enviar, Shift+Enter para nueva línea",
+    "chat.send":               "Enviar",
+    "chat.stop":               "Detener",
+    "chat.clear":              "Borrar conversación",
+    "chat.system_prompt":      "Prompt del sistema",
+    "chat.system_placeholder": "Opcional. Define el comportamiento del asistente.",
+    "chat.temperature":        "Temperatura",
+    "chat.top_p":              "Top-p",
+    "chat.max_tokens":         "Tokens máximos",
+    "chat.fanout":             "Peticiones paralelas (prueba de carga)",
+    "chat.you":                "Tú",
+    "chat.assistant":          "Asistente",
+    "chat.streaming":          "transmitiendo…",
+    "chat.error":              "error",
+    "chat.cancelled":          "cancelado",
+    "chat.tok":                "tok",
+    "chat.tok_per_s":          "tok/s",
+    "chat.chars":              "caracteres",
+
+    "footer.attribution": "Panel llama.nodrama"
+  }
+};
+
+/* Resolve a key for the active language, fallback to English. */
+function t(key, vars) {
+  const dict = I18N[state.lang] || {};
+  let s = dict[key];
+  if (s === undefined) s = I18N.en[key];
+  if (s === undefined) s = key;
+  if (vars) {
+    s = s.replace(/\{(\w+)\}/g, (m, k) => (vars[k] !== undefined ? String(vars[k]) : m));
+  }
+  return s;
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ *  URL parameter parser. All settings live here — no localStorage.
+ * ──────────────────────────────────────────────────────────────────── */
+function parseParams() {
+  const u = new URL(window.location.href);
+  const q = u.searchParams;
+  return {
+    server: (q.get("server") || "").trim(),
+    model:  (q.get("model")  || "").trim(),
+    poll:   clampInt(q.get("poll"), 1000, 200, 60_000),
+    log:    q.has("log") ? q.get("log") : null,   /* null = auto-detect */
+    lang:   (q.get("lang") || "").trim(),
+    prompt: q.get("prompt") || "",                /* prefill chat input */
+    demo:   demoMode(q.get("demo")),              /* "", "1", or "router" */
+  };
+}
+function clampInt(s, fallback, min, max) {
+  const n = parseInt(s, 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+}
+function demoMode(v) {
+  /* Only "1" (single) and "router" enable the mock; anything else stays
+   * live so a typo like ?demo=true doesn't silently swap real metrics. */
+  const s = (v || "").trim();
+  return s === "1" || s === "router" ? s : "";
+}
+
+/* Pick a UI language from ?lang, then navigator.language, then 'en'. */
+function pickLang(requested) {
+  const supported = Object.keys(I18N);
+  if (requested && supported.includes(requested)) return requested;
+  const nav = (navigator.language || "en").toLowerCase();
+  if (nav.startsWith("ko")) return "ko";
+  if (nav.startsWith("ja")) return "ja";
+  if (nav.startsWith("zh")) return "zh-CN";
+  if (nav.startsWith("es")) return "es";
+  return "en";
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ *  Global state. One object, no hidden globals.
+ * ──────────────────────────────────────────────────────────────────── */
+const params = parseParams();
+const state = {
+  params,
+  lang: pickLang(params.lang),
+  serverBase: deriveServerBase(params.server),
+  /* set in later phases */
+  mode: null,           /* "single" | "router" */
+  selectedModel: params.model || null,
+  props: null,
+  models: [],
+  loraAdapters: [],
+  metrics: null,
+  slots: [],
+  history: { metrics: [], slots: [] }, /* time series buffers */
+  paused: false,
+  /* `healthy` flips true only when /props came back at least once.
+   * The status LED reads this — never `lastUpdate` alone — so a
+   * pause/resume or visibility toggle can't lie about server state. */
+  healthy: false,
+  pollers: [],          /* {name, abort, timer} */
+  errors: [],           /* visible error banners */
+  lastUpdate: null,
+  ui: {
+    bootDone: false,
+    logEnabled: false,
+  },
+};
+
+function deriveServerBase(raw) {
+  if (!raw) return window.location.origin;
+  try {
+    const url = new URL(raw, window.location.href);
+    /* Whitelist http(s) only — javascript:, data:, file: etc. would either
+     * fail in fetch or behave surprisingly. Better to surface early. */
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return window.location.origin;
+    }
+    return url.origin + (url.pathname.replace(/\/+$/, ""));
+  } catch (_e) {
+    /* report at boot time, fall back to current origin */
+    return window.location.origin;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ *  Tiny DOM helpers
+ * ──────────────────────────────────────────────────────────────────── */
+function $(sel, root) { return (root || document).querySelector(sel); }
+function $$(sel, root) { return Array.from((root || document).querySelectorAll(sel)); }
+function el(tag, attrs, children) {
+  const node = document.createElement(tag);
+  if (attrs) for (const k in attrs) {
+    if (k === "class") node.className = attrs[k];
+    else if (k === "style") node.style.cssText = attrs[k];
+    else if (k.startsWith("on") && typeof attrs[k] === "function") {
+      node.addEventListener(k.slice(2), attrs[k]);
+    } else if (k === "data") {
+      for (const dk in attrs.data) node.dataset[dk] = attrs.data[dk];
+    } else if (attrs[k] !== undefined && attrs[k] !== null) {
+      node.setAttribute(k, attrs[k]);
+    }
+  }
+  if (children !== undefined) {
+    if (Array.isArray(children)) {
+      for (const c of children) {
+        if (c == null) continue;
+        node.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+      }
+    } else if (typeof children === "string") {
+      node.textContent = children;
+    } else {
+      node.appendChild(children);
+    }
+  }
+  return node;
+}
+
+/* Render every element with data-i18n="key" using the current language. */
+function applyI18n(root) {
+  const scope = root || document;
+  scope.querySelectorAll("[data-i18n]").forEach((n) => {
+    n.textContent = t(n.dataset.i18n);
+  });
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ *  Header wiring
+ * ──────────────────────────────────────────────────────────────────── */
+function initHeader() {
+  $("#server-display").textContent = state.serverBase;
+  $("#server-display").title = state.serverBase;
+  const sel = $("#lang-select");
+  sel.value = state.lang;
+  sel.addEventListener("change", () => {
+    const u = new URL(window.location.href);
+    u.searchParams.set("lang", sel.value);
+    window.location.href = u.toString();
+  });
+  document.documentElement.lang = state.lang;
+  applyI18n();
+}
+
+/* Status LED: 'connecting' | 'online' | 'warn' | 'offline' | 'error' */
+function setStatus(state_, textKey) {
+  const led = $("#status-led");
+  const txt = $("#status-text");
+  led.classList.remove("on", "warn", "bad");
+  if (state_ === "online")  led.classList.add("on");
+  if (state_ === "warn")    led.classList.add("warn");
+  if (state_ === "offline") led.classList.add("bad");
+  if (state_ === "error")   led.classList.add("bad");
+  txt.dataset.i18n = textKey;
+  txt.textContent = t(textKey);
+}
+
+/* Push / clear an error banner. id de-duplicates. */
+function showBanner(id, message, severity) {
+  const wrap = $("#banners");
+  let n = wrap.querySelector('[data-id="' + cssEscape(id) + '"]');
+  if (!n) {
+    n = el("div", { class: "banner" + (severity === "warn" ? " warn" : ""), data: { id } });
+    wrap.appendChild(n);
+  } else {
+    n.className = "banner" + (severity === "warn" ? " warn" : "");
+  }
+  n.textContent = message;
+}
+function clearBanner(id) {
+  const wrap = $("#banners");
+  const n = wrap.querySelector('[data-id="' + cssEscape(id) + '"]');
+  if (n) n.remove();
+}
+function cssEscape(s) { return String(s).replace(/[^\w-]/g, "_"); }
+
+/* ──────────────────────────────────────────────────────────────────────
+ *  Networking — every fetch is wrapped, surfaces an error if it fails,
+ *  and is abortable so we can cancel in flight when the page unloads
+ *  or the model selection changes.
+ * ──────────────────────────────────────────────────────────────────── */
+function endpoint(path, withModel) {
+  const base = state.serverBase.replace(/\/+$/, "");
+  let url = base + path;
+  if (withModel && state.mode === "router" && state.selectedModel) {
+    const sep = url.includes("?") ? "&" : "?";
+    url += sep + "model=" + encodeURIComponent(state.selectedModel);
+  }
+  return url;
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ *  Demo mode — installs a fetch shim that returns synthetic responses
+ *  shaped exactly like real llama-server. Activated by ?demo=1 (single
+ *  mode) or ?demo=router (router mode). Lets the dashboard run on
+ *  static hosting (e.g. GitHub Pages) without any backend.
+ *
+ *  Real fetch is preserved for cross-origin requests we don't simulate
+ *  (e.g. external link previews — we don't make any, but defensively).
+ * ──────────────────────────────────────────────────────────────────── */
+function installDemoShim(mode) {
+  const realFetch = window.fetch.bind(window);
+  const t0 = Date.now();
+  const matchesServer = (url) => {
+    try {
+      const u = new URL(url, window.location.href);
+      return u.origin === new URL(state.serverBase, window.location.href).origin;
+    } catch (_e) { return false; }
+  };
+
+  /* Counters that grow over time so cumulative cards animate. */
+  const counters = () => {
+    const sec = (Date.now() - t0) / 1000;
+    return {
+      prompt_tokens_total:        Math.floor(120 + sec * 14),
+      tokens_predicted_total:     Math.floor(80 + sec * 27),
+      prompt_seconds_total:       (sec * 0.18).toFixed(3),
+      tokens_predicted_seconds_total: (sec * 0.62).toFixed(3),
+      n_decode_total:             Math.floor(40 + sec * 5),
+      n_tokens_max:               512 + Math.floor(sec / 30) * 64,
+      n_busy_slots_per_decode:    (1.4 + Math.sin(sec / 8) * 0.6).toFixed(2),
+    };
+  };
+
+  /* Gauges that oscillate. */
+  const gauges = () => {
+    const sec = (Date.now() - t0) / 1000;
+    const wave = (period, amp, base) => base + Math.sin(sec / period) * amp;
+    return {
+      prompt_tokens_seconds:     Math.max(0, wave(11, 60, 95)).toFixed(2),
+      predicted_tokens_seconds:  Math.max(0, wave(7, 22, 58)).toFixed(2),
+      requests_processing:       Math.max(0, Math.round(wave(13, 1.4, 1.5))),
+      requests_deferred:         Math.max(0, Math.round(wave(19, 1.1, 0.3))),
+    };
+  };
+
+  const renderPrometheus = () => {
+    const c = counters(), g = gauges();
+    let out = "";
+    const emit = (name, type, help, val) => {
+      out += `# HELP llamacpp:${name} ${help}\n# TYPE llamacpp:${name} ${type}\nllamacpp:${name} ${val}\n`;
+    };
+    emit("prompt_tokens_total", "counter", "Number of prompt tokens processed.", c.prompt_tokens_total);
+    emit("prompt_seconds_total", "counter", "Prompt process time", c.prompt_seconds_total);
+    emit("tokens_predicted_total", "counter", "Number of generation tokens processed.", c.tokens_predicted_total);
+    emit("tokens_predicted_seconds_total", "counter", "Predict process time", c.tokens_predicted_seconds_total);
+    emit("n_decode_total", "counter", "Total number of llama_decode() calls", c.n_decode_total);
+    emit("n_tokens_max", "counter", "Largest observed n_tokens.", c.n_tokens_max);
+    emit("n_busy_slots_per_decode", "counter", "Average busy slots per decode.", c.n_busy_slots_per_decode);
+    emit("prompt_tokens_seconds", "gauge", "Average prompt throughput in tokens/s.", g.prompt_tokens_seconds);
+    emit("predicted_tokens_seconds", "gauge", "Average generation throughput in tokens/s.", g.predicted_tokens_seconds);
+    emit("requests_processing", "gauge", "Number of requests processing.", g.requests_processing);
+    emit("requests_deferred", "gauge", "Number of requests deferred.", g.requests_deferred);
+    return out;
+  };
+
+  const sampleParams = {
+    n_predict: 400, seed: 42, temperature: 0.7, dynatemp_range: 0,
+    dynatemp_exponent: 1, top_k: 40, top_p: 0.95, min_p: 0.05,
+    typical_p: 1, xtc_probability: 0, xtc_threshold: 0.1,
+    repeat_last_n: 64, repeat_penalty: 1.05, presence_penalty: 0,
+    frequency_penalty: 0, dry_multiplier: 0, dry_base: 1.75,
+    mirostat: 0, mirostat_tau: 5, mirostat_eta: 0.1,
+    samplers: ["dry", "top_k", "typ_p", "top_p", "min_p", "xtc", "temperature"],
+  };
+
+  const renderSlots = () => {
+    const sec = (Date.now() - t0) / 1000;
+    const out = [];
+    for (let i = 0; i < 4; i++) {
+      const isProc = ((Math.sin((sec + i * 1.7) / 4) + 1) / 2) > 0.55;
+      const slot = {
+        id: i, n_ctx: 1024, speculative: false, is_processing: isProc,
+      };
+      if (isProc) {
+        slot.id_task = 1000 + i;
+        slot.params = sampleParams;
+        slot.next_token = {
+          has_next_token: true, has_new_line: false,
+          n_remain: Math.floor(400 - ((sec * 8) % 380)),
+          n_decoded: Math.floor((sec * 8) % 380),
+        };
+      }
+      out.push(slot);
+    }
+    return out;
+  };
+
+  const propsResp = {
+    default_generation_settings: { ...sampleParams },
+    total_slots: 4,
+    model_path: mode === "router" ? "/models/qwen2.5-1.5b-instruct-q4_0.gguf"
+                                  : "/opt/models/demo-model.gguf",
+    chat_template: "{% for message in messages %}<|im_start|>{{ message.role }}\n{{ message.content }}<|im_end|>\n{% endfor %}<|im_start|>assistant\n",
+    chat_template_caps: { tools: false, vision: false },
+    modalities: { vision: false, audio: false },
+    media_marker: "<__media__>",
+    build_info: { build_number: "demo-9999", commit: "0000000" },
+    is_sleeping: false,
+  };
+
+  const v1ModelsResp = {
+    object: "list",
+    data: [{
+      id: mode === "router" ? "ggml-org/qwen2.5-1.5b-instruct-gguf:Q4_0" : "demo-model",
+      object: "model",
+      created: Math.floor(t0 / 1000),
+      owned_by: "llamacpp",
+      meta: {
+        n_vocab: 151936, n_ctx_train: 32768, n_embd: 1536,
+        n_params: 1543714304, size: 932512384,
+      },
+    }],
+  };
+
+  const modelsResp = mode === "router" ? [
+    {
+      id: "ggml-org/qwen2.5-1.5b-instruct-gguf:Q4_0",
+      in_cache: true,
+      path: "/cache/qwen2.5-1.5b-instruct-q4_0.gguf",
+      status: { value: "loaded",
+                args: ["-m", "/cache/qwen2.5-1.5b-instruct-q4_0.gguf",
+                       "-c", "4096", "--parallel", "4", "--metrics"],
+                failed: false, exit_code: null },
+    },
+    {
+      id: "ggml-org/llama-3.2-1b-instruct-gguf:Q4_K_M",
+      in_cache: true,
+      path: "/cache/llama-3.2-1b.gguf",
+      status: { value: "unloaded", args: [], failed: false, exit_code: null },
+    },
+    {
+      id: "ggml-org/qwen2.5-7b-instruct-gguf:Q4_K_M",
+      in_cache: false,
+      path: null,
+      status: { value: "failed",
+                args: ["-m", "/cache/qwen2.5-7b.gguf", "-ngl", "99"],
+                failed: true, exit_code: 137 },
+    },
+  ] : null;
+
+  const cannedReplies = [
+    `# Demo response\n\nThis dashboard is running in **demo mode** — every endpoint is synthetic. The real one talks to a [llama.cpp](https://github.com/ggml-org/llama.cpp) server.\n\n## What works\n\n- Streaming with throttled re-render\n- Markdown: lists, tables, code\n- Cancel mid-stream\n\n\`\`\`js\n// example\nfunction hello(name) {\n  return \`Hello, \${name}!\`;\n}\n\`\`\`\n\n| Metric | Source |\n|---|---|\n| tok/s | \`/metrics\` |\n| slots | \`/slots\` |\n| model | \`/v1/models\` |\n\n> Try clicking ⓘ on any card.`,
+    `Sure — quick rundown of the relevant flags:\n\n1. **\`--metrics\`** turns on \`/metrics\` (Prometheus).\n2. **\`--parallel N\`** sets concurrent slots; KV memory ≈ N × ctx_size × hidden_dim × 2.\n3. **\`-ngl L\`** offloads L layers to GPU. Set to 99 to offload everything when VRAM allows.\n4. **\`--ctx-size C\`** is total context shared across slots in single mode.\n\n*This is the demo response — no real model behind it.*`,
+    `Here's a small table of common sampling presets:\n\n| Preset | temp | top_p | repeat_penalty |\n|--------|------|-------|----------------|\n| chat   | 0.7  | 0.95  | 1.05           |\n| code   | 0.2  | 0.95  | 1.0            |\n| creative | 1.0 | 0.95 | 1.1            |\n\nUse \`temperature = 0\` for deterministic output (greedy). Setting \`mirostat\` to 1 or 2 ignores top_p / top_k entirely.`,
+  ];
+
+  const streamingChat = (body) => {
+    const replyIdx = (chat.messages.length / 2) | 0;
+    const text = cannedReplies[replyIdx % cannedReplies.length];
+    const tokens = text.split(/(\s+)/).filter(Boolean);
+    let signal = body && body.signal;
+    const stream = new ReadableStream({
+      async start(controller) {
+        const enc = new TextEncoder();
+        try {
+          for (let i = 0; i < tokens.length; i++) {
+            if (signal && signal.aborted) {
+              controller.close(); return;
+            }
+            const chunk = { choices: [{ delta: { content: tokens[i] } }] };
+            controller.enqueue(enc.encode("data: " + JSON.stringify(chunk) + "\n\n"));
+            await new Promise((r) => setTimeout(r, 30 + Math.random() * 50));
+          }
+          const usage = {
+            prompt_tokens: 24 + Math.floor(Math.random() * 30),
+            completion_tokens: tokens.length,
+            total_tokens: 0,
+          };
+          usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
+          controller.enqueue(enc.encode("data: " + JSON.stringify({ usage }) + "\n\n"));
+          controller.enqueue(enc.encode("data: [DONE]\n\n"));
+          controller.close();
+        } catch (e) {
+          controller.error(e);
+        }
+      },
+    });
+    return new Response(stream, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream" },
+    });
+  };
+
+  const json = (obj, status) =>
+    new Response(JSON.stringify(obj),
+      { status: status || 200, headers: { "Content-Type": "application/json" } });
+  const text = (str, status, type) =>
+    new Response(str,
+      { status: status || 200, headers: { "Content-Type": type || "text/plain; version=0.0.4" } });
+  const notFound = () => new Response("not found", { status: 404 });
+
+  window.fetch = function (input, init) {
+    const url = typeof input === "string" ? input : (input && input.url) || "";
+    if (!matchesServer(url)) return realFetch(input, init);
+
+    let path;
+    try { path = new URL(url, window.location.href).pathname; }
+    catch (_e) { return realFetch(input, init); }
+    /* normalize: strip serverBase prefix path */
+    try {
+      const baseP = new URL(state.serverBase, window.location.href).pathname.replace(/\/+$/, "");
+      if (baseP && path.startsWith(baseP)) path = path.slice(baseP.length) || "/";
+    } catch (_e) {}
+
+    const method = (init && init.method) || (typeof input !== "string" ? input.method : "GET") || "GET";
+
+    if (path === "/health") return Promise.resolve(json({ status: "ok" }));
+    if (path === "/props")  return Promise.resolve(json(propsResp));
+    if (path === "/v1/models") return Promise.resolve(json(v1ModelsResp));
+    if (path === "/models") {
+      return Promise.resolve(modelsResp ? json(modelsResp) : notFound());
+    }
+    if (path === "/metrics") return Promise.resolve(text(renderPrometheus()));
+    if (path === "/slots")   return Promise.resolve(json(renderSlots()));
+    if (path === "/lora-adapters") return Promise.resolve(json([]));
+    if (path === "/v1/chat/completions" && method.toUpperCase() === "POST") {
+      return Promise.resolve(streamingChat(init || {}));
+    }
+    /* slot save/restore/erase, model load/unload — pretend success */
+    if (path.startsWith("/slots/") || path.startsWith("/models/load") || path.startsWith("/models/unload")) {
+      return Promise.resolve(json({ success: true, demo: true }));
+    }
+    /* server.log HEAD — return 404 so log panel hides cleanly */
+    return Promise.resolve(notFound());
+  };
+
+  /* Surface the demo state to the user. Banner uses i18n key. */
+  const showDemoBanner = () => {
+    const wrap = $("#banners");
+    if (!wrap) return;
+    const key = mode === "router" ? "demo.banner_router" : "demo.banner_single";
+    const node = el("div", { class: "banner", data: { id: "demo-mode" } }, t(key));
+    wrap.appendChild(node);
+  };
+  /* applyI18n hasn't run yet — defer to next microtask */
+  Promise.resolve().then(showDemoBanner);
+}
+
+async function fetchJSON(path, opts) {
+  return fetchEndpoint(path, opts, "json");
+}
+async function fetchText(path, opts) {
+  return fetchEndpoint(path, opts, "text");
+}
+async function fetchEndpoint(path, opts, kind) {
+  const o = opts || {};
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), o.timeout || 8000);
+  try {
+    const res = await fetch(endpoint(path, o.withModel !== false), {
+      method: o.method || "GET",
+      headers: Object.assign(
+        { "Accept": kind === "json" ? "application/json" : "text/plain" },
+        o.headers || {}
+      ),
+      body: o.body,
+      signal: o.signal || ctrl.signal,
+      cache: "no-store",
+    });
+    clearTimeout(timer);
+    if (!res.ok) {
+      const errBody = await safeReadBody(res);
+      /* Strip HTML responses (e.g. a CDN / static-host 404 page) from the
+       * user-facing error message — printing raw markup is ugly and tells
+       * the user nothing useful. Keep the first ~80 chars for non-HTML. */
+      const looksHtml = /^\s*<(!doctype|html|head)/i.test(errBody || "");
+      const tail = (errBody && !looksHtml) ? " — " + errBody.replace(/\s+/g, " ").slice(0, 80) : "";
+      const e = new Error("HTTP " + res.status + tail);
+      e.status = res.status;
+      e.body = errBody;
+      throw e;
+    }
+    if (kind === "json") return await res.json();
+    if (kind === "text") return await res.text();
+    return res;
+  } catch (e) {
+    clearTimeout(timer);
+    if (e.name === "AbortError") {
+      const ae = new Error("aborted"); ae.aborted = true; throw ae;
+    }
+    throw e;
+  }
+}
+async function safeReadBody(res) {
+  try { return await res.text(); } catch (_) { return ""; }
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ *  Polling engine. setTimeout chain with backoff + AbortController.
+ *  Never setInterval — that allows requests to stack when the server
+ *  is slow.
+ * ──────────────────────────────────────────────────────────────────── */
+function startPoller(name, intervalMs, taskFn) {
+  let timer = null;
+  let aborter = null;
+  let stopped = false;
+  let backoff = 0;       /* extra ms added on consecutive failures */
+  const MAX_BACKOFF = 10_000;
+
+  async function tick() {
+    if (stopped) return;
+    if (state.paused) {
+      timer = setTimeout(tick, intervalMs);
+      return;
+    }
+    aborter = new AbortController();
+    try {
+      await taskFn(aborter.signal);
+      backoff = 0;
+      clearBanner("poll-" + name);
+    } catch (e) {
+      if (e.aborted || e.name === "AbortError") {
+        /* swallowed */
+      } else {
+        backoff = Math.min(MAX_BACKOFF, Math.max(1000, backoff ? backoff * 2 : 1000));
+        showBanner(
+          "poll-" + name,
+          name + ": " + (e.message || t("error.fetch_failed")),
+          "warn"
+        );
+      }
+    }
+    if (!stopped) timer = setTimeout(tick, intervalMs + backoff);
+  }
+
+  const handle = {
+    name,
+    stop() {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      if (aborter) try { aborter.abort(); } catch (_) {}
+    },
+  };
+  state.pollers.push(handle);
+  /* fire first tick on next microtask to avoid stacking inside boot() */
+  Promise.resolve().then(tick);
+  return handle;
+}
+
+function stopAllPollers() {
+  for (const p of state.pollers) p.stop();
+  state.pollers = [];
+}
+
+/* Pause / resume hook for keyboard shortcut (Phase 9). */
+function setPaused(v) {
+  state.paused = !!v;
+  if (state.paused) {
+    setStatus("warn", "common.pause");
+  } else if (state.healthy) {
+    setStatus("online", "header.status.online");
+  } else if (state.ui.bootDone) {
+    setStatus("offline", "header.status.offline");
+  } else {
+    setStatus("connecting", "header.status.connecting");
+  }
+}
+
+/* When the tab is hidden, abort in-flight requests and pause —
+ * resume on visibility. Cheap battery / server-load saver. */
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) setPaused(true);
+  else setPaused(false);
+});
+
+/* ──────────────────────────────────────────────────────────────────────
+ *  Boot sequence. Discovers single-model vs router mode, picks the
+ *  active model in router mode, and hands control to the poller setup
+ *  function (defined in later phases). Phase 2 only verifies wiring.
+ * ──────────────────────────────────────────────────────────────────── */
+async function boot() {
+  /* Install the demo fetch shim before initHeader / any fetch fires.
+   * ?demo=1 → single-mode synthetic; ?demo=router → router-mode. */
+  if (state.params.demo) {
+    installDemoShim(state.params.demo === "router" ? "router" : "single");
+  }
+
+  initHeader();
+  ensureRootScaffold();
+  setStatus("connecting", "header.status.connecting");
+
+  if (state.params.server && state.serverBase === window.location.origin
+      && state.params.server !== window.location.origin) {
+    /* deriveServerBase fell back; show the user. */
+    showBanner("bad-url", t("error.bad_url") + ": " + state.params.server, "warn");
+  }
+
+  try {
+    /* /health is the cheapest probe and works even when no model is loaded */
+    await fetchJSON("/health", { withModel: false, timeout: 4000 });
+  } catch (e) {
+    setStatus("offline", "header.status.offline");
+    showBanner("boot-health", t("error.fetch_failed") + ": /health — " + e.message, "warn");
+    /* Continue anyway — some setups disable /health, and we still want
+     * to attempt /props so the user sees what's reachable. */
+  }
+
+  /* /props is required — we use it to drive the rest of the UI */
+  let props = null;
+  try {
+    props = await fetchJSON("/props", { withModel: false, timeout: 6000 });
+    state.props = props;
+    clearBanner("boot-props");
+  } catch (e) {
+    setStatus("error", "header.status.error");
+    showBanner("boot-props", "/props — " + e.message);
+  }
+
+  /* /v1/models — universal across modes. May be empty in router mode
+   * before any model is loaded. */
+  try {
+    const v1 = await fetchJSON("/v1/models", { withModel: false, timeout: 6000 });
+    state.v1models = (v1 && Array.isArray(v1.data)) ? v1.data : [];
+  } catch (e) {
+    state.v1models = [];
+    /* not fatal */
+  }
+
+  /* Router-mode detection: GET /models. If it returns 200 with a list of
+   * objects whose status has a 'value' field, this is router mode.
+   * 404 / not-array / wrong shape → single mode. */
+  state.mode = "single";
+  state.models = [];
+  try {
+    const m = await fetchJSON("/models", { withModel: false, timeout: 6000 });
+    /* router payload shape: { data: [...] } or just an array, depending on build */
+    const list = Array.isArray(m) ? m
+                 : (m && Array.isArray(m.data) ? m.data
+                 : (m && Array.isArray(m.models) ? m.models : null));
+    if (list && list.length && typeof list[0] === "object"
+        && list[0] && list[0].status && typeof list[0].status === "object"
+        && "value" in list[0].status) {
+      state.mode = "router";
+      state.models = list;
+    }
+  } catch (_e) { /* not router */ }
+
+  /* If router and no explicit ?model=, pick the first loaded model, else
+   * the first listed model. */
+  if (state.mode === "router") {
+    if (!state.selectedModel) {
+      const loaded = state.models.find((x) => x.status && x.status.value === "loaded");
+      const first  = state.models[0];
+      state.selectedModel = (loaded && loaded.id) || (first && first.id) || null;
+    }
+  } else {
+    state.selectedModel = null;
+  }
+
+  state.ui.bootDone = true;
+  state.bootedAt = Date.now();
+  state.lastUpdate = Date.now();
+  /* Don't lie: only show "online" if /props came back. Otherwise leave
+   * whichever error/offline state was set above so the LED matches the
+   * banner. */
+  if (state.props) {
+    state.healthy = true;
+    setStatus("online", "header.status.online");
+  } else if (!state.params.demo && !state.params.server) {
+    /* User opened the page on a static host with neither ?demo nor
+     * ?server. They probably don't realise the dashboard is trying to
+     * call /metrics on the page's own origin. Tell them what to do. */
+    showBanner("no-server",
+      t("hint.no_server.title") + " " + t("hint.no_server.body"), "warn");
+  }
+
+  renderBootSummary();
+  renderChatPanel();
+  renderGuidance();
+  startCorePollers();
+  startSecondaryPollers();
+  /* fire-and-forget log detection — never blocks the dashboard */
+  startLogPoller().catch(() => {});
+}
+
+/* Bare minimum scaffold so later phases have stable mount points to
+ * write into. Each phase adds detail to one of these slots. */
+function ensureRootScaffold() {
+  const root = $("#root");
+  root.innerHTML = "";
+  root.appendChild(el("div", { id: "metrics-section", class: "full",
+                               style: "display: contents;" }));
+  root.appendChild(el("div", { id: "slots-section", class: "full",
+                               style: "display: contents;" }));
+  root.appendChild(el("div", { id: "chat-section", class: "full",
+                               style: "display: contents;" }));
+  root.appendChild(el("div", { id: "models-section", class: "full",
+                               style: "display: contents;" }));
+  root.appendChild(el("div", { id: "config-section", class: "full",
+                               style: "display: contents;" }));
+  root.appendChild(el("div", { id: "lora-section", class: "full",
+                               style: "display: contents;" }));
+  root.appendChild(el("div", { id: "log-section", class: "full",
+                               style: "display: contents;" }));
+  root.appendChild(el("div", { id: "guidance-section", class: "full",
+                               style: "display: contents;" }));
+}
+
+/* Render Models, Server config, and LoRA cards. Re-callable; on each call
+ * we rebuild the section content. Cheap because it's not on the hot path. */
+function renderBootSummary() {
+  renderModelsCard();
+  renderServerConfigCard();
+  renderLoraCard();
+}
+
+function findV1Meta(modelId) {
+  if (!Array.isArray(state.v1models)) return null;
+  return state.v1models.find((m) => m && (m.id === modelId)) || null;
+}
+
+function renderModelsCard() {
+  const sec = $("#models-section");
+  sec.innerHTML = "";
+  const card = el("div", { class: "card full" }, [
+    el("h2", null, t("models.title")),
+  ]);
+  sec.appendChild(card);
+
+  if (state.mode === "router") {
+    /* selector + per-model cards */
+    const sel = el("select", { id: "model-selector",
+                               style: "max-width: 100%; min-width: 200px;",
+                               onchange: () => onModelSelect($("#model-selector").value) });
+    sel.appendChild(el("option", { value: "" }, "— " + t("models.selector") + " —"));
+    for (const m of state.models) {
+      sel.appendChild(el("option", {
+        value: m.id,
+        selected: m.id === state.selectedModel ? "selected" : null,
+      }, m.id));
+    }
+    card.appendChild(el("div", { class: "row-actions" }, [
+      el("span", { class: "sub" }, t("models.selector") + ":"),
+      sel,
+    ]));
+
+    if (state.models.length === 0) {
+      card.appendChild(el("div", { class: "sub" }, t("models.no_models")));
+    } else {
+      const list = el("div", { class: "model-list" });
+      for (const m of state.models) list.appendChild(routerModelCard(m));
+      card.appendChild(list);
+    }
+  } else {
+    /* single-model: show the active model's metadata.
+     * If neither /v1/models nor /props came back, render a "no data"
+     * note instead of a fake card with a placeholder name like "model"
+     * and a green "loaded" badge. */
+    const id = (state.v1models[0] && state.v1models[0].id)
+            || (state.props && state.props.model_path)
+            || null;
+    if (!id) {
+      card.appendChild(el("div", { class: "sub" }, t("models.no_data")));
+      return;
+    }
+    const meta = findV1Meta(id) || state.v1models[0] || null;
+    card.appendChild(singleModelCard(id, meta));
+  }
+}
+
+function routerModelCard(m) {
+  const status = (m.status && m.status.value) || "unknown";
+  const isActive = m.id === state.selectedModel;
+  const meta = findV1Meta(m.id);
+  const node = el("div", { class: "model-card" + (isActive ? " active" : "") }, [
+    el("div", { class: "name" }, m.id),
+    el("div", { class: "row-actions" }, [
+      el("span", { class: "badge status-" + status }, t("models.status." + status)
+        || t("models.status.unknown")),
+      m.in_cache ? el("span", { class: "badge" }, t("models.cached")) : null,
+      (m.status && m.status.failed && m.status.exit_code !== undefined && m.status.exit_code !== null)
+        ? el("span", { class: "badge status-failed" },
+            t("models.exit_code") + " " + m.status.exit_code)
+        : null,
+    ].filter(Boolean)),
+    m.path ? el("div", { class: "sub" },
+      el("span", { class: "badge" }, t("model.path")) )
+      : null,
+    m.path ? el("div", { class: "sub", style: "word-break: break-all;" }, m.path) : null,
+  ]);
+  if (meta && meta.meta) {
+    node.appendChild(metaKVTable(meta.meta));
+  }
+  if (m.status && Array.isArray(m.status.args) && m.status.args.length) {
+    const argsTxt = m.status.args.join(" ");
+    const block = el("div", { class: "args-block" }, argsTxt);
+    node.appendChild(block);
+    node.appendChild(el("div", { class: "row-actions" }, [
+      el("button", {
+        onclick: (e) => copyToClipboard(argsTxt, e.currentTarget),
+      }, t("common.copy")),
+    ]));
+  }
+  /* load / unload buttons */
+  const actions = el("div", { class: "row-actions" }, []);
+  if (status === "loaded" || status === "sleeping") {
+    actions.appendChild(el("button", {
+      onclick: () => confirmAction(
+        t("models.confirm.unload", { name: m.id }),
+        () => callLoadOrUnload("/models/unload", m.id, "unload")
+      ),
+    }, t("models.actions.unload")));
+  } else {
+    actions.appendChild(el("button", {
+      onclick: () => confirmAction(
+        t("models.confirm.load", { name: m.id }),
+        () => callLoadOrUnload("/models/load", m.id, "load")
+      ),
+    }, t("models.actions.load")));
+  }
+  node.appendChild(actions);
+  return node;
+}
+
+function singleModelCard(id, meta) {
+  const props = state.props || {};
+  const card = el("div", { class: "model-card" }, [
+    el("div", { class: "name" }, id),
+    el("div", { class: "row-actions" }, [
+      props.is_sleeping
+        ? el("span", { class: "badge status-sleeping" }, t("models.status.sleeping"))
+        : el("span", { class: "badge status-loaded" }, t("models.status.loaded")),
+    ]),
+  ]);
+  if (props.model_path) {
+    card.appendChild(el("div", { class: "kv-table" }, [
+      el("div", { class: "k" }, t("model.path")),
+      el("div", { class: "v" }, props.model_path),
+    ]));
+  }
+  if (meta && meta.meta) card.appendChild(metaKVTable(meta.meta));
+  return card;
+}
+
+function metaKVTable(meta) {
+  const rows = [];
+  function row(labelKey, val) {
+    rows.push(el("div", { class: "k" }, t(labelKey)));
+    rows.push(el("div", { class: "v" }, val == null ? "—" : String(val)));
+  }
+  if (meta.n_vocab !== undefined)      row("model.n_vocab",     meta.n_vocab);
+  if (meta.n_ctx_train !== undefined)  row("model.n_ctx_train", meta.n_ctx_train);
+  if (meta.n_embd !== undefined)       row("model.n_embd",      meta.n_embd);
+  if (meta.n_params !== undefined)     row("model.n_params",    fmtNumber(meta.n_params));
+  if (meta.size !== undefined)         row("model.size",        fmtBytes(meta.size));
+  return el("div", { class: "kv-table" }, rows);
+}
+
+function fmtBytes(n) {
+  if (!isFinite(n) || n == null) return "—";
+  if (n >= 1024 * 1024 * 1024) return (n / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+  if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(2) + " MB";
+  if (n >= 1024) return (n / 1024).toFixed(1) + " KB";
+  return n + " B";
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ *  Server config card. Router shows the actual CLI args; single mode
+ *  shows what /props exposes plus a clear note that args are not
+ *  available from the server.
+ * ──────────────────────────────────────────────────────────────────── */
+function renderServerConfigCard() {
+  const sec = $("#config-section");
+  sec.innerHTML = "";
+  const card = el("div", { class: "card full" }, [
+    el("h2", null, t("config.title")),
+  ]);
+  sec.appendChild(card);
+
+  if (state.mode === "router") {
+    card.appendChild(el("div", { class: "sub" }, t("config.router_args")));
+    if (!state.models.length) {
+      card.appendChild(el("div", { class: "sub" }, t("models.no_models")));
+      return;
+    }
+    const list = el("div", { class: "model-list" });
+    for (const m of state.models) {
+      const args = (m.status && Array.isArray(m.status.args)) ? m.status.args.join(" ") : "";
+      const block = el("div", { class: "model-card" }, [
+        el("div", { class: "name" }, m.id),
+        args ? el("div", { class: "args-block" }, args)
+             : el("div", { class: "sub" }, t("common.empty")),
+        args ? el("div", { class: "row-actions" }, [
+          el("button", {
+            onclick: (e) => copyToClipboard(args, e.currentTarget),
+          }, t("common.copy")),
+        ]) : null,
+      ].filter(Boolean));
+      list.appendChild(block);
+    }
+    card.appendChild(list);
+  } else {
+    /* If /props never came back, don't fake an "effective config" with
+     * default-derived booleans (e.g. is_sleeping=No is meaningless when
+     * we never reached the server). */
+    if (!state.props) {
+      card.appendChild(el("div", { class: "sub" }, t("config.no_data")));
+      return;
+    }
+    card.appendChild(el("div", { class: "sub" }, t("config.effective_subset")));
+    const props = state.props;
+    const meta = (state.v1models[0] && state.v1models[0].meta) || {};
+    const rows = [];
+    function add(label, v) {
+      if (v === undefined || v === null || v === "") return;
+      rows.push(el("div", { class: "k" }, label));
+      rows.push(el("div", { class: "v" }, typeof v === "object" ? JSON.stringify(v) : String(v)));
+    }
+    add("model_path",   props.model_path);
+    add("total_slots",  props.total_slots);
+    add("modalities",   props.modalities && Object.keys(props.modalities)
+                          .filter((k) => props.modalities[k]).join(", "));
+    add("chat_template (preview)",
+        props.chat_template
+          ? props.chat_template.split("\n").slice(0, 3).join(" / ").slice(0, 200)
+          : null);
+    add("build_info",   props.build_info);
+    if (props.is_sleeping !== undefined) {
+      add("is_sleeping", props.is_sleeping ? t("common.yes") : t("common.no"));
+    }
+    if (props.default_generation_settings) {
+      const dg = props.default_generation_settings;
+      const dgKeys = ["temperature", "top_k", "top_p", "min_p",
+                      "repeat_penalty", "n_predict"];
+      for (const k of dgKeys) if (dg[k] !== undefined) add("default." + k, dg[k]);
+    }
+    add("n_ctx_train (model)", meta.n_ctx_train);
+    card.appendChild(el("div", { class: "kv-table" }, rows));
+    card.appendChild(el("div", { class: "sub warn",
+      style: "color: var(--warn);"
+    }, t("config.effective_note")));
+  }
+}
+
+function renderLoraCard() {
+  const sec = $("#lora-section");
+  sec.innerHTML = "";
+  const adapters = Array.isArray(state.loraAdapters) ? state.loraAdapters : [];
+  const card = el("div", { class: "card full" }, [
+    el("h2", null, t("lora.title")),
+  ]);
+  sec.appendChild(card);
+  if (!adapters.length) {
+    card.appendChild(el("div", { class: "sub" }, t("lora.empty")));
+    return;
+  }
+  const tbl = el("div", { class: "kv-table" }, [
+    el("div", { class: "k" }, t("lora.id")),
+    el("div", { class: "k" }, t("lora.path")),
+    el("div", { class: "k" }, t("lora.scale")),
+  ]);
+  /* shift to a 3-column layout */
+  tbl.style.gridTemplateColumns = "max-content 1fr max-content";
+  for (const a of adapters) {
+    tbl.appendChild(el("div", { class: "v" }, String(a.id)));
+    tbl.appendChild(el("div", { class: "v" }, String(a.path || "—")));
+    tbl.appendChild(el("div", { class: "v" }, fmtParam(a.scale)));
+  }
+  card.appendChild(tbl);
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ *  Router: switching active model. Updates URL (?model=) so the view
+ *  is shareable, restarts pollers so subsequent GETs use the new model,
+ *  and re-renders the model section.
+ * ──────────────────────────────────────────────────────────────────── */
+function onModelSelect(id) {
+  state.selectedModel = id || null;
+  const u = new URL(window.location.href);
+  if (id) u.searchParams.set("model", id);
+  else u.searchParams.delete("model");
+  window.history.replaceState({}, "", u.toString());
+  resetHistories();
+  startCorePollers();
+  renderModelsCard();
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ *  Modal / confirmation.
+ *  We never call window.confirm so we can show formatted body and avoid
+ *  the browser-native dialog blocking the event loop.
+ * ──────────────────────────────────────────────────────────────────── */
+function showModal({ title, bodyNode, okLabel, onOk, mutating }) {
+  const back = el("div", { class: "modal-backdrop", role: "dialog", "aria-modal": "true" });
+  let onKey;
+  const close = () => {
+    back.remove();
+    if (onKey) document.removeEventListener("keydown", onKey);
+  };
+  const ok = el("button", { class: "primary", onclick: async () => {
+    ok.disabled = true;
+    try { await onOk(); } finally { close(); }
+  }}, okLabel || t("common.confirm"));
+  const cancel = el("button", { onclick: close }, t("common.cancel"));
+  /* mutating modals get a "this changes server state" warning; informational
+   * modals (like the log help dialog) skip it. */
+  const warnNode = mutating
+    ? el("div", { class: "warn" }, "⚠ " + t(state.mode === "router"
+        ? "modal.warn_router" : "modal.warn_server"))
+    : null;
+  const m = el("div", { class: "modal" }, [
+    el("h3", null, title),
+    el("div", { class: "body" }, bodyNode),
+    warnNode,
+    el("div", { class: "actions" }, [cancel, ok]),
+  ].filter(Boolean));
+  back.appendChild(m);
+  back.addEventListener("click", (e) => { if (e.target === back) close(); });
+  document.body.appendChild(back);
+  /* Esc closes — listen on document so focus position doesn't matter */
+  onKey = (e) => { if (e.key === "Escape") close(); };
+  document.addEventListener("keydown", onKey);
+  ok.focus();
+}
+
+function confirmAction(message, onOk) {
+  showModal({
+    title: t("common.confirm"),
+    bodyNode: el("div", null, message),
+    mutating: true,
+    onOk,
+  });
+}
+
+async function copyToClipboard(text, btn) {
+  try {
+    await navigator.clipboard.writeText(text);
+    if (btn) {
+      const old = btn.textContent;
+      btn.textContent = t("common.copied");
+      setTimeout(() => { btn.textContent = old; }, 1200);
+    }
+  } catch (e) {
+    showBanner("clipboard", e.message || "clipboard error", "warn");
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ *  POST handlers
+ * ──────────────────────────────────────────────────────────────────── */
+async function callLoadOrUnload(path, modelId, kind) {
+  try {
+    await fetchJSON(path, {
+      method: "POST",
+      withModel: false,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: modelId }),
+      timeout: 60_000,
+    });
+    /* refresh /models so status updates */
+    refreshRouterModels();
+  } catch (e) {
+    showBanner("post-" + kind, kind + ": " + e.message);
+  }
+}
+
+async function refreshRouterModels() {
+  if (state.mode !== "router") return;
+  try {
+    const m = await fetchJSON("/models", { withModel: false, timeout: 6000 });
+    const list = Array.isArray(m) ? m : (m && Array.isArray(m.data) ? m.data
+                : (m && Array.isArray(m.models) ? m.models : []));
+    state.models = list;
+    renderModelsCard();
+    renderServerConfigCard();
+    bumpGuidance();
+  } catch (e) {
+    showBanner("models-refresh", "/models: " + e.message, "warn");
+  }
+}
+
+/* Real slot action (replaces the Phase 4 stub). */
+async function slotAction(id, action) {
+  const confirmKey = "slots.confirm." + action;
+  const message = t(confirmKey, { id });
+  const fileNode = el("div", null, [
+    el("div", null, message),
+    action !== "erase" ? el("div", { style: "margin-top: 8px;" }, [
+      "filename: ",
+      el("input", { id: "slot-fname", value: "slot_" + id + ".bin",
+                    style: "min-width: 200px;" }),
+    ]) : null,
+  ].filter(Boolean));
+  showModal({
+    title: t("common.confirm"),
+    bodyNode: fileNode,
+    onOk: async () => {
+      const body = action === "erase" ? null : JSON.stringify({
+        filename: ($("#slot-fname") && $("#slot-fname").value) || ("slot_" + id + ".bin"),
+      });
+      try {
+        await fetchJSON("/slots/" + id + "?action=" + action, {
+          method: "POST",
+          withModel: false,
+          headers: action === "erase" ? {} : { "Content-Type": "application/json" },
+          body,
+          timeout: 30_000,
+        });
+      } catch (e) {
+        showBanner("slot-" + action, "slot " + id + " " + action + ": " + e.message);
+      }
+    },
+  });
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ *  Guidance engine (Phase 7)
+ *
+ *  Each rule inspects the current state and either returns null or a
+ *  {id, severity, title, explain, suggest, context} object. The Active
+ *  suggestions panel collects every triggered rule once per render.
+ *
+ *  Rules that need "sustained" behaviour (kv cache > 0.9 for 30s, etc.)
+ *  use sustained() which tracks an "above-threshold since" timestamp
+ *  per rule id.
+ * ──────────────────────────────────────────────────────────────────── */
+const sustainedSince = Object.create(null);
+function sustained(id, condition, seconds) {
+  const now = Date.now();
+  if (condition) {
+    if (!sustainedSince[id]) sustainedSince[id] = now;
+    return (now - sustainedSince[id]) >= seconds * 1000;
+  }
+  delete sustainedSince[id];
+  return false;
+}
+
+/* Rule order matters only for tie-breaking; final list is sorted by
+ * severity in evaluateGuidance(). */
+const RULES = [
+  /* --- aggregate metrics --- */
+  function ruleSlotsSaturated(s) {
+    /* Real-time saturation: count how many slots are currently
+     * is_processing and compare to total. /slots is a gauge — unlike
+     * llamacpp:n_busy_slots_per_decode which is a lifetime average and
+     * therefore unsuitable for "right now" alerting. */
+    if (!s.slots || !s.slots.length) return null;
+    const total = s.slots.length;
+    const busy = s.slots.filter(function (sl) { return sl.is_processing; }).length;
+    const ratio = busy / total;
+    if (sustained("slots_saturated", ratio >= 0.9, 30)) {
+      return rule("slots_saturated", "warn",
+        { value: busy + " / " + total,
+          busy: busy, total: total, suggested: total + 1 });
+    }
+    return null;
+  },
+  function ruleDeferred(s) {
+    const v = s.metrics && s.metrics["llamacpp:requests_deferred"];
+    if (v == null) return null;
+    const total = (s.slots && s.slots.length) ||
+                  (s.props && s.props.total_slots) || null;
+    if (sustained("deferred", v > 0, 5)) {
+      return rule("deferred", v >= 5 ? "bad" : "warn",
+        { value: String(v), deferred: v, total: total,
+          suggested: total ? total + 1 : null });
+    }
+    return null;
+  },
+  function ruleIdleSlow(s) {
+    /* Relative-to-baseline: is current generation throughput < 50% of
+     * the recent (60s) median, with at least one slot busy?
+     * Absolute thresholds (e.g. <5 tok/s) misfire on CPU rigs where 5
+     * tok/s is normal, so we compare against the server's own recent
+     * behaviour instead. */
+    const tps = s.metrics && s.metrics["llamacpp:predicted_tokens_seconds"];
+    const proc = s.metrics && s.metrics["llamacpp:requests_processing"];
+    if (tps == null || !(proc >= 1) || tps <= 0) {
+      sustained("idle_slow", false, 10);
+      return null;
+    }
+    const hist = histories["predicted_tps"] || [];
+    /* need at least 20s of samples to call a "baseline" */
+    if (hist.length < 20) { sustained("idle_slow", false, 10); return null; }
+    const sorted = hist.map(function (p) { return p.v; })
+                       .filter(function (v) { return v > 0; })
+                       .sort(function (a, b) { return a - b; });
+    if (sorted.length < 10) { sustained("idle_slow", false, 10); return null; }
+    const median = sorted[Math.floor(sorted.length / 2)];
+    const drop = tps < median * 0.5;
+    if (sustained("idle_slow", drop, 10)) {
+      return rule("idle_slow", "warn",
+        { value: tps.toFixed(1) + " / " + median.toFixed(1) + " tok/s",
+          current: tps.toFixed(1), baseline: median.toFixed(1) });
+    }
+    return null;
+  },
+  /* --- props-derived --- */
+  function ruleSleeping(s) {
+    if (s.props && s.props.is_sleeping) {
+      return rule("sleeping", "info", { value: t("common.yes") });
+    }
+    return null;
+  },
+  /* --- per-slot sampler hints — emit once per slot, dedup later --- */
+  function ruleSamplerHints(s) {
+    const out = [];
+    for (const sl of s.slots) {
+      if (!sl.is_processing) continue;
+      const p = sl.params || {};
+      if (p.temperature === 0) {
+        out.push(rule("temp_zero", "info", { value: "slot " + sl.id }));
+      } else if (typeof p.temperature === "number" && p.temperature > 1.5) {
+        out.push(rule("temp_high", "warn",
+          { value: "slot " + sl.id + " — " + p.temperature.toFixed(2) }));
+      }
+      if (typeof p.repeat_penalty === "number" && p.repeat_penalty > 1.3) {
+        out.push(rule("repeat_high", "warn",
+          { value: "slot " + sl.id + " — " + p.repeat_penalty.toFixed(2) }));
+      }
+      if (p.mirostat && p.mirostat !== 0) {
+        out.push(rule("mirostat", "info", { value: "slot " + sl.id }));
+      }
+      if (typeof p.dry_multiplier === "number" && p.dry_multiplier > 0) {
+        out.push(rule("dry", "info", { value: "slot " + sl.id }));
+      }
+    }
+    /* dedup by rule id — a single suggestion stands in for all slots */
+    const seen = new Set(); const uniq = [];
+    for (const r of out) {
+      if (seen.has(r.id)) continue;
+      seen.add(r.id); uniq.push(r);
+    }
+    return uniq.length ? uniq : null;
+  },
+  /* --- LoRA --- */
+  function ruleLoraScale(s) {
+    const out = [];
+    for (const a of (s.loraAdapters || [])) {
+      if (typeof a.scale === "number" && a.scale > 1) {
+        out.push(rule("lora_scale", "warn",
+          { value: "id " + a.id + " — " + a.scale.toFixed(2) }));
+        break;
+      }
+    }
+    return out.length ? out : null;
+  },
+  /* --- router status --- */
+  function ruleFailedModels(s) {
+    if (s.mode !== "router") return null;
+    const failed = (s.models || []).filter((m) => m.status && m.status.value === "failed");
+    if (!failed.length) return null;
+    const ec = failed[0].status && failed[0].status.exit_code;
+    return rule("failed_model", "bad",
+      { value: failed.length + " — " + failed[0].id + (ec != null ? " (exit " + ec + ")" : "") });
+  },
+  function ruleLoadingLong(s) {
+    if (s.mode !== "router") return null;
+    const loading = (s.models || []).find((m) => m.status && m.status.value === "loading");
+    if (sustained("loading_long", !!loading, 60)) {
+      return rule("loading_long", "warn", { value: loading.id });
+    }
+    return null;
+  },
+];
+
+/* `{key}` placeholders inside i18n strings are substituted from ctx so
+ * suggestions can quote actual numbers ("--parallel from 4 to 5")
+ * instead of static text. Missing keys are left as-is so an outdated
+ * translation doesn't break rendering. */
+function fillTemplate(str, ctx) {
+  if (!ctx) return str;
+  return String(str).replace(/\{(\w+)\}/g, function (_, k) {
+    return ctx[k] != null ? String(ctx[k]) : "{" + k + "}";
+  });
+}
+
+function rule(id, severity, ctx) {
+  return {
+    id,
+    severity,
+    title:   fillTemplate(t("rule." + id + ".title"),   ctx),
+    explain: fillTemplate(t("rule." + id + ".explain"), ctx),
+    suggest: fillTemplate(t("rule." + id + ".suggest"), ctx),
+    context: ctx || null,
+  };
+}
+
+/* Rules are silenced for the first WARMUP_SECONDS after boot — without
+ * this, sparse early metrics produce false positives (e.g. the first
+ * /slots reply already shows is_processing=true on a single warmup
+ * request and we'd flag "saturated"). */
+const WARMUP_SECONDS = 10;
+function inWarmup() {
+  return !state.bootedAt ||
+         (Date.now() - state.bootedAt) < WARMUP_SECONDS * 1000;
+}
+
+const SEVERITY_RANK = { bad: 0, warn: 1, info: 2 };
+
+function evaluateGuidance() {
+  if (inWarmup()) return [];
+  const out = [];
+  for (const fn of RULES) {
+    let r;
+    try { r = fn(state); } catch (_e) { continue; }
+    if (!r) continue;
+    if (Array.isArray(r)) out.push.apply(out, r);
+    else out.push(r);
+  }
+  /* Sort so the most actionable items surface first. Stable-ish on ties. */
+  out.sort(function (a, b) {
+    return (SEVERITY_RANK[a.severity] || 9) - (SEVERITY_RANK[b.severity] || 9);
+  });
+  return out;
+}
+
+function renderGuidance() {
+  const sec = $("#guidance-section");
+  if (!sec) return;
+  if (sec.dataset.built !== "1") {
+    sec.dataset.built = "1";
+    sec.innerHTML = "";
+    sec.appendChild(el("div", { class: "card full" }, [
+      el("h2", null, t("guidance.title")),
+      el("div", { class: "guidance-list", id: "guidance-list" }),
+    ]));
+  }
+  const list = $("#guidance-list");
+  const suggestions = evaluateGuidance();
+  list.innerHTML = "";
+  if (!suggestions.length) {
+    /* "No suggestions" can mean two very different things:
+     *   1. Server is reachable and looks healthy → keep the existing copy.
+     *   2. We can't reach the server at all → stop pretending it's healthy.
+     * Distinguish by whether anything came back. */
+    const noData = !state.props && !state.metrics
+                   && (!state.slots || !state.slots.length);
+    list.appendChild(el("div", { class: "sub" },
+      t(noData ? "guidance.no_data" : "guidance.empty")));
+    return;
+  }
+  for (const s of suggestions) {
+    const item = el("div", { class: "suggestion severity-" + s.severity }, [
+      el("div", { class: "head" }, [
+        el("span", { class: "sev-badge " + s.severity },
+          t("guidance.severity." + s.severity)),
+        el("span", null, s.title),
+        s.context && s.context.value
+          ? el("span", { class: "sub" }, "— " + s.context.value)
+          : null,
+      ].filter(Boolean)),
+      el("div", { class: "body" }, [
+        el("div", null, s.explain),
+        el("div", { style: "margin-top: 4px;" }, [
+          el("strong", null, "→ "),
+          s.suggest,
+        ]),
+      ]),
+    ]);
+    list.appendChild(item);
+  }
+}
+
+/* Re-evaluate guidance whenever the data that feeds it changes. */
+function bumpGuidance() {
+  /* Throttle so a fast metrics poll doesn't spam re-render. */
+  if (bumpGuidance._t) return;
+  bumpGuidance._t = setTimeout(() => {
+    bumpGuidance._t = null;
+    renderGuidance();
+  }, 250);
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ *  Log tail (Phase 6)
+ *
+ *  Mechanism: HTTP Range against a static file. The dashboard cannot
+ *  read local files, so this only works when:
+ *    1. llama-server's stdout is redirected to a file
+ *       (e.g. `... > ./public/server.log 2>&1`)
+ *    2. that file is served from the same origin
+ *    3. the HTTP server supports Range (cpp-httplib + nginx do)
+ *  If HEAD on the path fails (404, CORS, etc.) the panel is hidden.
+ * ──────────────────────────────────────────────────────────────────── */
+const LOG_TAIL_BYTES = 65536;
+const LOG_MAX_LINES = 2000;
+const logState = {
+  url: null,
+  enabled: false,
+  totalSize: 0,
+  lastModified: null,
+  lines: [],
+  follow: true,
+  filter: "",
+};
+
+function logUrl() {
+  /* honor explicit ?log=, default to ./server.log relative to the
+   * current page (NOT the API server — that wouldn't be reachable).
+   * Same-origin only: a shared link with ?log=https://attacker… would
+   * otherwise pull cross-origin from the viewer's browser. */
+  const p = state.params.log;
+  if (p === "") return null;       /* explicitly disabled */
+  const path = (p == null || p === undefined) ? "server.log" : p;
+  try {
+    const u = new URL(path, window.location.href);
+    if (u.origin !== window.location.origin) return null;
+    return u.toString();
+  } catch (_e) { return null; }
+}
+
+async function detectLog() {
+  const url = logUrl();
+  if (!url) { logState.enabled = false; return false; }
+  try {
+    const res = await fetch(url, { method: "HEAD", cache: "no-store" });
+    if (res.status === 204) return false;
+    if (!res.ok) return false;
+    /* Accept-Ranges: bytes is what makes tail possible. Fall back to
+     * "total bytes < tail size" if the header is missing — at least we
+     * can show the whole file. */
+    const accepts = (res.headers.get("Accept-Ranges") || "").toLowerCase();
+    const size = parseInt(res.headers.get("Content-Length") || "0", 10);
+    if (accepts.indexOf("bytes") === -1 && (!size || size > LOG_TAIL_BYTES * 4)) {
+      return false;
+    }
+    logState.url = url;
+    logState.enabled = true;
+    logState.totalSize = isFinite(size) ? size : 0;
+    return true;
+  } catch (_e) { return false; }
+}
+
+async function fetchLogTail() {
+  if (!logState.enabled || !logState.url) return null;
+  const headers = { "Cache-Control": "no-cache" };
+  /* Negative Range: read the last N bytes (no need to track size). */
+  headers["Range"] = "bytes=-" + LOG_TAIL_BYTES;
+  const res = await fetch(logState.url, { headers, cache: "no-store" });
+  if (!res.ok && res.status !== 206) {
+    throw new Error("HTTP " + res.status);
+  }
+  const lm = res.headers.get("Last-Modified");
+  if (lm && lm === logState.lastModified) return null;       /* unchanged */
+  logState.lastModified = lm;
+  return await res.text();
+}
+
+/* Minimal ANSI SGR renderer — color/bold codes only, anything else
+ * is dropped. Returns a fragment of <span>s. */
+function ansiToFragment(line) {
+  const frag = document.createDocumentFragment();
+  const parts = line.split(/\x1b\[([\d;]*)m/);
+  /* parts: [text, code, text, code, text, ...] */
+  let activeClasses = [];
+  for (let i = 0; i < parts.length; i++) {
+    if (i % 2 === 0) {
+      if (!parts[i]) continue;
+      if (activeClasses.length === 0) {
+        frag.appendChild(document.createTextNode(parts[i]));
+      } else {
+        const span = document.createElement("span");
+        span.className = activeClasses.join(" ");
+        span.textContent = parts[i];
+        frag.appendChild(span);
+      }
+    } else {
+      const code = parts[i];
+      if (code === "" || code === "0") {
+        activeClasses = [];
+        continue;
+      }
+      const codes = code.split(";").map((s) => parseInt(s, 10));
+      for (const c of codes) {
+        if (c === 0) activeClasses = [];
+        else if (c === 1) activeClasses.push("ansi-bold");
+        else if ((c >= 30 && c <= 37) || (c >= 90 && c <= 97)) {
+          activeClasses = activeClasses.filter((cl) => !cl.match(/^ansi-\d/));
+          activeClasses.push("ansi-" + c);
+        }
+      }
+    }
+  }
+  return frag;
+}
+
+function renderLogLines(replace) {
+  const view = $("#log-view");
+  if (!view) return;
+  if (replace) view.innerHTML = "";
+  const filter = logState.filter.toLowerCase();
+  const start = replace ? 0 : view.childNodes.length;
+  for (let i = start; i < logState.lines.length; i++) {
+    const line = logState.lines[i];
+    const ln = el("span", { class: "ln" });
+    ln.appendChild(ansiToFragment(line));
+    if (filter && line.toLowerCase().indexOf(filter) === -1) {
+      ln.classList.add("hidden");
+    }
+    view.appendChild(ln);
+  }
+  if (logState.follow) view.scrollTop = view.scrollHeight;
+}
+
+function applyLogPayload(text) {
+  if (text == null) return;
+  /* The first line returned by a negative Range is likely truncated — drop it. */
+  const lines = text.split(/\r?\n/);
+  if (lines.length > 1) lines.shift();
+  /* trailing empty line from "...\n" */
+  while (lines.length && lines[lines.length - 1] === "") lines.pop();
+  logState.lines = lines.slice(-LOG_MAX_LINES);
+  renderLogLines(true);
+}
+
+function ensureLogSection() {
+  const sec = $("#log-section");
+  if (sec.dataset.built === "1") return;
+  sec.dataset.built = "1";
+  sec.innerHTML = "";
+  if (!logState.enabled) return;
+  const card = el("div", { class: "card full log-card" }, [
+    el("h2", null, [
+      t("log.title") + " ",
+      el("button", { class: "info-btn", title: t("log.setup_help_title"),
+                     onclick: () => showLogHelp() }, "ⓘ"),
+    ]),
+    el("div", { class: "log-toolbar" }, [
+      el("label", null, [
+        el("input", { type: "checkbox", id: "log-follow", checked: "checked",
+                      onchange: () => { logState.follow = $("#log-follow").checked; }}),
+        " " + t("log.follow"),
+      ]),
+      el("input", { type: "search", placeholder: t("log.search"),
+                    oninput: (e) => { logState.filter = e.target.value; renderLogLines(true); }}),
+      el("span", { class: "sub", id: "log-status" }, ""),
+    ]),
+    el("div", { class: "log-view", id: "log-view",
+                onscroll: (e) => {
+                  /* user scrolled away from bottom → stop autoscrolling */
+                  const v = e.target;
+                  const atBottom = (v.scrollTop + v.clientHeight + 4) >= v.scrollHeight;
+                  if (!atBottom && logState.follow) {
+                    logState.follow = false;
+                    const cb = $("#log-follow"); if (cb) cb.checked = false;
+                  }
+                }}, t("log.empty")),
+  ]);
+  sec.appendChild(card);
+}
+
+function showLogHelp() {
+  showModal({
+    title: t("log.setup_help_title"),
+    bodyNode: el("div", null, t("log.setup_help")),
+    okLabel: t("common.close"),
+    onOk: () => {},
+  });
+}
+
+async function startLogPoller() {
+  const ok = await detectLog();
+  if (!ok) {
+    logState.enabled = false;
+    return;
+  }
+  ensureLogSection();
+  /* immediate first fetch */
+  try {
+    const txt = await fetchLogTail();
+    if (txt != null) applyLogPayload(txt);
+  } catch (e) {
+    showBanner("log-init", "log: " + e.message, "warn");
+  }
+  startPoller("log", 5000, async () => {
+    const txt = await fetchLogTail();
+    if (txt != null) applyLogPayload(txt);
+  });
+}
+
+/* Periodic refresh of router /models and /lora-adapters */
+function startSecondaryPollers() {
+  if (state.mode === "router") {
+    startPoller("models-refresh", Math.max(state.params.poll * 5, 5000), async () => {
+      await refreshRouterModels();
+    });
+  }
+  startPoller("lora", Math.max(state.params.poll * 10, 10_000), async () => {
+    try {
+      const data = await fetchJSON("/lora-adapters", { withModel: true, timeout: 6000 });
+      state.loraAdapters = Array.isArray(data) ? data : [];
+      renderLoraCard();
+      bumpGuidance();
+    } catch (e) {
+      if (e.status === 404) { state.loraAdapters = []; renderLoraCard(); return; }
+      throw e;
+    }
+  });
+  startPoller("props-refresh", 15_000, async () => {
+    try {
+      const p = await fetchJSON("/props", { withModel: true, timeout: 6000 });
+      state.props = p;
+      /* Server came back to life mid-session — flip the LED to truth. */
+      if (!state.healthy) {
+        state.healthy = true;
+        if (!state.paused) setStatus("online", "header.status.online");
+      }
+      renderModelsCard();
+      renderServerConfigCard();
+      bumpGuidance();
+    } catch (_e) { /* non-fatal */ }
+  });
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ *  Prometheus text parser. We only need plain numeric metrics — no
+ *  histograms or labelled series — so a minimal regex parser is fine.
+ *  Lines look like:    metric_name{label="x"} 42.0
+ *  We strip comments, ignore label sets, and keep the last value seen.
+ * ──────────────────────────────────────────────────────────────────── */
+function parsePrometheus(text) {
+  const out = {};
+  const lines = text.split(/\r?\n/);
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    /* metric name = up to first '{' or whitespace */
+    const m = line.match(/^([A-Za-z_:][\w:]*)(\{[^}]*\})?\s+(-?[\d.eE+\-]+|NaN|\+?Inf|-Inf)/);
+    if (!m) continue;
+    const name = m[1];
+    const v = m[3];
+    let n;
+    if (v === "NaN") n = NaN;
+    else if (v === "+Inf" || v === "Inf") n = Infinity;
+    else if (v === "-Inf") n = -Infinity;
+    else n = parseFloat(v);
+    out[name] = n;
+  }
+  return out;
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ *  Time series buffers — fixed-length ring of {t, v} samples per metric.
+ *  60 s window at 1 s sampling = ~60 points. Enough for a sparkline.
+ * ──────────────────────────────────────────────────────────────────── */
+const HISTORY_SECONDS = 60;
+const histories = Object.create(null);
+function pushHistory(key, v) {
+  let h = histories[key];
+  if (!h) h = histories[key] = [];
+  const now = Date.now();
+  h.push({ t: now, v });
+  const cutoff = now - HISTORY_SECONDS * 1000;
+  while (h.length && h[0].t < cutoff) h.shift();
+  return h;
+}
+function resetHistories() {
+  for (const k in histories) delete histories[k];
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ *  SVG sparkline. No external deps. Returns an <svg> node.
+ *  - data: array of {t, v}
+ *  - opts: { min, max, height }
+ * ──────────────────────────────────────────────────────────────────── */
+function sparkline(data, opts) {
+  const W = 200, H = (opts && opts.height) || 36;
+  const pad = 1;
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+  svg.setAttribute("preserveAspectRatio", "none");
+  if (!data || data.length < 2) {
+    /* render an empty axis so the layout doesn't jump */
+    const g = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    g.setAttribute("x1", 0); g.setAttribute("x2", W);
+    g.setAttribute("y1", H - pad); g.setAttribute("y2", H - pad);
+    g.setAttribute("class", "spark-grid");
+    svg.appendChild(g);
+    return svg;
+  }
+  /* x scale = real time so gaps/holes show as gaps */
+  const t0 = data[0].t, t1 = data[data.length - 1].t;
+  const span = Math.max(1, t1 - t0);
+  let vMin = (opts && opts.min !== undefined) ? opts.min : Infinity;
+  let vMax = (opts && opts.max !== undefined) ? opts.max : -Infinity;
+  if (opts && opts.min === undefined) for (const p of data) if (p.v < vMin) vMin = p.v;
+  if (opts && opts.max === undefined) for (const p of data) if (p.v > vMax) vMax = p.v;
+  if (!isFinite(vMin)) vMin = 0;
+  if (!isFinite(vMax)) vMax = 1;
+  if (vMax - vMin < 1e-9) { vMax = vMin + 1; }
+  const sx = (t) => ((t - t0) / span) * W;
+  const sy = (v) => H - pad - ((v - vMin) / (vMax - vMin)) * (H - 2 * pad);
+  const points = data.map((p) => sx(p.t).toFixed(1) + "," + sy(p.v).toFixed(1)).join(" ");
+  /* baseline rule */
+  const base = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  base.setAttribute("x1", 0); base.setAttribute("x2", W);
+  base.setAttribute("y1", H - pad); base.setAttribute("y2", H - pad);
+  base.setAttribute("class", "spark-grid");
+  svg.appendChild(base);
+  /* filled area */
+  const area = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+  area.setAttribute("points",
+    "0," + (H - pad) + " " + points + " " + W + "," + (H - pad));
+  area.setAttribute("class", "spark-area");
+  svg.appendChild(area);
+  /* line */
+  const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+  line.setAttribute("points", points);
+  line.setAttribute("class", "spark-line");
+  svg.appendChild(line);
+  return svg;
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ *  Metrics rendering. We build a fixed set of cards once, then update
+ *  values + sparkline in place to avoid layout jitter.
+ *
+ *  Metrics emitted by current llama.cpp master (/metrics endpoint):
+ *    counter: prompt_tokens_total, prompt_seconds_total,
+ *             tokens_predicted_total, tokens_predicted_seconds_total,
+ *             n_decode_total, n_tokens_max, n_busy_slots_per_decode
+ *    gauge:   prompt_tokens_seconds, predicted_tokens_seconds,
+ *             requests_processing, requests_deferred
+ *
+ *  kv_cache_usage_ratio and kv_cache_tokens were removed upstream — we
+ *  derive nothing from them here.
+ * ──────────────────────────────────────────────────────────────────── */
+const METRIC_CARDS = [
+  { id: "predicted_tps", titleKey: "metrics.gen_tps",
+    metric: "llamacpp:predicted_tokens_seconds", unit: "tok/s", min: 0,
+    help: "Current generation throughput reported by llama.cpp. It measures how many output tokens are being decoded per second." },
+  { id: "prompt_tps",    titleKey: "metrics.prompt_tps",
+    metric: "llamacpp:prompt_tokens_seconds",    unit: "tok/s", min: 0,
+    help: "Current prompt-processing throughput. This is the rate llama.cpp is ingesting/evaluating prompt tokens before generation." },
+  { id: "processing",    titleKey: "metrics.processing",
+    metric: "llamacpp:requests_processing",      unit: "",      min: 0,
+    help: "Number of requests currently being processed by llama.cpp. This should roughly track active slots." },
+  { id: "deferred",      titleKey: "metrics.deferred",
+    metric: "llamacpp:requests_deferred",        unit: "",      min: 0,
+    warnAt: 1, badAt: 5,
+    help: "Number of requests waiting because no slot is currently available. Sustained values above zero indicate queueing latency." },
+  { id: "busy_slots",    titleKey: "metrics.busy_slots",
+    metric: "llamacpp:n_busy_slots_per_decode",  unit: "",      min: 0,
+    help: "Average number of busy slots participating in decode calls. It is a lifetime-style metric, not an exact live busy-slot count." },
+  { id: "n_tokens_max",  titleKey: "metrics.n_tokens_max",
+    metric: "llamacpp:n_tokens_max",             unit: "tok",   min: 0,
+    help: "Largest token batch/working set observed by llama.cpp decode metrics. It is useful as a rough pressure signal, not context size." },
+  { id: "prompt_total",  titleKey: "metrics.prompt_total",
+    metric: "llamacpp:prompt_tokens_total",      unit: "tok",   min: 0, cumulative: true,
+    help: "Cumulative number of prompt tokens processed since the llama.cpp server started." },
+  { id: "predicted_total", titleKey: "metrics.predicted_total",
+    metric: "llamacpp:tokens_predicted_total",   unit: "tok",   min: 0, cumulative: true,
+    help: "Cumulative number of generated output tokens since the llama.cpp server started." },
+  { id: "decode_total", titleKey: "metrics.decode_total",
+    metric: "llamacpp:n_decode_total",           unit: "",      min: 0, cumulative: true,
+    help: "Cumulative number of llama_decode() calls. This is a low-level decode workload counter." },
+  { id: "prompt_seconds_total", titleKey: "metrics.prompt_seconds_total",
+    metric: "llamacpp:prompt_seconds_total",     unit: "s",     min: 0, cumulative: true,
+    help: "Cumulative wall time spent processing prompts since server start." },
+  { id: "predicted_seconds_total", titleKey: "metrics.predicted_seconds_total",
+    metric: "llamacpp:tokens_predicted_seconds_total", unit: "s", min: 0, cumulative: true,
+    help: "Cumulative wall time spent generating output tokens since server start." },
+];
+
+function fmtNumber(n, opts) {
+  if (n === undefined || n === null || !isFinite(n)) return "—";
+  const o = opts || {};
+  if (o.percent) return (n * 100).toFixed(n < 0.1 ? 2 : 1);
+  if (n >= 1e9) return (n / 1e9).toFixed(2) + "G";
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + "M";
+  if (n >= 1e3) return (n / 1e3).toFixed(2) + "k";
+  if (Number.isInteger(n)) return String(n);
+  if (n >= 100) return n.toFixed(0);
+  if (n >= 10)  return n.toFixed(1);
+  return n.toFixed(2);
+}
+
+function ensureMetricCards() {
+  const sec = $("#metrics-section");
+  if (sec.dataset.built === "1") return;
+  sec.dataset.built = "1";
+  sec.innerHTML = "";
+  for (const c of METRIC_CARDS) {
+    const card = el("div", { class: "card metric-card", id: "metric-" + c.id }, [
+      el("div", { class: "metric-title" }, [
+        el("h2", null, t(c.titleKey)),
+        el("button", {
+          class: "info-btn",
+          type: "button",
+          title: c.help,
+          "aria-label": t(c.titleKey) + ": " + c.help,
+          onclick: () => showMetricHelp(c),
+        }, "?"),
+      ]),
+      el("div", { class: "row" }, [
+        el("div", { class: "value", id: "metric-" + c.id + "-value" }, "—"),
+        el("div", { class: "unit" }, c.unit || ""),
+      ]),
+      c.percent
+        ? el("div", { class: "pct-bar", id: "metric-" + c.id + "-bar" },
+            el("span", { style: "width: 0%" }))
+        : null,
+      el("div", { class: "spark", id: "metric-" + c.id + "-spark" }),
+    ]);
+    sec.appendChild(card);
+  }
+}
+
+function showMetricHelp(card) {
+  showModal({
+    title: t(card.titleKey),
+    bodyNode: el("div", null, card.help),
+    okLabel: t("common.close"),
+    onOk: () => {},
+  });
+}
+
+function renderMetricsDisabled() {
+  ensureMetricCards();
+  for (const c of METRIC_CARDS) {
+    const card = $("#metric-" + c.id);
+    if (!card) continue;
+    card.classList.add("disabled");
+    $("#metric-" + c.id + "-value").textContent = "—";
+    $("#metric-" + c.id + "-spark").innerHTML = "";
+  }
+  showBanner("metrics-disabled", t("error.metrics_disabled"), "warn");
+}
+
+function renderMetrics(parsed) {
+  ensureMetricCards();
+  clearBanner("metrics-disabled");
+  for (const c of METRIC_CARDS) {
+    const v = parsed[c.metric];
+    pushHistory(c.id, isFinite(v) ? v : 0);
+
+    const card = $("#metric-" + c.id);
+    card.classList.remove("warn", "bad", "disabled");
+    if (c.warnAt !== undefined && v >= c.warnAt) card.classList.add("warn");
+    if (c.badAt  !== undefined && v >= c.badAt)  { card.classList.remove("warn"); card.classList.add("bad"); }
+
+    $("#metric-" + c.id + "-value").textContent =
+      fmtNumber(v, { percent: c.percent });
+
+    if (c.percent) {
+      const bar = $("#metric-" + c.id + "-bar");
+      const span = bar.querySelector("span");
+      const pct = Math.max(0, Math.min(100, (v || 0) * 100));
+      span.style.width = pct.toFixed(1) + "%";
+      bar.classList.remove("warn", "bad");
+      if (c.warnAt !== undefined && v >= c.warnAt) bar.classList.add("warn");
+      if (c.badAt  !== undefined && v >= c.badAt)  { bar.classList.remove("warn"); bar.classList.add("bad"); }
+    }
+
+    const sparkHost = $("#metric-" + c.id + "-spark");
+    sparkHost.innerHTML = "";
+    sparkHost.appendChild(sparkline(histories[c.id], {
+      min: c.min !== undefined ? c.min : undefined,
+      max: c.max !== undefined ? c.max : undefined,
+    }));
+  }
+  state.metrics = parsed;
+  state.lastUpdate = Date.now();
+  bumpGuidance();
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ *  Slots — per-slot card with sampling parameters expander.
+ *  Slot object shape (subset we use):
+ *    id, id_task, n_ctx, is_processing, next_token { n_decoded, n_remain }
+ *    params: { temperature, top_k, top_p, min_p, repeat_penalty,
+ *              presence_penalty, frequency_penalty, mirostat,
+ *              mirostat_tau, mirostat_eta, dry_multiplier, dry_base,
+ *              dry_allowed_length, samplers, seed, n_predict, lora, ... }
+ * ──────────────────────────────────────────────────────────────────── */
+
+/* Sampling-parameter keys we surface in the expander, in display order. */
+const SAMPLER_KEYS = [
+  "temperature", "dynatemp_range", "dynatemp_exponent",
+  "top_k", "top_p", "min_p", "typical_p",
+  "xtc_probability", "xtc_threshold",
+  "repeat_last_n", "repeat_penalty",
+  "presence_penalty", "frequency_penalty",
+  "dry_multiplier", "dry_base", "dry_allowed_length", "dry_penalty_last_n",
+  "mirostat", "mirostat_tau", "mirostat_eta",
+  "n_predict", "n_keep", "n_discard", "max_tokens",
+  "ignore_eos", "stream", "n_probs", "min_keep",
+  "samplers", "seed", "lora",
+  "speculative.n_max", "speculative.n_min", "speculative.p_min",
+];
+
+function getDeep(obj, path) {
+  const parts = path.split(".");
+  let cur = obj;
+  for (const p of parts) {
+    if (cur == null) return undefined;
+    cur = cur[p];
+  }
+  return cur;
+}
+
+function fmtParam(v) {
+  if (v === undefined || v === null) return "—";
+  if (typeof v === "number") {
+    if (Number.isInteger(v)) return String(v);
+    return v.toFixed(3).replace(/\.?0+$/, "") || "0";
+  }
+  if (typeof v === "boolean") return v ? t("common.yes") : t("common.no");
+  if (Array.isArray(v)) return v.length === 0 ? t("common.empty") : v.map(fmtParam).join(", ");
+  if (typeof v === "object") {
+    try { return JSON.stringify(v); } catch (_) { return String(v); }
+  }
+  return String(v);
+}
+
+function ensureSlotsSection() {
+  const sec = $("#slots-section");
+  if (sec.dataset.built === "1") return;
+  sec.dataset.built = "1";
+  sec.innerHTML = "";
+  sec.appendChild(el("div", { class: "card full" }, [
+    el("h2", null, t("slots.title")),
+    el("div", { class: "slot-grid", id: "slot-grid" }),
+    el("div", { class: "sub", id: "slots-empty",
+                style: "display: none;", "data-i18n": "slots.disabled" }, t("slots.disabled")),
+  ]));
+}
+
+function renderSlotsDisabled() {
+  ensureSlotsSection();
+  $("#slot-grid").innerHTML = "";
+  $("#slots-empty").style.display = "";
+  $("#slots-empty").textContent = t("slots.disabled");
+}
+
+function renderSlots(slots) {
+  ensureSlotsSection();
+  $("#slots-empty").style.display = "none";
+  const grid = $("#slot-grid");
+  /* keyed update — keep DOM nodes per slot id, only patch what changed. */
+  const seen = new Set();
+  for (const s of slots) {
+    seen.add(String(s.id));
+    let node = grid.querySelector('[data-slot="' + s.id + '"]');
+    if (!node) {
+      node = makeSlotNode(s);
+      grid.appendChild(node);
+    }
+    updateSlotNode(node, s);
+  }
+  /* drop nodes for slots that vanished (rare, but possible after reload) */
+  $$('[data-slot]', grid).forEach((n) => {
+    if (!seen.has(n.dataset.slot)) n.remove();
+  });
+  /* sort slots by id ascending so the layout is stable */
+  const items = $$('[data-slot]', grid)
+    .sort((a, b) => Number(a.dataset.slot) - Number(b.dataset.slot));
+  for (const n of items) grid.appendChild(n);
+  state.slots = slots;
+  bumpGuidance();
+}
+
+function makeSlotNode(s) {
+  const node = el("div", { class: "slot", data: { slot: String(s.id) } }, [
+    el("div", { class: "slot-head" }, [
+      el("span", { class: "id" }, "slot " + s.id),
+      el("span", { class: "badge", "data-role": "state" }, t("slots.idle")),
+    ]),
+    el("div", { class: "progress", "data-role": "progress" }, [
+      el("div", { class: "pct-bar" }, el("span", { style: "width: 0%" })),
+      el("div", { "data-role": "ratio" }, "—"),
+    ]),
+    el("div", { class: "sub", "data-role": "ctx" }, "—"),
+    el("div", { class: "slot-actions", "data-role": "actions" }, []),
+    el("details", null, [
+      el("summary", null, t("slots.show_params")),
+      el("div", { class: "params", "data-role": "params" }, []),
+    ]),
+  ]);
+  return node;
+}
+
+function updateSlotNode(node, s) {
+  const isActive = !!s.is_processing;
+  node.classList.toggle("active", isActive);
+  node.classList.toggle("idle", !isActive);
+
+  const stateBadge = node.querySelector('[data-role="state"]');
+  stateBadge.textContent = isActive ? t("slots.active") : t("slots.idle");
+  stateBadge.classList.toggle("active", isActive);
+
+  const next = Array.isArray(s.next_token)
+    ? (s.next_token[0] || {})
+    : (s.next_token || {});
+  const nDecoded = num(next.n_decoded, 0);
+  const nRemain  = num(next.n_remain, NaN);
+  const nPredict = num((s.params || {}).n_predict, NaN);
+  const total = isFinite(nPredict) && nPredict > 0
+    ? nPredict
+    : (isFinite(nDecoded + nRemain) ? nDecoded + Math.max(0, nRemain) : 0);
+
+  const pctSpan = node.querySelector('.pct-bar > span');
+  const pct = total > 0 ? Math.max(0, Math.min(100, (nDecoded / total) * 100)) : 0;
+  pctSpan.style.width = pct.toFixed(1) + "%";
+  node.querySelector('[data-role="ratio"]').textContent =
+    isActive ? (nDecoded + " / " + (total || "?")) : "—";
+
+  const ctx = node.querySelector('[data-role="ctx"]');
+  ctx.textContent = t("slots.context_used") + ": " + (s.n_ctx || "?");
+
+  /* params expander — re-render only when open or first time, since it's
+   * cheap enough for ~30 keys. */
+  const params = node.querySelector('[data-role="params"]');
+  if (params) {
+    params.innerHTML = "";
+    const p = s.params || {};
+    for (const k of SAMPLER_KEYS) {
+      const v = getDeep(p, k);
+      if (v === undefined) continue;
+      params.appendChild(el("div", { class: "k" }, k));
+      params.appendChild(el("div", { class: "v" }, fmtParam(v)));
+    }
+    /* show any keys we didn't enumerate, so nothing is hidden */
+    for (const k in p) {
+      if (SAMPLER_KEYS.includes(k)) continue;
+      if (typeof p[k] === "object" && p[k] !== null && !Array.isArray(p[k])) {
+        for (const sub in p[k]) {
+          const fullKey = k + "." + sub;
+          if (SAMPLER_KEYS.includes(fullKey)) continue;
+          params.appendChild(el("div", { class: "k" }, fullKey));
+          params.appendChild(el("div", { class: "v" }, fmtParam(p[k][sub])));
+        }
+      } else {
+        params.appendChild(el("div", { class: "k" }, k));
+        params.appendChild(el("div", { class: "v" }, fmtParam(p[k])));
+      }
+    }
+  }
+
+  /* slot KV actions placeholder — Phase 5 wires the POST handlers. */
+  const actions = node.querySelector('[data-role="actions"]');
+  if (actions && actions.dataset.built !== "1") {
+    actions.dataset.built = "1";
+    actions.appendChild(el("button", {
+      onclick: () => slotAction(s.id, "save"),
+    }, t("slots.actions.save")));
+    actions.appendChild(el("button", {
+      onclick: () => slotAction(s.id, "restore"),
+    }, t("slots.actions.restore")));
+    actions.appendChild(el("button", {
+      onclick: () => slotAction(s.id, "erase"),
+    }, t("slots.actions.erase")));
+  }
+}
+function num(v, fb) { return (typeof v === "number" && isFinite(v)) ? v : fb; }
+
+/* slotAction is defined in Phase 5 (confirm + POST). */
+
+/* Boot wiring → metrics + slots pollers. */
+function startCorePollers() {
+  stopAllPollers();
+  ensureMetricCards();
+  ensureSlotsSection();
+
+  startPoller("metrics", state.params.poll, async () => {
+    try {
+      const txt = await fetchText("/metrics", { withModel: true, timeout: 6000 });
+      renderMetrics(parsePrometheus(txt));
+    } catch (e) {
+      if (e.status === 404 || e.status === 501) renderMetricsDisabled();
+      else throw e;
+    }
+  });
+
+  startPoller("slots", state.params.poll, async () => {
+    try {
+      const data = await fetchJSON("/slots", { withModel: true, timeout: 6000 });
+      const arr = Array.isArray(data) ? data : (data && Array.isArray(data.slots) ? data.slots : []);
+      renderSlots(arr);
+    } catch (e) {
+      if (e.status === 404 || e.status === 501) renderSlotsDisabled();
+      else throw e;
+    }
+  });
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ *  Polish (Phase 9): keyboard shortcuts, last-update ticker.
+ * ──────────────────────────────────────────────────────────────────── */
+document.addEventListener("keydown", (e) => {
+  /* don't steal keys when the user is typing in an input/select/etc. */
+  const tag = (e.target && e.target.tagName) || "";
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag)) return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+  if (e.key === " " || e.code === "Space") {
+    e.preventDefault();
+    setPaused(!state.paused);
+  } else if (e.key === "r" || e.key === "R") {
+    resetHistories();
+    /* repaint sparklines with empty data on next tick */
+    if (state.metrics) renderMetrics(state.metrics);
+  }
+});
+
+function tickLastUpdate() {
+  const node = $("#last-update");
+  if (!node) return;
+  if (!state.lastUpdate) { node.textContent = ""; return; }
+  const ageSec = Math.max(0, Math.round((Date.now() - state.lastUpdate) / 1000));
+  node.textContent = t("header.last_update") + ": " + ageSec + "s";
+}
+setInterval(tickLastUpdate, 1000);
+/* one allowed setInterval — read-only DOM update, no fetch involved,
+ * so the "no setInterval for fetches" rule still holds. */
+
+/* ──────────────────────────────────────────────────────────────────────
+ *  Chat panel — calls POST /v1/chat/completions with streaming SSE.
+ *
+ *  Design notes:
+ *  - History lives only in this module's `chat` state object. There is
+ *    no localStorage by project rule, so reloads wipe the conversation.
+ *  - The markdown renderer below builds DOM directly (createElement +
+ *    textContent). User and server text are NEVER inserted via
+ *    innerHTML — every visible string goes through textContent.
+ *  - Streaming uses fetch + ReadableStream; AbortController lets the
+ *    user cancel a generation mid-flight.
+ * ──────────────────────────────────────────────────────────────────── */
+const CHAT_HISTORY_MAX_TURNS = 40;   /* cap to bound payload + memory */
+const chat = {
+  open: false,
+  messages: [],          /* {role, content, stats?} */
+  systemPrompt: "",
+  inflight: null,        /* AbortController */
+  params: { temperature: 0.7, top_p: 0.95, max_tokens: 512, fanout: 1 },
+};
+
+/* Keep the most recent turns. A turn is one user + one assistant message,
+ * so we cap at 2 * CHAT_HISTORY_MAX_TURNS entries. Drop from the front so
+ * the assistant still sees the most recent context. */
+function trimChatHistory() {
+  const cap = CHAT_HISTORY_MAX_TURNS * 2;
+  if (chat.messages.length > cap) {
+    chat.messages.splice(0, chat.messages.length - cap);
+  }
+}
+
+/* ── Markdown → DOM renderer ────────────────────────────────────────── */
+/* Block grammar handled: ATX headings, fenced code, GFM tables, lists
+ * (-, *, +, 1.), blockquotes, horizontal rules, paragraphs.
+ * Inline grammar: code spans, bold, italic, links (http(s) only). */
+function renderMarkdown(src) {
+  const frag = document.createDocumentFragment();
+  const lines = String(src).split(/\r?\n/);
+  let i = 0;
+
+  const isHr = (l) => /^ {0,3}([-*_])(\s*\1){2,}\s*$/.test(l);
+  const isBlank = (l) => /^\s*$/.test(l);
+
+  while (i < lines.length) {
+    let line = lines[i];
+
+    /* skip blanks */
+    if (isBlank(line)) { i++; continue; }
+
+    /* fenced code block */
+    let m = line.match(/^ {0,3}(```|~~~)(.*)$/);
+    if (m) {
+      const fence = m[1];
+      const lang = m[2].trim();
+      const buf = [];
+      i++;
+      while (i < lines.length && !lines[i].startsWith(fence)) {
+        buf.push(lines[i]); i++;
+      }
+      if (i < lines.length) i++; /* skip closing fence */
+      const pre = el("pre");
+      const code = el("code", lang ? { class: "lang-" + lang.replace(/[^\w-]/g, "") } : null);
+      code.textContent = buf.join("\n");
+      pre.appendChild(code);
+      frag.appendChild(pre);
+      continue;
+    }
+
+    /* horizontal rule */
+    if (isHr(line)) { frag.appendChild(el("hr")); i++; continue; }
+
+    /* ATX heading */
+    m = line.match(/^ {0,3}(#{1,6})\s+(.*?)\s*#*\s*$/);
+    if (m) {
+      const h = el("h" + m[1].length);
+      renderInlineInto(m[2], h);
+      frag.appendChild(h);
+      i++;
+      continue;
+    }
+
+    /* table — needs a delimiter row immediately after a pipe-row */
+    if (line.includes("|") && i + 1 < lines.length &&
+        /^ {0,3}\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/.test(lines[i + 1])) {
+      const headers = splitTableRow(line);
+      const aligns = splitTableRow(lines[i + 1]).map((c) => {
+        const left = /^:/.test(c.trim()), right = /:$/.test(c.trim());
+        if (left && right) return "center";
+        if (right) return "right";
+        if (left) return "left";
+        return null;
+      });
+      i += 2;
+      const rows = [];
+      while (i < lines.length && lines[i].includes("|") && !isBlank(lines[i])) {
+        rows.push(splitTableRow(lines[i]));
+        i++;
+      }
+      const table = el("table");
+      const thead = el("thead");
+      const trh = el("tr");
+      headers.forEach((h, idx) => {
+        const th = el("th", aligns[idx] ? { style: "text-align:" + aligns[idx] } : null);
+        renderInlineInto(h, th);
+        trh.appendChild(th);
+      });
+      thead.appendChild(trh); table.appendChild(thead);
+      const tbody = el("tbody");
+      for (const r of rows) {
+        const tr = el("tr");
+        for (let idx = 0; idx < headers.length; idx++) {
+          const td = el("td", aligns[idx] ? { style: "text-align:" + aligns[idx] } : null);
+          renderInlineInto(r[idx] || "", td);
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      }
+      table.appendChild(tbody);
+      frag.appendChild(table);
+      continue;
+    }
+
+    /* blockquote */
+    if (/^ {0,3}>/.test(line)) {
+      const buf = [];
+      while (i < lines.length && /^ {0,3}>/.test(lines[i])) {
+        buf.push(lines[i].replace(/^ {0,3}>\s?/, ""));
+        i++;
+      }
+      const bq = el("blockquote");
+      const inner = renderMarkdown(buf.join("\n"));
+      bq.appendChild(inner);
+      frag.appendChild(bq);
+      continue;
+    }
+
+    /* list */
+    const liMatch = line.match(/^ {0,3}([-*+]|\d+\.)\s+(.*)$/);
+    if (liMatch) {
+      const ordered = /\d+\./.test(liMatch[1]);
+      const list = el(ordered ? "ol" : "ul");
+      while (i < lines.length) {
+        const lm = lines[i].match(/^ {0,3}([-*+]|\d+\.)\s+(.*)$/);
+        if (!lm) break;
+        const buf = [lm[2]];
+        i++;
+        while (i < lines.length &&
+               !isBlank(lines[i]) &&
+               !/^ {0,3}([-*+]|\d+\.)\s+/.test(lines[i]) &&
+               !/^ {0,3}#{1,6}\s/.test(lines[i]) &&
+               !/^ {0,3}(```|~~~)/.test(lines[i])) {
+          buf.push(lines[i].replace(/^ {1,4}/, ""));
+          i++;
+        }
+        const li = el("li");
+        renderInlineInto(buf.join(" "), li);
+        list.appendChild(li);
+        if (i < lines.length && isBlank(lines[i])) { i++; break; }
+      }
+      frag.appendChild(list);
+      continue;
+    }
+
+    /* paragraph — gather contiguous non-blank, non-block lines */
+    const buf = [line];
+    i++;
+    while (i < lines.length && !isBlank(lines[i]) &&
+           !/^ {0,3}#{1,6}\s/.test(lines[i]) &&
+           !/^ {0,3}(```|~~~)/.test(lines[i]) &&
+           !/^ {0,3}>/.test(lines[i]) &&
+           !/^ {0,3}([-*+]|\d+\.)\s+/.test(lines[i]) &&
+           !isHr(lines[i])) {
+      buf.push(lines[i]); i++;
+    }
+    const p = el("p");
+    renderInlineInto(buf.join("\n"), p);
+    frag.appendChild(p);
+  }
+
+  return frag;
+}
+
+function splitTableRow(line) {
+  let s = line.trim();
+  if (s.startsWith("|")) s = s.slice(1);
+  if (s.endsWith("|"))  s = s.slice(0, -1);
+  /* split on unescaped pipes */
+  const out = []; let cur = "";
+  for (let k = 0; k < s.length; k++) {
+    const c = s[k];
+    if (c === "\\" && s[k + 1] === "|") { cur += "|"; k++; continue; }
+    if (c === "|") { out.push(cur); cur = ""; }
+    else cur += c;
+  }
+  out.push(cur);
+  return out.map((x) => x.trim());
+}
+
+/* Tokenize-and-render inline markdown into `target`. We walk the string
+ * with a small state machine — never use innerHTML. Order matters:
+ * code spans win first (their contents are literal). */
+function renderInlineInto(src, target) {
+  let i = 0; const n = src.length;
+  while (i < n) {
+    const c = src[i];
+    /* inline code */
+    if (c === "`") {
+      const end = src.indexOf("`", i + 1);
+      if (end !== -1) {
+        const code = el("code");
+        code.textContent = src.slice(i + 1, end);
+        target.appendChild(code);
+        i = end + 1; continue;
+      }
+    }
+    /* bold ** ** */
+    if (c === "*" && src[i + 1] === "*") {
+      const end = src.indexOf("**", i + 2);
+      if (end !== -1) {
+        const strong = el("strong");
+        renderInlineInto(src.slice(i + 2, end), strong);
+        target.appendChild(strong);
+        i = end + 2; continue;
+      }
+    }
+    /* italic * * or _ _ */
+    if ((c === "*" || c === "_") && src[i + 1] !== c) {
+      const end = src.indexOf(c, i + 1);
+      if (end !== -1 && /\S/.test(src.slice(i + 1, end))) {
+        const em = el("em");
+        renderInlineInto(src.slice(i + 1, end), em);
+        target.appendChild(em);
+        i = end + 1; continue;
+      }
+    }
+    /* link [text](url) — only http(s) URLs are honored, others dropped to text */
+    if (c === "[") {
+      const close = src.indexOf("]", i + 1);
+      if (close !== -1 && src[close + 1] === "(") {
+        const paren = src.indexOf(")", close + 2);
+        if (paren !== -1) {
+          const url = src.slice(close + 2, paren).trim();
+          const safe = /^https?:\/\//i.test(url);
+          if (safe) {
+            const a = el("a", { href: url, target: "_blank", rel: "noopener noreferrer" });
+            renderInlineInto(src.slice(i + 1, close), a);
+            target.appendChild(a);
+            i = paren + 1; continue;
+          }
+        }
+      }
+    }
+    /* line break (two trailing spaces + \n) */
+    if (c === "\n") {
+      target.appendChild(document.createTextNode("\n"));
+      i++; continue;
+    }
+    /* plain text run — find next markdown trigger */
+    const next = nextInlineTrigger(src, i);
+    target.appendChild(document.createTextNode(src.slice(i, next)));
+    i = next;
+  }
+}
+
+function nextInlineTrigger(src, from) {
+  for (let k = from + 1; k < src.length; k++) {
+    const c = src[k];
+    if (c === "`" || c === "*" || c === "_" || c === "[" || c === "\n") return k;
+  }
+  return src.length;
+}
+
+/* ── Chat panel rendering ──────────────────────────────────────────── */
+function renderChatPanel() {
+  const sec = $("#chat-section");
+  if (!sec) return;
+  /* Build once; later updates touch only message list */
+  if (sec.dataset.built === "1") return;
+  sec.dataset.built = "1";
+
+  const head = el("div", { class: "chat-head", role: "button",
+                            "aria-expanded": String(chat.open),
+                            onclick: toggleChat,
+                            onkeydown: (e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault(); toggleChat();
+                              }
+                            },
+                            tabindex: "0" }, [
+    el("h2", null, t("chat.title")),
+    el("span", { class: "pill", id: "chat-toggle-pill" },
+       chat.open ? t("chat.collapse") : t("chat.expand")),
+    el("span", { class: "grow" }),
+    el("span", { class: "chat-typing", id: "chat-stats" }, ""),
+  ]);
+
+  const msgs = el("div", { class: "chat-msgs", id: "chat-msgs", role: "log",
+                            "aria-live": "polite" });
+  if (chat.params && state.params.prompt) {
+    /* honor ?prompt= by prefilling input — no auto-send to avoid surprises */
+  }
+  msgs.appendChild(el("div", { class: "chat-empty", id: "chat-empty" },
+                       t("chat.empty")));
+
+  const ta = el("textarea", {
+    id: "chat-input",
+    placeholder: t("chat.placeholder"),
+    rows: "1",
+    "aria-label": t("chat.placeholder"),
+    onkeydown: (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault(); sendChat();
+      }
+    },
+    oninput: (e) => {
+      const tEl = e.target;
+      tEl.style.height = "auto";
+      tEl.style.height = Math.min(tEl.scrollHeight, 200) + "px";
+    },
+  });
+  if (state.params.prompt) ta.value = state.params.prompt;
+
+  const sendBtn = el("button", { id: "chat-send", class: "primary",
+                                  onclick: sendChat,
+                                  "aria-label": t("chat.send") },
+                     t("chat.send"));
+  const stopBtn = el("button", { id: "chat-stop", class: "danger",
+                                  onclick: stopChat,
+                                  "aria-label": t("chat.stop"),
+                                  hidden: true },
+                     t("chat.stop"));
+  const inputRow = el("div", { class: "chat-input-row", id: "chat-input-row",
+                                hidden: !chat.open },
+                      [ta, sendBtn, stopBtn]);
+
+  const main = el("div", { class: "chat-main" }, [msgs, inputRow]);
+
+  /* Side panel — params */
+  const sysTa = el("textarea", { id: "chat-system",
+                                  placeholder: t("chat.system_placeholder"),
+                                  rows: "3",
+                                  oninput: (e) => { chat.systemPrompt = e.target.value; } });
+  const tempRange = paramSlider("chat-p-temp", "chat.temperature",
+                                 chat.params.temperature, 0, 2, 0.05,
+                                 (v) => chat.params.temperature = v);
+  const topPRange = paramSlider("chat-p-topp", "chat.top_p",
+                                 chat.params.top_p, 0, 1, 0.01,
+                                 (v) => chat.params.top_p = v);
+  const maxTok    = paramSlider("chat-p-max", "chat.max_tokens",
+                                 chat.params.max_tokens, 16, 4096, 16,
+                                 (v) => chat.params.max_tokens = v);
+  const fanout    = paramSlider("chat-p-fanout", "chat.fanout",
+                                 chat.params.fanout, 1, 8, 1,
+                                 (v) => chat.params.fanout = v);
+  const clearBtn  = el("button", { onclick: clearChat }, t("chat.clear"));
+
+  const side = el("div", { class: "chat-side", id: "chat-side", hidden: !chat.open }, [
+    el("label", null, [t("chat.system_prompt"), sysTa]),
+    tempRange, topPRange, maxTok, fanout,
+    clearBtn,
+  ]);
+
+  const body = el("div", { class: "chat-body", id: "chat-body", hidden: !chat.open },
+                  [main, side]);
+  /* `.full` makes the card span the main grid (grid-column: 1 / -1).
+   * Without it the card becomes one column and the inner 1fr 280px
+   * chat body collapses (message column ~120px, code blocks clipped). */
+  const card = el("div", { class: "card full chat-card" }, [head, body]);
+  sec.innerHTML = "";
+  sec.appendChild(card);
+
+  /* sync open state */
+  applyChatOpenState();
+}
+
+function paramSlider(id, labelKey, initial, min, max, step, onChange) {
+  const valSpan = el("span", { class: "v", id: id + "-v" }, String(initial));
+  const range = el("input", {
+    type: "range", id: id, min: String(min), max: String(max),
+    step: String(step), value: String(initial),
+    oninput: (e) => {
+      const v = parseFloat(e.target.value);
+      onChange(v);
+      valSpan.textContent = step >= 1 ? String(Math.round(v)) : v.toFixed(2);
+    },
+  });
+  return el("label", null, [
+    t(labelKey),
+    el("div", { class: "row" }, [range, valSpan]),
+  ]);
+}
+
+function toggleChat() {
+  chat.open = !chat.open;
+  applyChatOpenState();
+}
+
+function applyChatOpenState() {
+  const body = $("#chat-body");
+  const inputRow = $("#chat-input-row");
+  const side = $("#chat-side");
+  const pill = $("#chat-toggle-pill");
+  const head = $(".chat-head");
+  if (body) body.hidden = !chat.open;
+  if (inputRow) inputRow.hidden = !chat.open;
+  if (side) side.hidden = !chat.open;
+  if (pill) pill.textContent = chat.open ? t("chat.collapse") : t("chat.expand");
+  if (head) head.setAttribute("aria-expanded", String(chat.open));
+  if (chat.open) {
+    const ta = $("#chat-input");
+    if (ta) ta.focus();
+  }
+}
+
+function clearChat() {
+  if (chat.inflight) return;  /* refuse while a request is in flight */
+  chat.messages = [];
+  const msgs = $("#chat-msgs");
+  if (msgs) {
+    while (msgs.firstChild) msgs.removeChild(msgs.firstChild);
+    msgs.appendChild(el("div", { class: "chat-empty", id: "chat-empty" },
+                         t("chat.empty")));
+  }
+}
+
+function appendChatMessage(role, content, opts) {
+  const empty = $("#chat-empty");
+  if (empty) empty.remove();
+  const msgs = $("#chat-msgs");
+  if (!msgs) return null;
+  const body = el("div", { class: "body" });
+  body.appendChild(renderMarkdown(content || ""));
+  const stats = el("div", { class: "stats" }, opts && opts.stats ? opts.stats : "");
+  const node = el("div", { class: "chat-msg " + role },
+                  [el("span", { class: "who" }, role === "user" ? t("chat.you") : t("chat.assistant")),
+                   body, stats]);
+  msgs.appendChild(node);
+  msgs.scrollTop = msgs.scrollHeight;
+  return { body, stats, node };
+}
+
+function setChatStats(s) {
+  const node = $("#chat-stats");
+  if (node) node.textContent = s || "";
+}
+
+function setSendingUI(sending) {
+  const send = $("#chat-send");
+  const stop = $("#chat-stop");
+  const ta   = $("#chat-input");
+  if (send) send.hidden = !!sending;
+  if (stop) stop.hidden = !sending;
+  if (ta) ta.disabled = !!sending;
+}
+
+async function sendChat() {
+  if (chat.inflight) return;
+  const ta = $("#chat-input");
+  const text = ta ? ta.value.trim() : "";
+  if (!text) return;
+  ta.value = ""; ta.style.height = "auto";
+
+  /* push user message */
+  chat.messages.push({ role: "user", content: text });
+  trimChatHistory();
+  appendChatMessage("user", text);
+
+  /* fan-out N parallel requests for stress test mode */
+  const n = Math.max(1, Math.min(8, chat.params.fanout | 0));
+  const targets = [];
+  for (let k = 0; k < n; k++) {
+    targets.push(appendChatMessage("assistant", "",
+      { stats: n > 1 ? "#" + (k + 1) + "/" + n + " — …" : "…" }));
+  }
+
+  /* assemble messages payload — system prompt only if non-empty */
+  const payload = {
+    model: state.selectedModel || (state.models[0] && state.models[0].id) || "default",
+    messages: [],
+    stream: true,
+    temperature: chat.params.temperature,
+    top_p: chat.params.top_p,
+    max_tokens: chat.params.max_tokens | 0,
+  };
+  if (chat.systemPrompt && chat.systemPrompt.trim()) {
+    payload.messages.push({ role: "system", content: chat.systemPrompt.trim() });
+  }
+  for (const m of chat.messages) payload.messages.push({ role: m.role, content: m.content });
+
+  const ctrl = new AbortController();
+  chat.inflight = ctrl;
+  setSendingUI(true);
+  setChatStats(t("chat.streaming"));
+
+  const t0 = Date.now();
+  try {
+    const url = state.serverBase.replace(/\/+$/, "") + "/v1/chat/completions";
+    /* Each fanout target gets its own fetch so we exercise parallel slots. */
+    const tasks = targets.map((target, idx) => streamOne(url, payload, ctrl.signal, target, t0, idx, n));
+    const results = await Promise.allSettled(tasks);
+    /* collapse the user-facing assistant history into the first successful response */
+    const first = results.find((r) => r.status === "fulfilled" && r.value);
+    if (first) {
+      chat.messages.push({ role: "assistant", content: first.value.content });
+      trimChatHistory();
+    }
+    setChatStats("");
+  } catch (e) {
+    setChatStats(t("chat.error") + ": " + (e && e.message ? e.message : String(e)));
+  } finally {
+    chat.inflight = null;
+    setSendingUI(false);
+  }
+}
+
+async function streamOne(url, payload, signal, target, t0, idx, total) {
+  let res;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+      body: JSON.stringify(payload),
+      signal,
+    });
+  } catch (e) {
+    if (e && e.name === "AbortError") {
+      target.stats.textContent = t("chat.cancelled");
+      return null;
+    }
+    target.stats.textContent = t("chat.error") + ": " + e.message;
+    throw e;
+  }
+  if (!res.ok) {
+    let body = "";
+    try { body = await res.text(); } catch (_e) {}
+    target.stats.textContent = t("chat.error") + " " + res.status +
+                               (body ? ": " + body.slice(0, 200) : "");
+    throw new Error("HTTP " + res.status);
+  }
+  if (!res.body) {
+    target.stats.textContent = t("chat.error") + ": no body";
+    throw new Error("no body");
+  }
+
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  let acc = "";
+  let usage = null;
+  let nTokens = 0;
+
+  let pendingReflow = false;
+  const doReflow = () => {
+    pendingReflow = false;
+    /* full re-render — content is small, and the renderer builds DOM
+     * directly so this is safe and cheaper than diffing partial deltas. */
+    while (target.body.firstChild) target.body.removeChild(target.body.firstChild);
+    target.body.appendChild(renderMarkdown(acc));
+    /* keep scroll at bottom only when user hasn't scrolled up */
+    const msgs = $("#chat-msgs");
+    if (msgs && (msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight) < 80) {
+      msgs.scrollTop = msgs.scrollHeight;
+    }
+  };
+  /* throttle to ~60ms — re-rendering whole markdown every token is O(n²);
+   * 60ms feels live without burning the main thread on long responses. */
+  const reflow = () => {
+    if (pendingReflow) return;
+    pendingReflow = true;
+    setTimeout(doReflow, 60);
+  };
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) !== -1) {
+        const line = buf.slice(0, nl).replace(/\r$/, "");
+        buf = buf.slice(nl + 1);
+        if (!line.startsWith("data:")) continue;
+        const data = line.slice(5).trim();
+        if (!data || data === "[DONE]") continue;
+        let json;
+        try { json = JSON.parse(data); } catch (_e) { continue; }
+        if (json.usage) usage = json.usage;
+        const delta = json.choices && json.choices[0] && json.choices[0].delta;
+        if (delta && typeof delta.content === "string") {
+          acc += delta.content;
+          nTokens++;
+          reflow();
+        }
+        const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+        const rate = nTokens > 0 ? (nTokens / Math.max(0.001, (Date.now() - t0) / 1000)).toFixed(1) : "0.0";
+        const prefix = total > 1 ? "#" + (idx + 1) + "/" + total + " — " : "";
+        target.stats.textContent = prefix + elapsed + "s · " + nTokens + " " +
+                                    t("chat.tok") + " · " + rate + " " + t("chat.tok_per_s");
+      }
+    }
+  } catch (e) {
+    if (e && e.name === "AbortError") {
+      target.stats.textContent = t("chat.cancelled") + " · " + acc.length + " " + t("chat.chars");
+      return null;
+    }
+    target.stats.textContent = t("chat.error") + ": " + e.message;
+    throw e;
+  }
+
+  /* flush any throttled reflow so the message body is final when we return */
+  doReflow();
+
+  /* Final stats from server usage if provided */
+  const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+  let stats = elapsed + "s · " + nTokens + " " + t("chat.tok");
+  if (usage) {
+    const pt = usage.prompt_tokens || 0;
+    const ct = usage.completion_tokens || nTokens;
+    const rate = ct > 0 ? (ct / Math.max(0.001, (Date.now() - t0) / 1000)).toFixed(1) : "0.0";
+    stats = elapsed + "s · " + pt + " in / " + ct + " out · " + rate + " " + t("chat.tok_per_s");
+  }
+  if (total > 1) stats = "#" + (idx + 1) + "/" + total + " — " + stats;
+  target.stats.textContent = stats;
+
+  return { content: acc };
+}
+
+function stopChat() {
+  if (chat.inflight) chat.inflight.abort();
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", boot);
+} else {
+  /* parser already past DOMContentLoaded — schedule on the next tick so
+   * any synchronous code below this point still runs first. */
+  Promise.resolve().then(boot);
+}
+</script>
+</body>
+</html>
