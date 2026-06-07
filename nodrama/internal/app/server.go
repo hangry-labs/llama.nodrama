@@ -48,7 +48,7 @@ func Run(ctx context.Context, cfg Config, info BuildInfo) error {
 		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.Handle("GET /static/", http.StripPrefix("/static/", web.StaticHandler()))
-	if err := registerAPIProxies(mux, cfg.Server, dashboard); err != nil {
+	if err := registerAPIProxies(mux, dashboard); err != nil {
 		return err
 	}
 	if cfg.RawProxy {
@@ -62,7 +62,7 @@ func Run(ctx context.Context, cfg Config, info BuildInfo) error {
 			"app":        "llama.nodrama",
 			"build":      info,
 			"startedAt":  dashboard.StartedAt(),
-			"server":     cfg.Server,
+			"server":     dashboard.Settings().Server,
 			"snapshotAt": dashboard.Snapshot().UpdatedAt,
 		})
 	})
@@ -75,7 +75,23 @@ func Run(ctx context.Context, cfg Config, info BuildInfo) error {
 	mux.HandleFunc("GET /api/queries", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, dashboard.Snapshot().Queries)
 	})
-	mux.HandleFunc("GET /api/logs/tail", logTailHandler(cfg.LogPath))
+	mux.HandleFunc("GET /api/settings", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, dashboard.Settings())
+	})
+	mux.HandleFunc("POST /api/settings", func(w http.ResponseWriter, r *http.Request) {
+		var update RuntimeSettingsUpdate
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64*1024)).Decode(&update); err != nil {
+			http.Error(w, "invalid settings payload: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		settings, err := dashboard.UpdateSettings(update)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, settings)
+	})
+	mux.HandleFunc("GET /api/logs/tail", runtimeLogTailHandler(dashboard))
 	mux.HandleFunc("POST /api/history/reset", func(w http.ResponseWriter, r *http.Request) {
 		dashboard.ResetHistory()
 		writeJSON(w, map[string]string{"status": "ok"})

@@ -27,7 +27,16 @@ type LogTailResponse struct {
 }
 
 func logTailHandler(path string) http.HandlerFunc {
+	return logTailHandlerFunc(func() string { return path })
+}
+
+func runtimeLogTailHandler(dashboard *Dashboard) http.HandlerFunc {
+	return logTailHandlerFunc(func() string { return dashboard.Settings().LogPath })
+}
+
+func logTailHandlerFunc(pathFn func() string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		path := pathFn()
 		if path == "" {
 			writeJSON(w, LogTailResponse{Enabled: false})
 			return

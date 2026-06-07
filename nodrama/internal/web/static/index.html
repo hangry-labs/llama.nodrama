@@ -298,6 +298,27 @@
   .modal .actions { display: flex; gap: 8px; justify-content: flex-end; }
   .modal .actions button.primary { background: #1f4a7a; border-color: #2f6db1; color: #cfe3ff; }
   .modal .warn { color: var(--warn); font-size: 12px; }
+  .modal .error { color: var(--bad); font-size: 12px; }
+  .settings-form {
+    display: grid; gap: 10px;
+  }
+  .settings-form label {
+    display: grid; gap: 4px;
+    color: var(--fg-mute); font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .settings-form input {
+    width: 100%;
+    color: var(--fg);
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .settings-form .readonly {
+    display: grid; grid-template-columns: max-content 1fr;
+    gap: 4px 10px; font-family: var(--mono); font-size: 12px;
+    color: var(--fg-dim);
+  }
+  .settings-form .readonly .k { color: var(--fg-mute); }
   /* log panel */
   .log-card { gap: 6px; }
   .log-toolbar {
@@ -373,7 +394,8 @@
   footer.app a { color: var(--accent); text-decoration: none; }
   footer.app a:hover { text-decoration: underline; }
   /* header last-update */
-  header.app .last-update {
+  header.app .last-update,
+  header.app .version-display {
     color: var(--fg-mute); font-size: 11px; font-family: var(--mono);
   }
   /* very narrow mobile */
@@ -549,7 +571,9 @@
   <span id="status-text" class="status-pill" role="status" aria-live="polite" data-i18n="header.status.connecting">…</span>
   <span id="last-update" class="last-update" aria-live="polite"></span>
   <span class="grow"></span>
+  <span id="version-display" class="version-display" title=""></span>
   <span id="server-display" class="server" title=""></span>
+  <button id="settings-button" title="Settings" aria-label="Settings">⚙</button>
   <select id="lang-select" aria-label="Language" title="Language">
     <option value="en">EN</option>
     <option value="ko">한국어</option>
@@ -587,6 +611,7 @@ const I18N = {
     "header.status.offline":    "Offline",
     "header.status.error":      "Error",
     "header.last_update":       "Last update",
+    "header.settings":          "Settings",
 
     "common.copy":      "Copy",
     "common.copied":    "Copied",
@@ -705,6 +730,18 @@ const I18N = {
     "log.empty":                "(no lines yet)",
     "log.setup_help_title":     "Log tail setup",
     "log.setup_help":           "The log panel reads from the llama.nodrama backend. Start with --log /path/to/server.log to enable it.",
+
+    "settings.title":           "Runtime settings",
+    "settings.server":          "llama.cpp server URL",
+    "settings.log_path":        "Log file path",
+    "settings.poll":            "Backend poll interval (ms)",
+    "settings.timeout":         "Upstream timeout (ms)",
+    "settings.listen":          "Listen address",
+    "settings.raw_proxy":       "Raw proxy",
+    "settings.startup_only":    "startup only",
+    "settings.save":            "Save settings",
+    "settings.saved":           "Settings saved",
+    "settings.note":            "Changing server or log path resets collected dashboard history so old and new targets do not mix.",
 
     "guidance.title":           "Active suggestions",
     "guidance.empty":           "No suggestions right now — server looks healthy.",
@@ -1663,6 +1700,13 @@ function applyI18n(root) {
 function initHeader() {
   $("#server-display").textContent = state.serverBase;
   $("#server-display").title = state.serverBase;
+  setBuildDisplay(null);
+  const settingsButton = $("#settings-button");
+  if (settingsButton) {
+    settingsButton.title = t("header.settings");
+    settingsButton.setAttribute("aria-label", t("header.settings"));
+    settingsButton.addEventListener("click", openSettingsModal);
+  }
   const sel = $("#lang-select");
   sel.value = state.lang;
   sel.addEventListener("change", () => {
@@ -1934,8 +1978,17 @@ function installDemoShim(mode) {
     const method = (init && init.method) || (typeof input !== "string" ? input.method : "GET") || "GET";
 
     if (path === "/api/health") return Promise.resolve(json({ status: "ok", app: "llama.nodrama" }));
+    if (path === "/api/settings") return Promise.resolve(json({
+      server: "demo",
+      listen: "static demo",
+      logPath: "",
+      rawProxy: false,
+      pollIntervalMs: state.params.poll,
+      timeoutMs: 5000,
+    }));
     if (path === "/api/snapshot") return Promise.resolve(json({
       app: "llama.nodrama",
+      build: { version: "demo", commit: "demo", date: new Date(t0).toISOString() },
       mode: mode === "router" ? "router" : "single",
       server: "demo",
       pollIntervalMs: state.params.poll,
@@ -2137,6 +2190,7 @@ function applySnapshot(snapshot, opts) {
     $("#server-display").textContent = snapshot.server;
     $("#server-display").title = snapshot.server;
   }
+  setBuildDisplay(snapshot && snapshot.build);
 
   if (state.mode === "router") {
     if (!state.selectedModel) {
@@ -2174,6 +2228,17 @@ function applySnapshot(snapshot, opts) {
     }
     renderGuidance();
   }
+}
+
+function setBuildDisplay(build) {
+  const node = $("#version-display");
+  if (!node) return;
+  const version = build && build.version ? String(build.version) : "dev";
+  node.textContent = "version " + version;
+  const details = [];
+  if (build && build.commit) details.push("commit " + build.commit);
+  if (build && build.date) details.push("built " + build.date);
+  node.title = details.length ? details.join(" · ") : "local development build";
 }
 
 async function refreshSnapshot(opts) {
@@ -2618,13 +2683,22 @@ function onModelSelect(id) {
 function showModal({ title, bodyNode, okLabel, onOk, mutating }) {
   const back = el("div", { class: "modal-backdrop", role: "dialog", "aria-modal": "true" });
   let onKey;
+  const errorNode = el("div", { class: "error", hidden: true }, "");
   const close = () => {
     back.remove();
     if (onKey) document.removeEventListener("keydown", onKey);
   };
   const ok = el("button", { class: "primary", onclick: async () => {
     ok.disabled = true;
-    try { await onOk(); } finally { close(); }
+    errorNode.hidden = true;
+    try {
+      await onOk();
+      close();
+    } catch (e) {
+      errorNode.textContent = e && e.message ? e.message : String(e);
+      errorNode.hidden = false;
+      ok.disabled = false;
+    }
   }}, okLabel || t("common.confirm"));
   const cancel = el("button", { onclick: close }, t("common.cancel"));
   /* mutating modals get a "this changes server state" warning; informational
@@ -2637,6 +2711,7 @@ function showModal({ title, bodyNode, okLabel, onOk, mutating }) {
     el("h3", null, title),
     el("div", { class: "body" }, bodyNode),
     warnNode,
+    errorNode,
     el("div", { class: "actions" }, [cancel, ok]),
   ].filter(Boolean));
   back.appendChild(m);
@@ -2655,6 +2730,70 @@ function confirmAction(message, onOk) {
     mutating: true,
     onOk,
   });
+}
+
+async function openSettingsModal() {
+  const body = el("div", { class: "settings-form" }, t("common.loading"));
+  let loaded = null;
+  const fields = {};
+
+  const render = (settings) => {
+    loaded = settings || {};
+    body.innerHTML = "";
+    fields.server = el("input", { type: "url", value: loaded.server || "", placeholder: "http://127.0.0.1:18080" });
+    fields.logPath = el("input", { type: "text", value: loaded.logPath || "", placeholder: "/path/to/llama.cpp.log" });
+    fields.poll = el("input", { type: "number", min: "200", max: "60000", step: "50", value: String(loaded.pollIntervalMs || 1000) });
+    fields.timeout = el("input", { type: "number", min: "250", max: "120000", step: "250", value: String(loaded.timeoutMs || 5000) });
+    body.append(
+      el("label", null, [t("settings.server"), fields.server]),
+      el("label", null, [t("settings.log_path"), fields.logPath]),
+      el("label", null, [t("settings.poll"), fields.poll]),
+      el("label", null, [t("settings.timeout"), fields.timeout]),
+      el("div", { class: "readonly" }, [
+        el("div", { class: "k" }, t("settings.listen")),
+        el("div", null, (loaded.listen || "—") + " · " + t("settings.startup_only")),
+        el("div", { class: "k" }, t("settings.raw_proxy")),
+        el("div", null, (loaded.rawProxy ? t("common.enabled") : t("common.disabled")) + " · " + t("settings.startup_only")),
+      ]),
+      el("div", { class: "sub" }, t("settings.note"))
+    );
+  };
+
+  showModal({
+    title: t("settings.title"),
+    bodyNode: body,
+    okLabel: t("settings.save"),
+    mutating: true,
+    onOk: async () => {
+      if (!loaded) throw new Error(t("common.loading"));
+      const payload = {
+        server: fields.server.value.trim(),
+        logPath: fields.logPath.value.trim(),
+        pollIntervalMs: clampInt(fields.poll.value, loaded.pollIntervalMs || 1000, 200, 60000),
+        timeoutMs: clampInt(fields.timeout.value, loaded.timeoutMs || 5000, 250, 120000),
+      };
+      const saved = await fetchJSON("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        withModel: false,
+        timeout: 8000,
+      });
+      state.params.poll = saved.pollIntervalMs || payload.pollIntervalMs;
+      $("#server-display").textContent = saved.server || payload.server;
+      $("#server-display").title = saved.server || payload.server;
+      showBanner("settings-saved", t("settings.saved"), "warn");
+      setTimeout(() => clearBanner("settings-saved"), 2500);
+      await refreshSnapshot({ timeout: 8000 });
+      startCorePollers();
+    },
+  });
+
+  try {
+    render(await fetchJSON("/api/settings", { withModel: false, timeout: 8000 }));
+  } catch (e) {
+    body.textContent = t("error.fetch_failed") + ": /api/settings — " + e.message;
+  }
 }
 
 async function copyToClipboard(text, btn) {

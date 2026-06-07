@@ -14,15 +14,15 @@ import (
 const maxLogReadBytes = 1024 * 1024
 const maxRecentQueries = 10
 
-func (m *Dashboard) pollLogEvents(now time.Time) ([]llamacpp.LogEvent, error) {
-	if m.cfg.LogPath == "" {
+func (m *Dashboard) pollLogEvents(logPath string, now time.Time) ([]llamacpp.LogEvent, error) {
+	if logPath == "" {
 		return nil, nil
 	}
 
 	m.historyMu.Lock()
 	defer m.historyMu.Unlock()
 
-	lines, err := m.readNewLogLines()
+	lines, err := m.readNewLogLines(logPath)
 	if err != nil {
 		return m.copyLogEvents(), err
 	}
@@ -46,8 +46,8 @@ func (m *Dashboard) pollLogEvents(now time.Time) ([]llamacpp.LogEvent, error) {
 	return m.copyLogEvents(), nil
 }
 
-func (m *Dashboard) readNewLogLines() ([]string, error) {
-	file, err := os.Open(m.cfg.LogPath)
+func (m *Dashboard) readNewLogLines(logPath string) ([]string, error) {
+	file, err := os.Open(logPath)
 	if err != nil {
 		return nil, err
 	}

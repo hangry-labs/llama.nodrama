@@ -49,6 +49,16 @@ llama-nodrama --server http://127.0.0.1:18080 --listen :39080
 
 Open `http://127.0.0.1:39080`.
 
+`llama.nodrama` does not auto-discover `llama.cpp` servers yet. Point it at the
+specific deployment you want to monitor with `--server`; if `llama-server` runs
+on the same machine with the usual port, the default is already
+`http://127.0.0.1:18080`.
+
+You can also change runtime settings from the UI settings button after startup:
+server URL, log path, backend poll interval, and upstream timeout. Changing the
+server or log path resets collected dashboard history so old and new targets do
+not mix. The listen address and raw proxy routes are startup-only settings.
+
 ## Build From Source
 
 ```sh
@@ -74,6 +84,20 @@ Useful flags:
 CI runs Go formatting, vet, tests, and cross-platform builds on pushes and pull
 requests to `master` and `main`.
 
+The source version lives in `nodrama/VERSION`. Snapshot builds use
+`vX.Y.Z-SNAPSHOT`; release tags use the finalized `vX.Y.Z` form.
+
+To cut a release:
+
+```sh
+task release
+git push origin HEAD --follow-tags
+```
+
+`task release` requires a clean working tree. It removes `-SNAPSHOT`, commits
+and tags that finalized version, then bumps the minor version to the next
+`vX.Y.0-SNAPSHOT` and commits that.
+
 Tags matching `v*` publish GitHub Release binaries for:
 
 - Linux amd64/arm64
@@ -82,6 +106,8 @@ Tags matching `v*` publish GitHub Release binaries for:
 
 The install scripts consume those release assets. CI build artifacts from branch
 pushes are for validation only; public installs should use tagged releases.
+Normally you should not compile release binaries locally; push the tag and let
+the release workflow build and attach them to the GitHub Release.
 
 ## License
 

@@ -2,19 +2,24 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"llama.nodrama/nodrama/internal/app"
 )
 
+//go:embed VERSION
+var versionFile string
+
 var (
-	version = "dev"
+	version = ""
 	commit  = "local"
 	date    = "unknown"
 )
@@ -32,6 +37,12 @@ func main() {
 	flag.BoolVar(&showVersion, "version", false, "print version and exit")
 	flag.Parse()
 
+	if version == "" {
+		version = strings.TrimSpace(versionFile)
+	}
+	if version == "" {
+		version = "dev"
+	}
 	info := app.BuildInfo{Version: version, Commit: commit, Date: date}
 	if showVersion {
 		fmt.Printf("llama-nodrama %s %s %s\n", info.Version, info.Commit, info.Date)

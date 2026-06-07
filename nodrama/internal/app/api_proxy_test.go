@@ -20,9 +20,9 @@ func TestChatCompletionsProxyTracksRequest(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
+	dashboard := NewDashboard(nil, Config{Server: upstream.URL}, BuildInfo{})
 	mux := http.NewServeMux()
-	if err := registerAPIProxies(mux, upstream.URL, dashboard); err != nil {
+	if err := registerAPIProxies(mux, dashboard); err != nil {
 		t.Fatal(err)
 	}
 
@@ -71,9 +71,9 @@ func TestModelAndSlotActionProxies(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
+	dashboard := NewDashboard(nil, Config{Server: upstream.URL}, BuildInfo{})
 	mux := http.NewServeMux()
-	if err := registerAPIProxies(mux, upstream.URL, dashboard); err != nil {
+	if err := registerAPIProxies(mux, dashboard); err != nil {
 		t.Fatal(err)
 	}
 

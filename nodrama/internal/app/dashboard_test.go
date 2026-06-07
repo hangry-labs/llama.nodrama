@@ -83,6 +83,51 @@ func TestRecordMetricHistoryTracksPeakFacts(t *testing.T) {
 	}
 }
 
+func TestDashboardUpdateSettingsAppliesRuntimeConfig(t *testing.T) {
+	dashboard := NewDashboard(nil, Config{
+		Server:       "http://127.0.0.1:18080",
+		Listen:       ":39080",
+		PollInterval: time.Second,
+		Timeout:      5 * time.Second,
+	}, BuildInfo{})
+
+	server := "http://127.0.0.1:18081"
+	logPath := "/tmp/llama.cpp.log"
+	pollMS := int64(500)
+	timeoutMS := int64(2500)
+	settings, err := dashboard.UpdateSettings(RuntimeSettingsUpdate{
+		Server:       &server,
+		LogPath:      &logPath,
+		PollInterval: &pollMS,
+		Timeout:      &timeoutMS,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.Server != server || settings.LogPath != logPath || settings.PollInterval != pollMS || settings.Timeout != timeoutMS {
+		t.Fatalf("settings = %#v", settings)
+	}
+	if dashboard.runtimeConfig().Server != server {
+		t.Fatalf("runtime server = %q", dashboard.runtimeConfig().Server)
+	}
+}
+
+func TestDashboardUpdateSettingsRejectsInvalidServer(t *testing.T) {
+	dashboard := NewDashboard(nil, Config{
+		Server:       "http://127.0.0.1:18080",
+		PollInterval: time.Second,
+		Timeout:      5 * time.Second,
+	}, BuildInfo{})
+
+	badServer := "file:///tmp/socket"
+	if _, err := dashboard.UpdateSettings(RuntimeSettingsUpdate{Server: &badServer}); err == nil {
+		t.Fatal("expected invalid server error")
+	}
+	if dashboard.runtimeConfig().Server != "http://127.0.0.1:18080" {
+		t.Fatalf("server changed after invalid update: %q", dashboard.runtimeConfig().Server)
+	}
+}
+
 func TestDeriveSlotLiveRatesSumsActiveSlotDeltas(t *testing.T) {
 	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
 	base := time.Unix(1_700_000_000, 0)

@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -25,38 +24,45 @@ type chatRequestMetadata struct {
 	Stream bool   `json:"stream"`
 }
 
-func registerAPIProxies(mux *http.ServeMux, rawTarget string, dashboard *Dashboard) error {
-	target, err := url.Parse(rawTarget)
-	if err != nil {
-		return fmt.Errorf("configure api proxy target: %w", err)
-	}
-
-	mux.Handle("POST /api/chat/completions", chatCompletionsHandler(target, dashboard))
-	mux.Handle("POST /api/models/load", fixedPathProxy(target, dashboard, "/api/models/load", "/models/load"))
-	mux.Handle("POST /api/models/unload", fixedPathProxy(target, dashboard, "/api/models/unload", "/models/unload"))
-	mux.Handle("POST /api/slots/{id}/save", slotActionProxy(target, dashboard, "save"))
-	mux.Handle("POST /api/slots/{id}/restore", slotActionProxy(target, dashboard, "restore"))
-	mux.Handle("POST /api/slots/{id}/erase", slotActionProxy(target, dashboard, "erase"))
+func registerAPIProxies(mux *http.ServeMux, dashboard *Dashboard) error {
+	mux.Handle("POST /api/chat/completions", chatCompletionsHandler(dashboard))
+	mux.Handle("POST /api/models/load", fixedPathProxy(dashboard, "/api/models/load", "/models/load"))
+	mux.Handle("POST /api/models/unload", fixedPathProxy(dashboard, "/api/models/unload", "/models/unload"))
+	mux.Handle("POST /api/slots/{id}/save", slotActionProxy(dashboard, "save"))
+	mux.Handle("POST /api/slots/{id}/restore", slotActionProxy(dashboard, "restore"))
+	mux.Handle("POST /api/slots/{id}/erase", slotActionProxy(dashboard, "erase"))
 	return nil
 }
 
-func chatCompletionsHandler(target *url.URL, dashboard *Dashboard) http.Handler {
+func chatCompletionsHandler(dashboard *Dashboard) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		target, ok := currentProxyTarget(w, dashboard)
+		if !ok {
+			return
+		}
 		meta := readChatRequestMetadata(r)
 		proxy := reverseProxy(target, "/v1/chat/completions", "")
 		serveTrackedProxy(w, r, dashboard, "/api/chat/completions", meta.Model, meta.Stream, proxy)
 	})
 }
 
-func fixedPathProxy(target *url.URL, dashboard *Dashboard, route, upstreamPath string) http.Handler {
+func fixedPathProxy(dashboard *Dashboard, route, upstreamPath string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		target, ok := currentProxyTarget(w, dashboard)
+		if !ok {
+			return
+		}
 		meta := readChatRequestMetadata(r)
 		serveTrackedProxy(w, r, dashboard, route, meta.Model, false, reverseProxy(target, upstreamPath, ""))
 	})
 }
 
-func slotActionProxy(target *url.URL, dashboard *Dashboard, action string) http.Handler {
+func slotActionProxy(dashboard *Dashboard, action string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		target, ok := currentProxyTarget(w, dashboard)
+		if !ok {
+			return
+		}
 		slotID := r.PathValue("id")
 		if _, err := strconv.Atoi(slotID); err != nil {
 			http.Error(w, "invalid slot id", http.StatusBadRequest)
@@ -66,6 +72,15 @@ func slotActionProxy(target *url.URL, dashboard *Dashboard, action string) http.
 		route := "/api/slots/" + slotID + "/" + action
 		serveTrackedProxy(w, r, dashboard, route, "", false, reverseProxy(target, upstreamPath, "action="+url.QueryEscape(action)))
 	})
+}
+
+func currentProxyTarget(w http.ResponseWriter, dashboard *Dashboard) (*url.URL, bool) {
+	target, err := url.Parse(dashboard.Settings().Server)
+	if err != nil {
+		http.Error(w, "invalid upstream server: "+err.Error(), http.StatusBadGateway)
+		return nil, false
+	}
+	return target, true
 }
 
 func serveTrackedProxy(w http.ResponseWriter, r *http.Request, dashboard *Dashboard, route, model string, stream bool, proxy *httputil.ReverseProxy) {

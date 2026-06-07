@@ -18,7 +18,7 @@ func TestPollLogEventsTailsFromStartupOffset(t *testing.T) {
 	}
 
 	dashboard := NewDashboard(nil, Config{LogPath: path}, BuildInfo{})
-	events, err := dashboard.pollLogEvents(time.Unix(1_700_000_000, 0))
+	events, err := dashboard.pollLogEvents(path, time.Unix(1_700_000_000, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +26,7 @@ func TestPollLogEventsTailsFromStartupOffset(t *testing.T) {
 		t.Fatalf("events = %d", len(events))
 	}
 
-	events, err = dashboard.pollLogEvents(time.Unix(1_700_000_001, 0))
+	events, err = dashboard.pollLogEvents(path, time.Unix(1_700_000_001, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func TestPollLogEventsTailsFromStartupOffset(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	events, err = dashboard.pollLogEvents(time.Unix(1_700_000_002, 0))
+	events, err = dashboard.pollLogEvents(path, time.Unix(1_700_000_002, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestPollLogEventsAssignsStableBatchOrder(t *testing.T) {
 	}
 
 	dashboard := NewDashboard(nil, Config{LogPath: path}, BuildInfo{})
-	if _, err := dashboard.pollLogEvents(time.Unix(1_700_000_000, 0)); err != nil {
+	if _, err := dashboard.pollLogEvents(path, time.Unix(1_700_000_000, 0)); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, []byte(
@@ -75,7 +75,7 @@ func TestPollLogEventsAssignsStableBatchOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	events, err := dashboard.pollLogEvents(time.Unix(1_700_000_001, 0))
+	events, err := dashboard.pollLogEvents(path, time.Unix(1_700_000_001, 0))
 	if err != nil {
 		t.Fatal(err)
 	}

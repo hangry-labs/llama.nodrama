@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"net/http"
 	"sort"
@@ -156,6 +157,7 @@ type Dashboard struct {
 	build        BuildInfo
 	started      time.Time
 	lastSlowPoll time.Time
+	runtimeMu    sync.RWMutex
 
 	mu           sync.RWMutex
 	snapshot     Snapshot
@@ -257,17 +259,90 @@ func (m *Dashboard) StartedAt() time.Time {
 func (m *Dashboard) Start(ctx context.Context) {
 	go func() {
 		m.poll(ctx)
-		ticker := time.NewTicker(m.cfg.PollInterval)
-		defer ticker.Stop()
 		for {
+			interval := m.runtimeConfig().PollInterval
+			if interval <= 0 {
+				interval = time.Second
+			}
+			timer := time.NewTimer(interval)
 			select {
 			case <-ctx.Done():
+				timer.Stop()
 				return
-			case <-ticker.C:
+			case <-timer.C:
 				m.poll(ctx)
 			}
 		}
 	}()
+}
+
+func (m *Dashboard) runtimeConfig() Config {
+	m.runtimeMu.RLock()
+	defer m.runtimeMu.RUnlock()
+	return m.cfg
+}
+
+func (m *Dashboard) runtimeClient() *llamacpp.Client {
+	m.runtimeMu.RLock()
+	defer m.runtimeMu.RUnlock()
+	return m.client
+}
+
+func (m *Dashboard) Settings() RuntimeSettings {
+	cfg := m.runtimeConfig()
+	return runtimeSettingsFromConfig(cfg)
+}
+
+func runtimeSettingsFromConfig(cfg Config) RuntimeSettings {
+	return RuntimeSettings{
+		Server:       cfg.Server,
+		Listen:       cfg.Listen,
+		LogPath:      cfg.LogPath,
+		RawProxy:     cfg.RawProxy,
+		PollInterval: cfg.PollInterval.Milliseconds(),
+		Timeout:      cfg.Timeout.Milliseconds(),
+	}
+}
+
+func (m *Dashboard) UpdateSettings(update RuntimeSettingsUpdate) (RuntimeSettings, error) {
+	m.runtimeMu.Lock()
+	cfg := m.cfg
+	if update.Server != nil {
+		cfg.Server = *update.Server
+	}
+	if update.LogPath != nil {
+		cfg.LogPath = *update.LogPath
+	}
+	if update.PollInterval != nil {
+		if *update.PollInterval < 200 || *update.PollInterval > 60_000 {
+			m.runtimeMu.Unlock()
+			return RuntimeSettings{}, fmt.Errorf("pollIntervalMs must be between 200 and 60000")
+		}
+		cfg.PollInterval = time.Duration(*update.PollInterval) * time.Millisecond
+	}
+	if update.Timeout != nil {
+		if *update.Timeout < 250 || *update.Timeout > 120_000 {
+			m.runtimeMu.Unlock()
+			return RuntimeSettings{}, fmt.Errorf("timeoutMs must be between 250 and 120000")
+		}
+		cfg.Timeout = time.Duration(*update.Timeout) * time.Millisecond
+	}
+	client, err := llamacpp.NewClient(cfg.Server, cfg.Timeout)
+	if err != nil {
+		m.runtimeMu.Unlock()
+		return RuntimeSettings{}, err
+	}
+	serverChanged := cfg.Server != m.cfg.Server
+	logChanged := cfg.LogPath != m.cfg.LogPath
+	m.cfg = cfg
+	m.client = client
+	settings := runtimeSettingsFromConfig(cfg)
+	m.runtimeMu.Unlock()
+
+	if serverChanged || logChanged {
+		m.ResetHistory()
+	}
+	return settings, nil
 }
 
 func (m *Dashboard) Snapshot() Snapshot {
@@ -544,6 +619,9 @@ func (m *Dashboard) ResetHistory() {
 	m.slotLiveRates = map[int]slotLiveRate{}
 	m.logEvents = nil
 	m.logEventSeq = 0
+	m.logOffset = 0
+	m.logInitialized = false
+	m.logPartial = ""
 	empty := m.copyHistoryLocked()
 	m.historyMu.Unlock()
 
@@ -683,7 +761,9 @@ func (m *Dashboard) updateSnapshotRequests(requests []RequestSummary) {
 }
 
 func (m *Dashboard) poll(parent context.Context) {
-	ctx, cancel := context.WithTimeout(parent, m.cfg.Timeout*4)
+	cfg := m.runtimeConfig()
+	client := m.runtimeClient()
+	ctx, cancel := context.WithTimeout(parent, cfg.Timeout*4)
 	defer cancel()
 
 	previous := m.Snapshot()
@@ -697,7 +777,7 @@ func (m *Dashboard) poll(parent context.Context) {
 		mode = "single"
 	}
 
-	healthProbe, _ := m.client.Get(ctx, "/health")
+	healthProbe, _ := client.Get(ctx, "/health")
 	endpoints["health"] = healthProbe
 	if !healthProbe.OK {
 		lastErrors["health"] = healthProbe.Error
@@ -707,7 +787,7 @@ func (m *Dashboard) poll(parent context.Context) {
 
 	props := previous.Props
 	if pollSlow {
-		propsProbe, propsBody := m.client.Get(ctx, "/props")
+		propsProbe, propsBody := client.Get(ctx, "/props")
 		endpoints["props"] = propsProbe
 		if propsProbe.OK {
 			parsed, err := llamacpp.DecodeProps(propsBody)
@@ -725,7 +805,7 @@ func (m *Dashboard) poll(parent context.Context) {
 		}
 	}
 
-	metricsProbe, metricsBody := m.client.Get(ctx, "/metrics")
+	metricsProbe, metricsBody := client.Get(ctx, "/metrics")
 	metricsAt := time.Now()
 	endpoints["metrics"] = metricsProbe
 	rawMetrics := map[string]float64{}
@@ -738,7 +818,7 @@ func (m *Dashboard) poll(parent context.Context) {
 		lastErrors["metrics"] = metricsProbe.Error
 	}
 
-	slotsProbe, slotsBody := m.client.Get(ctx, "/slots")
+	slotsProbe, slotsBody := client.Get(ctx, "/slots")
 	endpoints["slots"] = slotsProbe
 	slots := []llamacpp.Slot{}
 	if slotsProbe.OK {
@@ -769,7 +849,7 @@ func (m *Dashboard) poll(parent context.Context) {
 
 	models := previous.Models
 	if pollSlow {
-		modelsProbe, modelsBody := m.client.Get(ctx, "/v1/models")
+		modelsProbe, modelsBody := client.Get(ctx, "/v1/models")
 		endpoints["models"] = modelsProbe
 		if modelsProbe.OK {
 			parsed, err := llamacpp.DecodeModels(modelsBody)
@@ -789,7 +869,7 @@ func (m *Dashboard) poll(parent context.Context) {
 
 	routerModels := previous.RouterModels
 	if pollSlow {
-		routerProbe, routerBody := m.client.Get(ctx, "/models")
+		routerProbe, routerBody := client.Get(ctx, "/models")
 		endpoints["routerModels"] = routerProbe
 		if routerProbe.OK {
 			parsed, isRouter, err := llamacpp.DecodeRouterModels(routerBody)
@@ -814,7 +894,7 @@ func (m *Dashboard) poll(parent context.Context) {
 
 	loraAdapters := previous.LoraAdapters
 	if pollSlow {
-		loraProbe, loraBody := m.client.Get(ctx, "/lora-adapters")
+		loraProbe, loraBody := client.Get(ctx, "/lora-adapters")
 		endpoints["loraAdapters"] = loraProbe
 		if loraProbe.OK {
 			parsed, err := llamacpp.DecodeLoraAdapters(loraBody)
@@ -869,8 +949,8 @@ func (m *Dashboard) poll(parent context.Context) {
 	}
 	snapshotAt := time.Now()
 	events := previous.Events
-	if m.cfg.LogPath != "" {
-		parsedEvents, err := m.pollLogEvents(snapshotAt)
+	if cfg.LogPath != "" {
+		parsedEvents, err := m.pollLogEvents(cfg.LogPath, snapshotAt)
 		if err != nil {
 			warnings = append(warnings, "Configured llama.cpp log could not be read: "+err.Error())
 		}
@@ -917,8 +997,8 @@ func (m *Dashboard) poll(parent context.Context) {
 		App:            "llama.nodrama",
 		Build:          m.build,
 		Mode:           mode,
-		Server:         m.cfg.Server,
-		PollIntervalMS: m.cfg.PollInterval.Milliseconds(),
+		Server:         cfg.Server,
+		PollIntervalMS: cfg.PollInterval.Milliseconds(),
 		StartedAt:      m.started,
 		UpdatedAt:      snapshotAt,
 		Endpoints:      endpoints,
