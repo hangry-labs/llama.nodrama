@@ -34,6 +34,8 @@ jobs:
           CGO_ENABLED: "0"
           COMMIT: ${{ github.sha }}
           TAG: ${{ github.ref_name }}
+          WINDOWS_CODESIGN_PFX_BASE64: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
+          WINDOWS_CODESIGN_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PASSWORD }}
         run: |
           set -euo pipefail
           mkdir -p dist
@@ -46,9 +48,34 @@ jobs:
             ext="$3"
             name="llama-nodrama-${goos}-${goarch}"
             out="dist/${name}${ext}"
+            if [ "$goos" = "windows" ]; then
+              go run ./tools/windowsres
+              go-winres make --arch amd64,arm64
+              strip_flags=""
+            else
+              strip_flags="-s -w"
+            fi
             GOOS="$goos" GOARCH="$goarch" go build -trimpath \
-              -ldflags "-s -w -X main.version=${version} -X main.commit=${COMMIT} -X main.date=${build_date}" \
+              -ldflags "${strip_flags} -X main.version=${version} -X main.commit=${COMMIT} -X main.date=${build_date}" \
               -o "$out" .
+            if [ "$goos" = "windows" ] && [ -n "${WINDOWS_CODESIGN_PFX_BASE64:-}" ]; then
+              if ! command -v osslsigncode >/dev/null 2>&1; then
+                sudo apt-get update
+                sudo apt-get install -y osslsigncode
+              fi
+              cert_path="$(mktemp)"
+              printf '%s' "$WINDOWS_CODESIGN_PFX_BASE64" | base64 -d > "$cert_path"
+              osslsigncode sign \
+                -pkcs12 "$cert_path" \
+                -pass "$WINDOWS_CODESIGN_PASSWORD" \
+                -n "llama.nodrama" \
+                -i "https://github.com/hangry-labs/llama.nodrama" \
+                -t "http://timestamp.digicert.com" \
+                -in "$out" \
+                -out "${out}.signed"
+              rm -f "$cert_path"
+              mv "${out}.signed" "$out"
+            fi
             if [ "$goos" = "windows" ]; then
               (cd dist && zip -q "${name}.zip" "${name}${ext}")
               rm "$out"
@@ -61,6 +88,7 @@ jobs:
           build linux arm64 ""
           build darwin amd64 ""
           build darwin arm64 ""
+          go install github.com/tc-hib/go-winres@latest
           build windows amd64 ".exe"
           build windows arm64 ".exe"
           rm -f dist/SHA256SUMS

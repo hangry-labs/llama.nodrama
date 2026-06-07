@@ -1,6 +1,14 @@
 version: "3"
 
 tasks:
+  windows-res:
+    desc: Generate Windows icon/version resources
+    dir: nodrama
+    cmds:
+      - go run ./tools/windowsres
+      - go install github.com/tc-hib/go-winres@latest
+      - go-winres make --arch amd64,arm64
+
   release:
     desc: Finalize VERSION, commit/tag release, bump next snapshot, and push
     dir: nodrama

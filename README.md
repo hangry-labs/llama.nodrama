@@ -109,6 +109,22 @@ pushes are for validation only; public installs should use tagged releases.
 Normally you should not compile release binaries locally; push the tag and let
 the release workflow build and attach them to the GitHub Release.
 
+Windows release binaries include an application icon, manifest, and file
+properties generated from `nodrama/VERSION` by `go-winres`. The PNG icon source
+assets live in `nodrama/winres/icons/`; the resource generator preserves those
+files and only creates fallback placeholders when an expected size is missing.
+Windows binaries are not stripped so antivirus reputation systems have more
+normal debug metadata to inspect.
+
+Optional Authenticode signing is supported in the release workflow. Add these
+repository secrets to enable it:
+
+- `WINDOWS_CODESIGN_PFX_BASE64`: base64-encoded `.pfx` signing certificate
+- `WINDOWS_CODESIGN_PASSWORD`: password for the `.pfx`
+
+Without those secrets, Windows binaries are built with icon/version resources
+but remain unsigned.
+
 ## License
 
 MIT. Third-party attribution is recorded in `LICENSE`.

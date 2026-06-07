@@ -50,7 +50,10 @@ func run() error {
 	if err := writeVersion(release); err != nil {
 		return err
 	}
-	if err := git("add", versionFile); err != nil {
+	if err := refreshWindowsResources(); err != nil {
+		return err
+	}
+	if err := git("add", versionFile, "winres"); err != nil {
 		return err
 	}
 	if err := git("commit", "-m", "chore: release "+release); err != nil {
@@ -63,7 +66,10 @@ func run() error {
 	if err := writeVersion(next); err != nil {
 		return err
 	}
-	if err := git("add", versionFile); err != nil {
+	if err := refreshWindowsResources(); err != nil {
+		return err
+	}
+	if err := git("add", versionFile, "winres"); err != nil {
 		return err
 	}
 	if err := git("commit", "-m", "chore: start "+next); err != nil {
@@ -79,6 +85,13 @@ func run() error {
 
 func writeVersion(version string) error {
 	return os.WriteFile(versionFile, []byte(version+"\n"), 0o644)
+}
+
+func refreshWindowsResources() error {
+	cmd := exec.Command("go", "run", "./tools/windowsres")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 func git(args ...string) error {

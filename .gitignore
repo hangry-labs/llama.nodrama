@@ -40,6 +40,8 @@ bin/
 dist/
 coverage.out
 *.test
+rsrc_windows_*.syso
+nodrama/rsrc_windows_*.syso
 
 # OS files
 .DS_Store
