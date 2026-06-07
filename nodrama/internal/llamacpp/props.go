@@ -9,6 +9,7 @@ type PropsSummary struct {
 	TotalSlots      int            `json:"totalSlots"`
 	ContextTokens   int            `json:"contextTokens"`
 	ContextTrain    int            `json:"contextTrain"`
+	IsSleeping      bool           `json:"isSleeping"`
 	Modalities      map[string]any `json:"modalities,omitempty"`
 	SamplerDefaults map[string]any `json:"samplerDefaults,omitempty"`
 }
@@ -35,6 +36,7 @@ func DecodeProps(body []byte) (PropsSummary, error) {
 		TotalSlots:      intAt(raw, "total_slots"),
 		ContextTokens:   contextTokens,
 		ContextTrain:    intAt(raw, "n_ctx_train"),
+		IsSleeping:      boolAt(raw, "is_sleeping"),
 		Modalities:      modalities,
 		SamplerDefaults: params,
 	}, nil

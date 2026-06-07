@@ -1535,6 +1535,7 @@ const state = {
   slots: [],
   snapshot: null,
   history: emptyHistory(),
+  suggestions: null,
   paused: false,
   /* `healthy` flips true only when /props came back at least once.
    * The status LED reads this — never `lastUpdate` alone — so a
@@ -1922,6 +1923,7 @@ function installDemoShim(mode) {
       loraAdapters: [],
       slots: renderSlots(),
       rawMetrics: renderRawMetrics(),
+      suggestions: [],
       warnings: [],
     }));
     if (path === "/health") return Promise.resolve(json({ status: "ok" }));
@@ -2083,6 +2085,7 @@ function applySnapshot(snapshot, opts) {
   state.metrics = (snapshot && snapshot.rawMetrics) || {};
   state.slots = Array.isArray(snapshot && snapshot.slots) ? snapshot.slots : [];
   state.history = (snapshot && snapshot.history) || emptyHistory();
+  state.suggestions = Array.isArray(snapshot && snapshot.suggestions) ? snapshot.suggestions : null;
   if (snapshot && snapshot.server) {
     $("#server-display").textContent = snapshot.server;
     $("#server-display").title = snapshot.server;
@@ -2680,207 +2683,11 @@ async function slotAction(id, action) {
 }
 
 /* ──────────────────────────────────────────────────────────────────────
- *  Guidance engine (Phase 7)
- *
- *  Each rule inspects the current state and either returns null or a
- *  {id, severity, title, explain, suggest, context} object. The Active
- *  suggestions panel collects every triggered rule once per render.
- *
- *  Rules that need "sustained" behaviour (kv cache > 0.9 for 30s, etc.)
- *  use sustained() which tracks an "above-threshold since" timestamp
- *  per rule id.
+ *  Guidance rendering. Suggestions are produced by the Go backend and
+ *  carried in /api/snapshot; the browser only renders them.
  * ──────────────────────────────────────────────────────────────────── */
-const sustainedSince = Object.create(null);
-function sustained(id, condition, seconds) {
-  const now = Date.now();
-  if (condition) {
-    if (!sustainedSince[id]) sustainedSince[id] = now;
-    return (now - sustainedSince[id]) >= seconds * 1000;
-  }
-  delete sustainedSince[id];
-  return false;
-}
-
-/* Rule order matters only for tie-breaking; final list is sorted by
- * severity in evaluateGuidance(). */
-const RULES = [
-  /* --- aggregate metrics --- */
-  function ruleSlotsSaturated(s) {
-    /* Real-time saturation: count how many slots are currently
-     * is_processing and compare to total. /slots is a gauge — unlike
-     * llamacpp:n_busy_slots_per_decode which is a lifetime average and
-     * therefore unsuitable for "right now" alerting. */
-    if (!s.slots || !s.slots.length) return null;
-    const total = s.slots.length;
-    const busy = s.slots.filter(isSlotProcessing).length;
-    const ratio = busy / total;
-    if (sustained("slots_saturated", ratio >= 0.9, 30)) {
-      return rule("slots_saturated", "warn",
-        { value: busy + " / " + total,
-          busy: busy, total: total, suggested: total + 1 });
-    }
-    return null;
-  },
-  function ruleDeferred(s) {
-    const v = s.metrics && s.metrics["llamacpp:requests_deferred"];
-    if (v == null) return null;
-    const total = (s.slots && s.slots.length) ||
-                  (s.props && s.props.total_slots) || null;
-    if (sustained("deferred", v > 0, 5)) {
-      return rule("deferred", v >= 5 ? "bad" : "warn",
-        { value: String(v), deferred: v, total: total,
-          suggested: total ? total + 1 : null });
-    }
-    return null;
-  },
-  function ruleIdleSlow(s) {
-    /* Relative-to-baseline: is current generation throughput < 50% of
-     * the recent (60s) median, with at least one slot busy?
-     * Absolute thresholds (e.g. <5 tok/s) misfire on CPU rigs where 5
-     * tok/s is normal, so we compare against the server's own recent
-     * behaviour instead. */
-    const tps = s.metrics && s.metrics["nodrama:tokens_predicted_rate"];
-    const proc = s.metrics && s.metrics["llamacpp:requests_processing"];
-    if (tps == null || !(proc >= 1) || tps <= 0) {
-      sustained("idle_slow", false, 10);
-      return null;
-    }
-    const hist = normalizeHistoryPoints(
-      s.history && s.history.metrics && s.history.metrics["nodrama:tokens_predicted_rate"]
-    );
-    /* need at least 20s of samples to call a "baseline" */
-    if (hist.length < 20) { sustained("idle_slow", false, 10); return null; }
-    const sorted = hist.map(function (p) { return p.v; })
-                       .filter(function (v) { return v > 0; })
-                       .sort(function (a, b) { return a - b; });
-    if (sorted.length < 10) { sustained("idle_slow", false, 10); return null; }
-    const median = sorted[Math.floor(sorted.length / 2)];
-    const drop = tps < median * 0.5;
-    if (sustained("idle_slow", drop, 10)) {
-      return rule("idle_slow", "warn",
-        { value: tps.toFixed(1) + " / " + median.toFixed(1) + " tok/s",
-          current: tps.toFixed(1), baseline: median.toFixed(1) });
-    }
-    return null;
-  },
-  /* --- props-derived --- */
-  function ruleSleeping(s) {
-    if (s.props && s.props.is_sleeping) {
-      return rule("sleeping", "info", { value: t("common.yes") });
-    }
-    return null;
-  },
-  /* --- per-slot sampler hints — emit once per slot, dedup later --- */
-  function ruleSamplerHints(s) {
-    const out = [];
-    for (const sl of s.slots) {
-      if (!isSlotProcessing(sl)) continue;
-      const p = sl.params || {};
-      if (p.temperature === 0) {
-        out.push(rule("greedy_sampling", "info", { value: "slot " + sl.id }));
-      } else if (typeof p.temperature === "number" && p.temperature > 1.5) {
-        out.push(rule("temp_high", "warn",
-          { value: "slot " + sl.id + " — " + p.temperature.toFixed(2) }));
-      }
-      if (typeof p.repeat_penalty === "number" && p.repeat_penalty > 1.3) {
-        out.push(rule("repeat_high", "warn",
-          { value: "slot " + sl.id + " — " + p.repeat_penalty.toFixed(2) }));
-      }
-      if (p.mirostat && p.mirostat !== 0) {
-        out.push(rule("mirostat", "info", { value: "slot " + sl.id }));
-      }
-      if (typeof p.dry_multiplier === "number" && p.dry_multiplier > 0) {
-        out.push(rule("dry", "info", { value: "slot " + sl.id }));
-      }
-    }
-    /* dedup by rule id — a single suggestion stands in for all slots */
-    const seen = new Set(); const uniq = [];
-    for (const r of out) {
-      if (seen.has(r.id)) continue;
-      seen.add(r.id); uniq.push(r);
-    }
-    return uniq.length ? uniq : null;
-  },
-  /* --- LoRA --- */
-  function ruleLoraScale(s) {
-    const out = [];
-    for (const a of (s.loraAdapters || [])) {
-      if (typeof a.scale === "number" && a.scale > 1) {
-        out.push(rule("lora_scale", "warn",
-          { value: "id " + a.id + " — " + a.scale.toFixed(2) }));
-        break;
-      }
-    }
-    return out.length ? out : null;
-  },
-  /* --- router status --- */
-  function ruleFailedModels(s) {
-    if (s.mode !== "router") return null;
-    const failed = (s.models || []).filter((m) => m.status && m.status.value === "failed");
-    if (!failed.length) return null;
-    const ec = failed[0].status && failed[0].status.exit_code;
-    return rule("failed_model", "bad",
-      { value: failed.length + " — " + failed[0].id + (ec != null ? " (exit " + ec + ")" : "") });
-  },
-  function ruleLoadingLong(s) {
-    if (s.mode !== "router") return null;
-    const loading = (s.models || []).find((m) => m.status && m.status.value === "loading");
-    if (sustained("loading_long", !!loading, 60)) {
-      return rule("loading_long", "warn", { value: loading.id });
-    }
-    return null;
-  },
-];
-
-/* `{key}` placeholders inside i18n strings are substituted from ctx so
- * suggestions can quote actual numbers ("--parallel from 4 to 5")
- * instead of static text. Missing keys are left as-is so an outdated
- * translation doesn't break rendering. */
-function fillTemplate(str, ctx) {
-  if (!ctx) return str;
-  return String(str).replace(/\{(\w+)\}/g, function (_, k) {
-    return ctx[k] != null ? String(ctx[k]) : "{" + k + "}";
-  });
-}
-
-function rule(id, severity, ctx) {
-  return {
-    id,
-    severity,
-    title:   fillTemplate(t("rule." + id + ".title"),   ctx),
-    explain: fillTemplate(t("rule." + id + ".explain"), ctx),
-    suggest: fillTemplate(t("rule." + id + ".suggest"), ctx),
-    context: ctx || null,
-  };
-}
-
-/* Rules are silenced for the first WARMUP_SECONDS after boot — without
- * this, sparse early metrics produce false positives (e.g. the first
- * /slots reply already shows is_processing=true on a single warmup
- * request and we'd flag "saturated"). */
-const WARMUP_SECONDS = 10;
-function inWarmup() {
-  return !state.bootedAt ||
-         (Date.now() - state.bootedAt) < WARMUP_SECONDS * 1000;
-}
-
-const SEVERITY_RANK = { bad: 0, warn: 1, info: 2 };
-
 function evaluateGuidance() {
-  if (inWarmup()) return [];
-  const out = [];
-  for (const fn of RULES) {
-    let r;
-    try { r = fn(state); } catch (_e) { continue; }
-    if (!r) continue;
-    if (Array.isArray(r)) out.push.apply(out, r);
-    else out.push(r);
-  }
-  /* Sort so the most actionable items surface first. Stable-ish on ties. */
-  out.sort(function (a, b) {
-    return (SEVERITY_RANK[a.severity] || 9) - (SEVERITY_RANK[b.severity] || 9);
-  });
-  return out;
+  return Array.isArray(state.suggestions) ? state.suggestions : [];
 }
 
 function renderGuidance() {
@@ -3501,6 +3308,7 @@ function makeSlotNode(s) {
       el("div", { "data-role": "ratio" }, "—"),
     ]),
     el("div", { class: "sub", "data-role": "ctx" }, "—"),
+    el("div", { class: "spark", "data-role": "slot-history" }),
     el("div", { class: "slot-actions", "data-role": "actions" }, []),
     el("details", null, [
       el("summary", null, t("slots.show_params")),
@@ -3537,6 +3345,15 @@ function updateSlotNode(node, s) {
 
   const ctx = node.querySelector('[data-role="ctx"]');
   ctx.textContent = t("slots.context_used") + ": " + (slotContextTokens(s) || "?");
+
+  const historyHost = node.querySelector('[data-role="slot-history"]');
+  if (historyHost) {
+    const points = normalizeSlotHistoryPoints(
+      state.history && state.history.slots && state.history.slots[String(s.id)]
+    );
+    historyHost.innerHTML = "";
+    historyHost.appendChild(sparkline(points, { min: 0, max: 1 }));
+  }
 
   /* params expander — re-render only when open or first time, since it's
    * cheap enough for ~30 keys. */
@@ -3585,6 +3402,18 @@ function updateSlotNode(node, s) {
   }
 }
 function num(v, fb) { return (typeof v === "number" && isFinite(v)) ? v : fb; }
+
+function normalizeSlotHistoryPoints(points) {
+  if (!Array.isArray(points)) return [];
+  const out = [];
+  for (const p of points) {
+    if (!p) continue;
+    const t = typeof p.t === "number" ? p.t : Date.parse(p.t);
+    if (!isFinite(t)) continue;
+    out.push({ t, v: p.isProcessing ? 1 : 0 });
+  }
+  return out;
+}
 
 /* slotAction is defined in Phase 5 (confirm + POST). */
 

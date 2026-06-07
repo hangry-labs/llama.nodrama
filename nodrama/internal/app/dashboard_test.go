@@ -4,6 +4,8 @@ import (
 	"math"
 	"testing"
 	"time"
+
+	"llama.nodrama/nodrama/internal/llamacpp"
 )
 
 func TestCounterRate(t *testing.T) {
@@ -63,6 +65,58 @@ func TestRecordMetricHistoryTrimsWindow(t *testing.T) {
 	}
 }
 
+func TestRecordSlotHistory(t *testing.T) {
+	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
+	base := time.Unix(1_700_000_000, 0)
+
+	history := dashboard.recordSlotHistory(base, []llamacpp.Slot{{
+		ID:                 2,
+		TaskID:             44,
+		State:              "generating",
+		IsProcessing:       true,
+		ContextTokens:      4096,
+		DecodedTokens:      12,
+		RemainingTokens:    20,
+		GenerationProgress: 0.25,
+	}}, "model-a")
+
+	points := history.Slots["2"]
+	if len(points) != 1 {
+		t.Fatalf("slot history length = %d", len(points))
+	}
+	if points[0].TaskID != 44 {
+		t.Fatalf("task id = %d", points[0].TaskID)
+	}
+	if points[0].Model != "model-a" {
+		t.Fatalf("model = %q", points[0].Model)
+	}
+
+	points[0].TaskID = 99
+	next := dashboard.recordSlotHistory(base.Add(time.Second), []llamacpp.Slot{{
+		ID:    2,
+		State: "idle",
+	}}, "model-a")
+	if got := next.Slots["2"][0].TaskID; got != 44 {
+		t.Fatalf("slot history was not copied, got task id %d", got)
+	}
+}
+
+func TestRecordSlotHistoryTrimsWindow(t *testing.T) {
+	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
+	base := time.Unix(1_700_000_000, 0)
+
+	dashboard.recordSlotHistory(base, []llamacpp.Slot{{ID: 1, State: "generating", IsProcessing: true}}, "model-a")
+	history := dashboard.recordSlotHistory(base.Add(metricHistoryWindow+time.Second), []llamacpp.Slot{{ID: 1, State: "idle"}}, "model-a")
+
+	points := history.Slots["1"]
+	if len(points) != 1 {
+		t.Fatalf("slot history length after trim = %d", len(points))
+	}
+	if points[0].State != "idle" {
+		t.Fatalf("remaining slot state = %q", points[0].State)
+	}
+}
+
 func TestRequestTracking(t *testing.T) {
 	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
 
@@ -111,4 +165,48 @@ func TestRequestTrackingCapsHistory(t *testing.T) {
 	if len(requests) != maxRequestHistory {
 		t.Fatalf("requests length = %d", len(requests))
 	}
+}
+
+func TestEvaluateSuggestionsFromBackendData(t *testing.T) {
+	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
+	dashboard.started = time.Unix(1_700_000_000, 0)
+	now := dashboard.started.Add(guidanceWarmup + time.Second)
+
+	suggestions := dashboard.evaluateSuggestions(now, "single", Overview{
+		TotalSlots:         1,
+		RequestsDeferred:   6,
+		RequestsProcessing: 1,
+	}, llamacpp.PropsSummary{}, llamacpp.MetricsSummary{},
+		[]llamacpp.Slot{{ID: 0, State: "generating", IsProcessing: true}},
+		SnapshotHistory{},
+		nil,
+		nil)
+	if len(suggestions) != 0 {
+		t.Fatalf("sustained suggestions should not trigger immediately: %#v", suggestions)
+	}
+
+	suggestions = dashboard.evaluateSuggestions(now.Add(31*time.Second), "single", Overview{
+		TotalSlots:         1,
+		RequestsDeferred:   6,
+		RequestsProcessing: 1,
+	}, llamacpp.PropsSummary{}, llamacpp.MetricsSummary{},
+		[]llamacpp.Slot{{ID: 0, State: "generating", IsProcessing: true}},
+		SnapshotHistory{},
+		nil,
+		nil)
+	if !hasSuggestion(suggestions, "slots_saturated") {
+		t.Fatalf("missing slots_saturated suggestion: %#v", suggestions)
+	}
+	if !hasSuggestion(suggestions, "deferred") {
+		t.Fatalf("missing deferred suggestion: %#v", suggestions)
+	}
+}
+
+func hasSuggestion(suggestions []Suggestion, id string) bool {
+	for _, suggestion := range suggestions {
+		if suggestion.ID == id {
+			return true
+		}
+	}
+	return false
 }

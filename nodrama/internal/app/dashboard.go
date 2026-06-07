@@ -31,6 +31,7 @@ type Snapshot struct {
 	Slots          []llamacpp.Slot           `json:"slots"`
 	GPU            gpu.Snapshot              `json:"gpu"`
 	History        SnapshotHistory           `json:"history"`
+	Suggestions    []Suggestion              `json:"suggestions"`
 	Requests       []RequestSummary          `json:"requests,omitempty"`
 	Warnings       []string                  `json:"warnings"`
 	RawMetrics     map[string]float64        `json:"rawMetrics,omitempty"`
@@ -38,12 +39,40 @@ type Snapshot struct {
 }
 
 type SnapshotHistory struct {
-	Metrics map[string][]HistoryPoint `json:"metrics"`
+	Metrics map[string][]HistoryPoint     `json:"metrics"`
+	Slots   map[string][]SlotHistoryPoint `json:"slots"`
 }
 
 type HistoryPoint struct {
 	T int64   `json:"t"`
 	V float64 `json:"v"`
+}
+
+type SlotHistoryPoint struct {
+	T                     int64   `json:"t"`
+	ID                    int     `json:"id"`
+	TaskID                int     `json:"taskId,omitempty"`
+	State                 string  `json:"state"`
+	IsProcessing          bool    `json:"isProcessing"`
+	ContextTokens         int     `json:"contextTokens,omitempty"`
+	ContextEstimateTokens int     `json:"contextEstimateTokens,omitempty"`
+	PromptTokens          int     `json:"promptTokens,omitempty"`
+	PromptProcessedTokens int     `json:"promptProcessedTokens,omitempty"`
+	PromptCacheTokens     int     `json:"promptCacheTokens,omitempty"`
+	DecodedTokens         int     `json:"decodedTokens,omitempty"`
+	RemainingTokens       int     `json:"remainingTokens,omitempty"`
+	GenerationProgress    float64 `json:"generationProgress,omitempty"`
+	PromptProgress        float64 `json:"promptProgress,omitempty"`
+	Model                 string  `json:"model,omitempty"`
+}
+
+type Suggestion struct {
+	ID       string         `json:"id"`
+	Severity string         `json:"severity"`
+	Title    string         `json:"title"`
+	Explain  string         `json:"explain"`
+	Suggest  string         `json:"suggest"`
+	Context  map[string]any `json:"context,omitempty"`
 }
 
 type RequestSummary struct {
@@ -74,10 +103,11 @@ type Overview struct {
 }
 
 type Dashboard struct {
-	client  *llamacpp.Client
-	cfg     Config
-	build   BuildInfo
-	started time.Time
+	client       *llamacpp.Client
+	cfg          Config
+	build        BuildInfo
+	started      time.Time
+	lastSlowPoll time.Time
 
 	mu           sync.RWMutex
 	snapshot     Snapshot
@@ -86,10 +116,13 @@ type Dashboard struct {
 	historyMu     sync.Mutex
 	rateHistory   []metricRateSample
 	metricHistory map[string][]HistoryPoint
+	slotHistory   map[int][]SlotHistoryPoint
 
 	requestSeq uint64
 	requestMu  sync.Mutex
 	requests   []RequestSummary
+
+	sustainedSince map[string]time.Time
 }
 
 type metricRateSample struct {
@@ -101,6 +134,7 @@ type metricRateSample struct {
 const (
 	liveRateWindow       = 5 * time.Second
 	metricHistoryWindow  = time.Minute
+	slowPollInterval     = 5 * time.Second
 	maxMetricHistorySize = 600
 	maxRequestHistory    = 200
 )
@@ -108,12 +142,14 @@ const (
 func NewDashboard(client *llamacpp.Client, cfg Config, build BuildInfo) *Dashboard {
 	now := time.Now()
 	return &Dashboard{
-		client:        client,
-		cfg:           cfg,
-		build:         build,
-		started:       now,
-		previousSlot:  map[int]llamacpp.Slot{},
-		metricHistory: map[string][]HistoryPoint{},
+		client:         client,
+		cfg:            cfg,
+		build:          build,
+		started:        now,
+		previousSlot:   map[int]llamacpp.Slot{},
+		metricHistory:  map[string][]HistoryPoint{},
+		slotHistory:    map[int][]SlotHistoryPoint{},
+		sustainedSince: map[string]time.Time{},
 		snapshot: Snapshot{
 			App:            "llama.nodrama",
 			Build:          build,
@@ -123,7 +159,8 @@ func NewDashboard(client *llamacpp.Client, cfg Config, build BuildInfo) *Dashboa
 			StartedAt:      now,
 			UpdatedAt:      now,
 			Endpoints:      map[string]llamacpp.Probe{},
-			History:        SnapshotHistory{Metrics: map[string][]HistoryPoint{}},
+			History:        SnapshotHistory{Metrics: map[string][]HistoryPoint{}, Slots: map[string][]SlotHistoryPoint{}},
+			Suggestions:    []Suggestion{},
 			Requests:       []RequestSummary{},
 			Warnings:       []string{"Waiting for first poll."},
 		},
@@ -154,6 +191,22 @@ func (m *Dashboard) Snapshot() Snapshot {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.snapshot
+}
+
+func copyProbes(in map[string]llamacpp.Probe) map[string]llamacpp.Probe {
+	out := make(map[string]llamacpp.Probe, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
+}
+
+func copyStringMap(in map[string]string) map[string]string {
+	out := make(map[string]string, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
 }
 
 func (m *Dashboard) deriveLiveRates(now time.Time, promptTotal, generatedTotal float64) (float64, float64) {
@@ -228,7 +281,7 @@ func (m *Dashboard) recordMetricHistory(now time.Time, metrics map[string]float6
 		m.metricHistory[name] = points
 	}
 
-	return m.copyMetricHistoryLocked()
+	return m.copyHistoryLocked()
 }
 
 func trimHistoryPoints(points []HistoryPoint, cutoff int64) []HistoryPoint {
@@ -239,12 +292,75 @@ func trimHistoryPoints(points []HistoryPoint, cutoff int64) []HistoryPoint {
 	return points[i:]
 }
 
-func (m *Dashboard) copyMetricHistoryLocked() SnapshotHistory {
-	out := SnapshotHistory{Metrics: make(map[string][]HistoryPoint, len(m.metricHistory))}
+func (m *Dashboard) recordSlotHistory(now time.Time, slots []llamacpp.Slot, model string) SnapshotHistory {
+	m.historyMu.Lock()
+	defer m.historyMu.Unlock()
+
+	if m.slotHistory == nil {
+		m.slotHistory = map[int][]SlotHistoryPoint{}
+	}
+
+	t := now.UnixMilli()
+	cutoff := now.Add(-metricHistoryWindow).UnixMilli()
+	for _, slot := range slots {
+		points := append(m.slotHistory[slot.ID], SlotHistoryPoint{
+			T:                     t,
+			ID:                    slot.ID,
+			TaskID:                slot.TaskID,
+			State:                 slot.State,
+			IsProcessing:          slot.IsProcessing,
+			ContextTokens:         slot.ContextTokens,
+			ContextEstimateTokens: slot.ContextEstimateTokens,
+			PromptTokens:          slot.PromptTokens,
+			PromptProcessedTokens: slot.PromptProcessedTokens,
+			PromptCacheTokens:     slot.PromptCacheTokens,
+			DecodedTokens:         slot.DecodedTokens,
+			RemainingTokens:       slot.RemainingTokens,
+			GenerationProgress:    slot.GenerationProgress,
+			PromptProgress:        slot.PromptProgress,
+			Model:                 model,
+		})
+		points = trimSlotHistoryPoints(points, cutoff)
+		if len(points) > maxMetricHistorySize {
+			points = points[len(points)-maxMetricHistorySize:]
+		}
+		m.slotHistory[slot.ID] = points
+	}
+
+	for slotID, points := range m.slotHistory {
+		points = trimSlotHistoryPoints(points, cutoff)
+		if len(points) == 0 {
+			delete(m.slotHistory, slotID)
+			continue
+		}
+		m.slotHistory[slotID] = points
+	}
+
+	return m.copyHistoryLocked()
+}
+
+func trimSlotHistoryPoints(points []SlotHistoryPoint, cutoff int64) []SlotHistoryPoint {
+	i := 0
+	for i < len(points) && points[i].T < cutoff {
+		i++
+	}
+	return points[i:]
+}
+
+func (m *Dashboard) copyHistoryLocked() SnapshotHistory {
+	out := SnapshotHistory{
+		Metrics: make(map[string][]HistoryPoint, len(m.metricHistory)),
+		Slots:   make(map[string][]SlotHistoryPoint, len(m.slotHistory)),
+	}
 	for name, points := range m.metricHistory {
 		copied := make([]HistoryPoint, len(points))
 		copy(copied, points)
 		out.Metrics[name] = copied
+	}
+	for slotID, points := range m.slotHistory {
+		copied := make([]SlotHistoryPoint, len(points))
+		copy(copied, points)
+		out.Slots[strconv.Itoa(slotID)] = copied
 	}
 	return out
 }
@@ -253,7 +369,8 @@ func (m *Dashboard) ResetHistory() {
 	m.historyMu.Lock()
 	m.rateHistory = nil
 	m.metricHistory = map[string][]HistoryPoint{}
-	empty := m.copyMetricHistoryLocked()
+	m.slotHistory = map[int][]SlotHistoryPoint{}
+	empty := m.copyHistoryLocked()
 	m.historyMu.Unlock()
 
 	m.mu.Lock()
@@ -333,33 +450,43 @@ func (m *Dashboard) poll(parent context.Context) {
 	ctx, cancel := context.WithTimeout(parent, m.cfg.Timeout*4)
 	defer cancel()
 
-	endpoints := map[string]llamacpp.Probe{}
-	lastErrors := map[string]string{}
+	previous := m.Snapshot()
+	pollAt := time.Now()
+	pollSlow := m.lastSlowPoll.IsZero() || pollAt.Sub(m.lastSlowPoll) >= slowPollInterval
+	endpoints := copyProbes(previous.Endpoints)
+	lastErrors := copyStringMap(previous.LastErrors)
 	warnings := []string{}
-	mode := "single"
+	mode := previous.Mode
+	if mode == "" {
+		mode = "single"
+	}
 
 	healthProbe, _ := m.client.Get(ctx, "/health")
 	endpoints["health"] = healthProbe
 	if !healthProbe.OK {
 		lastErrors["health"] = healthProbe.Error
+	} else {
+		delete(lastErrors, "health")
 	}
 
-	propsProbe, propsBody := m.client.Get(ctx, "/props")
-	endpoints["props"] = propsProbe
-	props := llamacpp.PropsSummary{}
-	if propsProbe.OK {
-		parsed, err := llamacpp.DecodeProps(propsBody)
-		if err != nil {
-			propsProbe.OK = false
-			propsProbe.Error = err.Error()
-			endpoints["props"] = propsProbe
-			lastErrors["props"] = err.Error()
+	props := previous.Props
+	if pollSlow {
+		propsProbe, propsBody := m.client.Get(ctx, "/props")
+		endpoints["props"] = propsProbe
+		if propsProbe.OK {
+			parsed, err := llamacpp.DecodeProps(propsBody)
+			if err != nil {
+				propsProbe.OK = false
+				propsProbe.Error = err.Error()
+				endpoints["props"] = propsProbe
+				lastErrors["props"] = err.Error()
+			} else {
+				props = parsed
+				delete(lastErrors, "props")
+			}
 		} else {
-			props = parsed
+			lastErrors["props"] = propsProbe.Error
 		}
-	} else {
-		lastErrors["props"] = propsProbe.Error
-		warnings = append(warnings, "llama.cpp /props is unavailable; configuration cards are degraded.")
 	}
 
 	metricsProbe, metricsBody := m.client.Get(ctx, "/metrics")
@@ -373,9 +500,9 @@ func (m *Dashboard) poll(parent context.Context) {
 		metrics.PromptTokensLivePerSec, metrics.GenerationTokensLivePerSec = m.deriveLiveRates(metricsAt, metrics.PromptTokensTotal, metrics.GeneratedTokensTotal)
 		rawMetrics["nodrama:prompt_tokens_rate"] = metrics.PromptTokensLivePerSec
 		rawMetrics["nodrama:tokens_predicted_rate"] = metrics.GenerationTokensLivePerSec
+		delete(lastErrors, "metrics")
 	} else {
 		lastErrors["metrics"] = metricsProbe.Error
-		warnings = append(warnings, "llama.cpp /metrics is unavailable; throughput and queue cards are degraded.")
 	}
 	history := m.recordMetricHistory(metricsAt, rawMetrics)
 
@@ -391,67 +518,93 @@ func (m *Dashboard) poll(parent context.Context) {
 			lastErrors["slots"] = err.Error()
 		} else {
 			slots = parsed
+			delete(lastErrors, "slots")
 		}
 	} else {
 		lastErrors["slots"] = slotsProbe.Error
+	}
+
+	models := previous.Models
+	if pollSlow {
+		modelsProbe, modelsBody := m.client.Get(ctx, "/v1/models")
+		endpoints["models"] = modelsProbe
+		if modelsProbe.OK {
+			parsed, err := llamacpp.DecodeModels(modelsBody)
+			if err != nil {
+				modelsProbe.OK = false
+				modelsProbe.Error = err.Error()
+				endpoints["models"] = modelsProbe
+				lastErrors["models"] = err.Error()
+			} else {
+				models = parsed
+				delete(lastErrors, "models")
+			}
+		} else {
+			lastErrors["models"] = modelsProbe.Error
+		}
+	}
+
+	routerModels := previous.RouterModels
+	if pollSlow {
+		routerProbe, routerBody := m.client.Get(ctx, "/models")
+		endpoints["routerModels"] = routerProbe
+		if routerProbe.OK {
+			parsed, isRouter, err := llamacpp.DecodeRouterModels(routerBody)
+			if err != nil {
+				routerProbe.OK = false
+				routerProbe.Error = err.Error()
+				endpoints["routerModels"] = routerProbe
+				lastErrors["routerModels"] = err.Error()
+			} else {
+				routerModels = parsed
+				delete(lastErrors, "routerModels")
+				if isRouter {
+					mode = "router"
+				} else {
+					mode = "single"
+				}
+			}
+		} else if routerProbe.Status != http.StatusNotFound && routerProbe.Status != http.StatusNotImplemented {
+			lastErrors["routerModels"] = routerProbe.Error
+		}
+	}
+
+	loraAdapters := previous.LoraAdapters
+	if pollSlow {
+		loraProbe, loraBody := m.client.Get(ctx, "/lora-adapters")
+		endpoints["loraAdapters"] = loraProbe
+		if loraProbe.OK {
+			parsed, err := llamacpp.DecodeLoraAdapters(loraBody)
+			if err != nil {
+				loraProbe.OK = false
+				loraProbe.Error = err.Error()
+				endpoints["loraAdapters"] = loraProbe
+				lastErrors["loraAdapters"] = err.Error()
+			} else {
+				loraAdapters = parsed
+				delete(lastErrors, "loraAdapters")
+			}
+		} else if loraProbe.Status != http.StatusNotFound && loraProbe.Status != http.StatusNotImplemented {
+			lastErrors["loraAdapters"] = loraProbe.Error
+		} else {
+			delete(lastErrors, "loraAdapters")
+		}
+	}
+
+	gpuSnapshot := previous.GPU
+	if pollSlow {
+		gpuSnapshot = gpu.Collect(ctx)
+		m.lastSlowPoll = pollAt
+	}
+	if probe, ok := endpoints["props"]; ok && !probe.OK {
+		warnings = append(warnings, "llama.cpp /props is unavailable; configuration cards are degraded.")
+	}
+	if !metricsProbe.OK {
+		warnings = append(warnings, "llama.cpp /metrics is unavailable; throughput and queue cards are degraded.")
+	}
+	if !slotsProbe.OK {
 		warnings = append(warnings, "llama.cpp /slots is unavailable; slot cards cannot be rendered.")
 	}
-
-	modelsProbe, modelsBody := m.client.Get(ctx, "/v1/models")
-	endpoints["models"] = modelsProbe
-	models := []llamacpp.ModelSummary{}
-	if modelsProbe.OK {
-		parsed, err := llamacpp.DecodeModels(modelsBody)
-		if err != nil {
-			modelsProbe.OK = false
-			modelsProbe.Error = err.Error()
-			endpoints["models"] = modelsProbe
-			lastErrors["models"] = err.Error()
-		} else {
-			models = parsed
-		}
-	} else {
-		lastErrors["models"] = modelsProbe.Error
-	}
-
-	routerProbe, routerBody := m.client.Get(ctx, "/models")
-	endpoints["routerModels"] = routerProbe
-	routerModels := []map[string]any{}
-	if routerProbe.OK {
-		parsed, isRouter, err := llamacpp.DecodeRouterModels(routerBody)
-		if err != nil {
-			routerProbe.OK = false
-			routerProbe.Error = err.Error()
-			endpoints["routerModels"] = routerProbe
-			lastErrors["routerModels"] = err.Error()
-		} else {
-			routerModels = parsed
-			if isRouter {
-				mode = "router"
-			}
-		}
-	} else if routerProbe.Status != http.StatusNotFound && routerProbe.Status != http.StatusNotImplemented {
-		lastErrors["routerModels"] = routerProbe.Error
-	}
-
-	loraProbe, loraBody := m.client.Get(ctx, "/lora-adapters")
-	endpoints["loraAdapters"] = loraProbe
-	loraAdapters := []map[string]any{}
-	if loraProbe.OK {
-		parsed, err := llamacpp.DecodeLoraAdapters(loraBody)
-		if err != nil {
-			loraProbe.OK = false
-			loraProbe.Error = err.Error()
-			endpoints["loraAdapters"] = loraProbe
-			lastErrors["loraAdapters"] = err.Error()
-		} else {
-			loraAdapters = parsed
-		}
-	} else if loraProbe.Status != http.StatusNotFound && loraProbe.Status != http.StatusNotImplemented {
-		lastErrors["loraAdapters"] = loraProbe.Error
-	}
-
-	gpuSnapshot := gpu.Collect(ctx)
 	if !gpuSnapshot.Available {
 		warnings = append(warnings, "nvidia-smi is unavailable; GPU telemetry is degraded.")
 	}
@@ -471,9 +624,15 @@ func (m *Dashboard) poll(parent context.Context) {
 	if modelAlias == "" && len(models) > 0 {
 		modelAlias = models[0].ID
 	}
+	snapshotAt := time.Now()
+	history = m.recordSlotHistory(snapshotAt, slots, modelAlias)
+	propsOK := false
+	if probe, ok := endpoints["props"]; ok {
+		propsOK = probe.OK
+	}
 
 	overview := Overview{
-		Online:                 healthProbe.OK || propsProbe.OK || slotsProbe.OK,
+		Online:                 healthProbe.OK || propsOK || slotsProbe.OK,
 		RequestsProcessing:     metrics.RequestsProcessing,
 		RequestsDeferred:       metrics.RequestsDeferred,
 		PromptTokensPerSec:     metrics.PromptTokensLivePerSec,
@@ -495,6 +654,7 @@ func (m *Dashboard) poll(parent context.Context) {
 	if totalSlots > 0 && busySlots == totalSlots {
 		warnings = append(warnings, "All slots are currently busy.")
 	}
+	suggestions := m.evaluateSuggestions(snapshotAt, mode, overview, props, metrics, slots, history, routerModels, loraAdapters)
 
 	nextPrevious := map[int]llamacpp.Slot{}
 	for _, slot := range slots {
@@ -508,7 +668,7 @@ func (m *Dashboard) poll(parent context.Context) {
 		Server:         m.cfg.Server,
 		PollIntervalMS: m.cfg.PollInterval.Milliseconds(),
 		StartedAt:      m.started,
-		UpdatedAt:      time.Now(),
+		UpdatedAt:      snapshotAt,
 		Endpoints:      endpoints,
 		Overview:       overview,
 		Props:          props,
@@ -519,6 +679,7 @@ func (m *Dashboard) poll(parent context.Context) {
 		Slots:          slots,
 		GPU:            gpuSnapshot,
 		History:        history,
+		Suggestions:    suggestions,
 		Requests:       m.copyRequests(),
 		Warnings:       warnings,
 		RawMetrics:     rawMetrics,

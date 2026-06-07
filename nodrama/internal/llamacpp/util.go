@@ -15,6 +15,14 @@ func intAt(values map[string]any, key string) int {
 	return int(numberAt(values, key))
 }
 
+func boolAt(values map[string]any, key string) bool {
+	if values == nil {
+		return false
+	}
+	value, _ := values[key].(bool)
+	return value
+}
+
 func numberAt(values map[string]any, key string) float64 {
 	if values == nil {
 		return 0
