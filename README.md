@@ -5,6 +5,10 @@ serves a browser UI and a typed backend API that normalizes slots, metrics,
 requests, suggestions, and timelines so concurrency, queueing, and token
 throughput are easier to inspect.
 
+## UI Preview
+
+![llama.nodrama dashboard UI](docs/ui.jpg)
+
 ## Install
 
 Linux and macOS:
