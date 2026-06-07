@@ -15,7 +15,10 @@ import (
 	"time"
 )
 
-const chatMetadataReadLimit = 4 * 1024 * 1024
+const (
+	chatMetadataReadLimit = 4 * 1024 * 1024
+	usageBufferLimit      = 1024 * 1024
+)
 
 type chatRequestMetadata struct {
 	Model  string `json:"model"`
@@ -81,7 +84,7 @@ func serveTrackedProxy(w http.ResponseWriter, r *http.Request, dashboard *Dashbo
 	if status == 0 {
 		status = http.StatusOK
 	}
-	dashboard.FinishRequest(requestID, status, tracker.bytes, proxyErr)
+	dashboard.FinishRequest(requestID, status, tracker.bytes, tracker.usage.finish(), proxyErr)
 }
 
 func reverseProxy(target *url.URL, upstreamPath, upstreamQuery string) *httputil.ReverseProxy {
@@ -141,6 +144,7 @@ type trackingResponseWriter struct {
 	http.ResponseWriter
 	status int
 	bytes  int64
+	usage  usageAccumulator
 }
 
 func (w *trackingResponseWriter) WriteHeader(status int) {
@@ -157,6 +161,7 @@ func (w *trackingResponseWriter) Write(p []byte) (int, error) {
 	}
 	n, err := w.ResponseWriter.Write(p)
 	w.bytes += int64(n)
+	w.usage.add(p[:n])
 	return n, err
 }
 
@@ -172,4 +177,80 @@ func (w *trackingResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 		return nil, nil, http.ErrNotSupported
 	}
 	return hijacker.Hijack()
+}
+
+type usageAccumulator struct {
+	buf   []byte
+	usage TokenUsage
+	seen  bool
+}
+
+func (u *usageAccumulator) add(p []byte) {
+	if len(u.buf)+len(p) > usageBufferLimit {
+		remaining := usageBufferLimit - len(u.buf)
+		if remaining <= 0 {
+			return
+		}
+		p = p[:remaining]
+	}
+	u.buf = append(u.buf, p...)
+
+	for {
+		idx := bytes.IndexByte(u.buf, '\n')
+		if idx < 0 {
+			return
+		}
+		line := string(bytes.TrimSpace(u.buf[:idx]))
+		u.buf = u.buf[idx+1:]
+		u.parseLine(line)
+	}
+}
+
+func (u *usageAccumulator) finish() *TokenUsage {
+	if len(bytes.TrimSpace(u.buf)) > 0 {
+		u.parseLine(string(bytes.TrimSpace(u.buf)))
+		u.parseJSON(bytes.TrimSpace(u.buf))
+	}
+	if !u.seen {
+		return nil
+	}
+	usage := u.usage
+	return &usage
+}
+
+func (u *usageAccumulator) parseLine(line string) {
+	if line == "" {
+		return
+	}
+	if strings.HasPrefix(line, "data:") {
+		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if payload == "" || payload == "[DONE]" {
+			return
+		}
+		u.parseJSON([]byte(payload))
+		return
+	}
+	u.parseJSON([]byte(line))
+}
+
+func (u *usageAccumulator) parseJSON(payload []byte) {
+	var envelope struct {
+		Usage struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+			TotalTokens      int `json:"total_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(payload, &envelope); err != nil {
+		return
+	}
+	if envelope.Usage.PromptTokens == 0 && envelope.Usage.CompletionTokens == 0 && envelope.Usage.TotalTokens == 0 {
+		return
+	}
+	u.usage = TokenUsage{
+		PromptTokens:     envelope.Usage.PromptTokens,
+		CompletionTokens: envelope.Usage.CompletionTokens,
+		TotalTokens:      envelope.Usage.TotalTokens,
+	}
+	u.seen = true
 }

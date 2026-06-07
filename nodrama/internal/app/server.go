@@ -51,8 +51,10 @@ func Run(ctx context.Context, cfg Config, info BuildInfo) error {
 	if err := registerAPIProxies(mux, cfg.Server, dashboard); err != nil {
 		return err
 	}
-	if err := registerLlamaProxy(mux, cfg.Server); err != nil {
-		return err
+	if cfg.RawProxy {
+		if err := registerLlamaProxy(mux, cfg.Server); err != nil {
+			return err
+		}
 	}
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{
@@ -67,6 +69,7 @@ func Run(ctx context.Context, cfg Config, info BuildInfo) error {
 	mux.HandleFunc("GET /api/snapshot", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, dashboard.Snapshot())
 	})
+	mux.HandleFunc("GET /api/logs/tail", logTailHandler(cfg.LogPath))
 	mux.HandleFunc("POST /api/history/reset", func(w http.ResponseWriter, r *http.Request) {
 		dashboard.ResetHistory()
 		writeJSON(w, map[string]string{"status": "ok"})

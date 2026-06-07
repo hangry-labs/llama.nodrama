@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"net/http"
+	"sort"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -76,16 +77,26 @@ type Suggestion struct {
 }
 
 type RequestSummary struct {
-	ID            string     `json:"id"`
-	Route         string     `json:"route"`
-	Model         string     `json:"model,omitempty"`
-	Stream        bool       `json:"stream"`
-	StartedAt     time.Time  `json:"startedAt"`
-	EndedAt       *time.Time `json:"endedAt,omitempty"`
-	DurationMS    int64      `json:"durationMs,omitempty"`
-	Status        int        `json:"status,omitempty"`
-	ResponseBytes int64      `json:"responseBytes,omitempty"`
-	Error         string     `json:"error,omitempty"`
+	ID                string      `json:"id"`
+	Route             string      `json:"route"`
+	Model             string      `json:"model,omitempty"`
+	Stream            bool        `json:"stream"`
+	StartedAt         time.Time   `json:"startedAt"`
+	EndedAt           *time.Time  `json:"endedAt,omitempty"`
+	DurationMS        int64       `json:"durationMs,omitempty"`
+	Status            int         `json:"status,omitempty"`
+	ResponseBytes     int64       `json:"responseBytes,omitempty"`
+	Usage             *TokenUsage `json:"usage,omitempty"`
+	SlotIDs           []int       `json:"slotIds,omitempty"`
+	TaskIDs           []int       `json:"taskIds,omitempty"`
+	PromptCacheTokens int         `json:"promptCacheTokens,omitempty"`
+	Error             string      `json:"error,omitempty"`
+}
+
+type TokenUsage struct {
+	PromptTokens     int `json:"promptTokens,omitempty"`
+	CompletionTokens int `json:"completionTokens,omitempty"`
+	TotalTokens      int `json:"totalTokens,omitempty"`
 }
 
 type Overview struct {
@@ -401,7 +412,7 @@ func (m *Dashboard) StartRequest(route, model string, stream bool) string {
 	return id
 }
 
-func (m *Dashboard) FinishRequest(id string, status int, responseBytes int64, errText string) {
+func (m *Dashboard) FinishRequest(id string, status int, responseBytes int64, usage *TokenUsage, errText string) {
 	ended := time.Now()
 
 	m.requestMu.Lock()
@@ -409,10 +420,15 @@ func (m *Dashboard) FinishRequest(id string, status int, responseBytes int64, er
 		if m.requests[i].ID != id {
 			continue
 		}
+		slotIDs, taskIDs, promptCacheTokens := m.inferRequestSlots(m.requests[i].StartedAt, ended)
 		m.requests[i].EndedAt = &ended
 		m.requests[i].DurationMS = ended.Sub(m.requests[i].StartedAt).Milliseconds()
 		m.requests[i].Status = status
 		m.requests[i].ResponseBytes = responseBytes
+		m.requests[i].Usage = usage
+		m.requests[i].SlotIDs = slotIDs
+		m.requests[i].TaskIDs = taskIDs
+		m.requests[i].PromptCacheTokens = promptCacheTokens
 		m.requests[i].Error = errText
 		break
 	}
@@ -420,6 +436,43 @@ func (m *Dashboard) FinishRequest(id string, status int, responseBytes int64, er
 	m.requestMu.Unlock()
 
 	m.updateSnapshotRequests(requests)
+}
+
+func (m *Dashboard) inferRequestSlots(started, ended time.Time) ([]int, []int, int) {
+	m.historyMu.Lock()
+	defer m.historyMu.Unlock()
+
+	startMS := started.Add(-500 * time.Millisecond).UnixMilli()
+	endMS := ended.Add(500 * time.Millisecond).UnixMilli()
+	slotSet := map[int]bool{}
+	taskSet := map[int]bool{}
+	maxPromptCache := 0
+	for slotID, points := range m.slotHistory {
+		for _, point := range points {
+			if point.T < startMS || point.T > endMS || !point.IsProcessing {
+				continue
+			}
+			slotSet[slotID] = true
+			if point.TaskID > 0 {
+				taskSet[point.TaskID] = true
+			}
+			if point.PromptCacheTokens > maxPromptCache {
+				maxPromptCache = point.PromptCacheTokens
+			}
+		}
+	}
+	slotIDs := sortedIntKeys(slotSet)
+	taskIDs := sortedIntKeys(taskSet)
+	return slotIDs, taskIDs, maxPromptCache
+}
+
+func sortedIntKeys(values map[int]bool) []int {
+	out := make([]int, 0, len(values))
+	for value := range values {
+		out = append(out, value)
+	}
+	sort.Ints(out)
+	return out
 }
 
 func (m *Dashboard) copyRequests() []RequestSummary {
@@ -435,6 +488,16 @@ func (m *Dashboard) copyRequestsLocked() []RequestSummary {
 		if request.EndedAt != nil {
 			ended := *request.EndedAt
 			out[i].EndedAt = &ended
+		}
+		if request.Usage != nil {
+			usage := *request.Usage
+			out[i].Usage = &usage
+		}
+		if request.SlotIDs != nil {
+			out[i].SlotIDs = append([]int(nil), request.SlotIDs...)
+		}
+		if request.TaskIDs != nil {
+			out[i].TaskIDs = append([]int(nil), request.TaskIDs...)
 		}
 	}
 	return out

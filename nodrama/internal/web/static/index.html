@@ -153,6 +153,11 @@
   .metric-card.bad  .spark-line { stroke: var(--bad); }
   .metric-card.bad  .spark-area { fill: #f8514933; }
   .metric-card.disabled .value { color: var(--fg-mute); }
+  .slot .spark { margin: 8px 0 10px; }
+  .slot .spark svg { width: 100%; height: 36px; display: block; }
+  .slot .spark-area { fill: #58a6ff22; }
+  .slot .spark-line { fill: none; stroke: var(--accent); stroke-width: 1.5; }
+  .slot .spark-grid { stroke: var(--border); stroke-width: 1; }
   .pct-bar {
     height: 6px; background: var(--bg-3);
     border-radius: 3px; overflow: hidden;
@@ -658,7 +663,7 @@ const I18N = {
     "log.search":               "Filter…",
     "log.empty":                "(no lines yet)",
     "log.setup_help_title":     "Log tail setup",
-    "log.setup_help":           "The log panel reads a static file via HTTP Range. Three conditions must hold: (1) llama-server logs are redirected to a file, (2) that file is served from the same origin, (3) the HTTP server supports Range. Example: llama-server ... --path ./public > ./public/server.log 2>&1",
+    "log.setup_help":           "The log panel reads from the llama.nodrama backend. Start with --log /path/to/server.log to enable it.",
 
     "guidance.title":           "Active suggestions",
     "guidance.empty":           "No suggestions right now — server looks healthy.",
@@ -849,7 +854,7 @@ const I18N = {
     "log.search":           "필터…",
     "log.empty":            "(아직 줄이 없습니다)",
     "log.setup_help_title": "로그 tail 설정 안내",
-    "log.setup_help":       "로그 패널은 정적 파일을 HTTP Range로 읽습니다. 세 가지 조건이 모두 충족되어야 합니다: (1) llama-server 로그가 파일로 리다이렉트되어 있어야 함, (2) 그 파일이 이 대시보드와 같은 origin에서 서빙되어야 함, (3) HTTP 서버가 Range 헤더를 지원해야 함. 예: llama-server ... --path ./public > ./public/server.log 2>&1",
+    "log.setup_help":       "The log panel reads from the llama.nodrama backend. Start with --log /path/to/server.log to enable it.",
     "guidance.title":         "추천 조치",
     "guidance.empty":         "현재 추천 조치가 없습니다 — 서버 상태가 양호합니다.",
     "guidance.no_data":       "서버에 연결할 수 없습니다 — 분석할 데이터가 없습니다.",
@@ -1027,7 +1032,7 @@ const I18N = {
     "log.search":           "フィルタ…",
     "log.empty":            "(まだログ行はありません)",
     "log.setup_help_title": "ログ tail の設定",
-    "log.setup_help":       "ログパネルは静的ファイルを HTTP Range で読み取ります。三つの条件すべてが必要です: (1) llama-server のログがファイルにリダイレクトされている、(2) そのファイルが同じ origin で配信されている、(3) HTTP サーバーが Range をサポートしている。例: llama-server ... --path ./public > ./public/server.log 2>&1",
+    "log.setup_help":       "The log panel reads from the llama.nodrama backend. Start with --log /path/to/server.log to enable it.",
     "guidance.title":         "アクティブな提案",
     "guidance.empty":         "現在の提案はありません — サーバーは正常です。",
     "guidance.no_data":       "サーバーに接続できません — 分析対象のデータがありません。",
@@ -1205,7 +1210,7 @@ const I18N = {
     "log.search":           "过滤…",
     "log.empty":            "(尚无日志行)",
     "log.setup_help_title": "日志 tail 设置",
-    "log.setup_help":       "日志面板通过 HTTP Range 读取静态文件。需同时满足三个条件: (1) llama-server 日志重定向到文件; (2) 该文件由相同 origin 提供; (3) HTTP 服务器支持 Range。示例: llama-server ... --path ./public > ./public/server.log 2>&1",
+    "log.setup_help":       "The log panel reads from the llama.nodrama backend. Start with --log /path/to/server.log to enable it.",
     "guidance.title":         "活动建议",
     "guidance.empty":         "暂无建议 — 服务器状态良好。",
     "guidance.no_data":       "无法连接到服务器 — 没有可分析的数据。",
@@ -1383,7 +1388,7 @@ const I18N = {
     "log.search":           "Filtrar…",
     "log.empty":            "(aún no hay líneas)",
     "log.setup_help_title": "Configuración del tail de logs",
-    "log.setup_help":       "El panel de logs lee un archivo estático mediante HTTP Range. Deben cumplirse tres condiciones: (1) los logs de llama-server se redirigen a un archivo, (2) ese archivo se sirve desde el mismo origen, (3) el servidor HTTP soporta Range. Ejemplo: llama-server ... --path ./public > ./public/server.log 2>&1",
+    "log.setup_help":       "The log panel reads from the llama.nodrama backend. Start with --log /path/to/server.log to enable it.",
     "guidance.title":         "Sugerencias activas",
     "guidance.empty":         "Sin sugerencias ahora — el servidor parece sano.",
     "guidance.no_data":       "No se puede contactar el servidor — sin datos para analizar.",
@@ -1717,26 +1722,6 @@ function installDemoShim(mode) {
     };
   };
 
-  const renderPrometheus = () => {
-    const c = counters(), g = gauges();
-    let out = "";
-    const emit = (name, type, help, val) => {
-      out += `# HELP llamacpp:${name} ${help}\n# TYPE llamacpp:${name} ${type}\nllamacpp:${name} ${val}\n`;
-    };
-    emit("prompt_tokens_total", "counter", "Number of prompt tokens processed.", c.prompt_tokens_total);
-    emit("prompt_seconds_total", "counter", "Prompt process time", c.prompt_seconds_total);
-    emit("tokens_predicted_total", "counter", "Number of generation tokens processed.", c.tokens_predicted_total);
-    emit("tokens_predicted_seconds_total", "counter", "Predict process time", c.tokens_predicted_seconds_total);
-    emit("n_decode_total", "counter", "Total number of llama_decode() calls", c.n_decode_total);
-    emit("n_tokens_max", "counter", "Largest observed n_tokens.", c.n_tokens_max);
-    emit("n_busy_slots_per_decode", "counter", "Average busy slots per decode.", c.n_busy_slots_per_decode);
-    emit("prompt_tokens_seconds", "gauge", "Average prompt throughput in tokens/s.", g.prompt_tokens_seconds);
-    emit("predicted_tokens_seconds", "gauge", "Average generation throughput in tokens/s.", g.predicted_tokens_seconds);
-    emit("requests_processing", "gauge", "Number of requests processing.", g.requests_processing);
-    emit("requests_deferred", "gauge", "Number of requests deferred.", g.requests_deferred);
-    return out;
-  };
-
   const renderRawMetrics = () => {
     const c = counters(), g = gauges();
     return {
@@ -1887,9 +1872,6 @@ function installDemoShim(mode) {
   const json = (obj, status) =>
     new Response(JSON.stringify(obj),
       { status: status || 200, headers: { "Content-Type": "application/json" } });
-  const text = (str, status, type) =>
-    new Response(str,
-      { status: status || 200, headers: { "Content-Type": type || "text/plain; version=0.0.4" } });
   const notFound = () => new Response("not found", { status: 404 });
 
   window.fetch = function (input, init) {
@@ -1923,29 +1905,24 @@ function installDemoShim(mode) {
       loraAdapters: [],
       slots: renderSlots(),
       rawMetrics: renderRawMetrics(),
+      history: { metrics: {}, slots: {} },
       suggestions: [],
+      requests: [],
       warnings: [],
     }));
-    if (path === "/health") return Promise.resolve(json({ status: "ok" }));
-    if (path === "/props")  return Promise.resolve(json(propsResp));
-    if (path === "/v1/models") return Promise.resolve(json(v1ModelsResp));
-    if (path === "/models") {
-      return Promise.resolve(modelsResp ? json(modelsResp) : notFound());
-    }
-    if (path === "/metrics") return Promise.resolve(text(renderPrometheus()));
-    if (path === "/slots")   return Promise.resolve(json(renderSlots()));
-    if (path === "/lora-adapters") return Promise.resolve(json([]));
-    if ((path === "/api/chat/completions" || path === "/v1/chat/completions")
-        && method.toUpperCase() === "POST") {
+    if (path === "/api/chat/completions" && method.toUpperCase() === "POST") {
       return Promise.resolve(streamingChat(init || {}));
     }
     /* slot save/restore/erase, model load/unload — pretend success */
-    if (path.startsWith("/api/slots/") || path.startsWith("/slots/")
+    if (path.startsWith("/api/slots/")
         || path.startsWith("/api/models/load") || path.startsWith("/api/models/unload")
-        || path.startsWith("/models/load") || path.startsWith("/models/unload")) {
+        || path === "/api/history/reset") {
       return Promise.resolve(json({ success: true, demo: true }));
     }
-    /* server.log HEAD — return 404 so log panel hides cleanly */
+    if (path.startsWith("/api/logs/tail")) {
+      return Promise.resolve(json({ enabled: false }));
+    }
+    /* legacy server.log — return 404 so log panel hides cleanly */
     return Promise.resolve(notFound());
   };
 
@@ -2748,15 +2725,8 @@ function bumpGuidance() {
 }
 
 /* ──────────────────────────────────────────────────────────────────────
- *  Log tail (Phase 6)
- *
- *  Mechanism: HTTP Range against a static file. The dashboard cannot
- *  read local files, so this only works when:
- *    1. llama-server's stdout is redirected to a file
- *       (e.g. `... > ./public/server.log 2>&1`)
- *    2. that file is served from the same origin
- *    3. the HTTP server supports Range (cpp-httplib + nginx do)
- *  If HEAD on the path fails (404, CORS, etc.) the panel is hidden.
+ *  Log tail (Phase 6). The browser reads a bounded JSON tail from
+ *  /api/logs/tail. The backend only enables it when launched with --log.
  * ──────────────────────────────────────────────────────────────────── */
 const LOG_TAIL_BYTES = 65536;
 const LOG_MAX_LINES = 2000;
@@ -2770,56 +2740,30 @@ const logState = {
   filter: "",
 };
 
-function logUrl() {
-  /* honor explicit ?log=, default to ./server.log relative to the
-   * current page (NOT the API server — that wouldn't be reachable).
-   * Same-origin only: a shared link with ?log=https://attacker… would
-   * otherwise pull cross-origin from the viewer's browser. */
-  const p = state.params.log;
-  if (p === "") return null;       /* explicitly disabled */
-  const path = (p == null || p === undefined) ? "server.log" : p;
-  try {
-    const u = new URL(path, window.location.href);
-    if (u.origin !== window.location.origin) return null;
-    return u.toString();
-  } catch (_e) { return null; }
-}
-
 async function detectLog() {
-  const url = logUrl();
-  if (!url) { logState.enabled = false; return false; }
   try {
-    const res = await fetch(url, { method: "HEAD", cache: "no-store" });
-    if (res.status === 204) return false;
-    if (!res.ok) return false;
-    /* Accept-Ranges: bytes is what makes tail possible. Fall back to
-     * "total bytes < tail size" if the header is missing — at least we
-     * can show the whole file. */
-    const accepts = (res.headers.get("Accept-Ranges") || "").toLowerCase();
-    const size = parseInt(res.headers.get("Content-Length") || "0", 10);
-    if (accepts.indexOf("bytes") === -1 && (!size || size > LOG_TAIL_BYTES * 4)) {
-      return false;
-    }
-    logState.url = url;
-    logState.enabled = true;
-    logState.totalSize = isFinite(size) ? size : 0;
-    return true;
+    const payload = await fetchJSON("/api/logs/tail?bytes=1&lines=1", {
+      withModel: false,
+      timeout: 4000,
+    });
+    logState.enabled = !!(payload && payload.enabled);
+    logState.totalSize = payload && payload.size ? payload.size : 0;
+    return logState.enabled;
   } catch (_e) { return false; }
 }
 
 async function fetchLogTail() {
-  if (!logState.enabled || !logState.url) return null;
-  const headers = { "Cache-Control": "no-cache" };
-  /* Negative Range: read the last N bytes (no need to track size). */
-  headers["Range"] = "bytes=-" + LOG_TAIL_BYTES;
-  const res = await fetch(logState.url, { headers, cache: "no-store" });
-  if (!res.ok && res.status !== 206) {
-    throw new Error("HTTP " + res.status);
-  }
-  const lm = res.headers.get("Last-Modified");
-  if (lm && lm === logState.lastModified) return null;       /* unchanged */
-  logState.lastModified = lm;
-  return await res.text();
+  if (!logState.enabled) return null;
+  const payload = await fetchJSON("/api/logs/tail?bytes=" + LOG_TAIL_BYTES + "&lines=" + LOG_MAX_LINES, {
+    withModel: false,
+    timeout: 8000,
+  });
+  if (!payload || !payload.enabled) return null;
+  const marker = String(payload.updatedAt || "") + ":" + String(payload.size || 0);
+  if (marker === logState.lastModified) return null;
+  logState.lastModified = marker;
+  logState.totalSize = payload.size || 0;
+  return payload;
 }
 
 /* Minimal ANSI SGR renderer — color/bold codes only, anything else
@@ -2878,11 +2822,18 @@ function renderLogLines(replace) {
   if (logState.follow) view.scrollTop = view.scrollHeight;
 }
 
-function applyLogPayload(text) {
-  if (text == null) return;
-  /* The first line returned by a negative Range is likely truncated — drop it. */
-  const lines = text.split(/\r?\n/);
-  if (lines.length > 1) lines.shift();
+function applyLogPayload(payload) {
+  if (payload == null) return;
+  let lines;
+  let truncated = false;
+  if (typeof payload === "string") {
+    lines = payload.split(/\r?\n/);
+  } else {
+    lines = Array.isArray(payload.lines) ? payload.lines.slice() : [];
+    truncated = !!payload.truncated;
+  }
+  /* Only byte-truncated tails need the first partial line removed. */
+  if (truncated && lines.length > 1) lines.shift();
   /* trailing empty line from "...\n" */
   while (lines.length && lines[lines.length - 1] === "") lines.pop();
   logState.lines = lines.slice(-LOG_MAX_LINES);

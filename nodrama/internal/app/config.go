@@ -5,6 +5,8 @@ import "time"
 type Config struct {
 	Server       string
 	Listen       string
+	LogPath      string
+	RawProxy     bool
 	PollInterval time.Duration
 	Timeout      time.Duration
 }

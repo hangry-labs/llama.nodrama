@@ -121,7 +121,7 @@ func TestRequestTracking(t *testing.T) {
 	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
 
 	id := dashboard.StartRequest("/api/chat/completions", "model-a", true)
-	dashboard.FinishRequest(id, 200, 1234, "")
+	dashboard.FinishRequest(id, 200, 1234, &TokenUsage{PromptTokens: 10, CompletionTokens: 3, TotalTokens: 13}, "")
 
 	requests := dashboard.Snapshot().Requests
 	if len(requests) != 1 {
@@ -146,6 +146,9 @@ func TestRequestTracking(t *testing.T) {
 	if req.ResponseBytes != 1234 {
 		t.Fatalf("response bytes = %d", req.ResponseBytes)
 	}
+	if req.Usage == nil || req.Usage.TotalTokens != 13 {
+		t.Fatalf("usage = %#v", req.Usage)
+	}
 	if req.EndedAt == nil {
 		t.Fatal("endedAt was not recorded")
 	}
@@ -164,6 +167,36 @@ func TestRequestTrackingCapsHistory(t *testing.T) {
 	requests := dashboard.Snapshot().Requests
 	if len(requests) != maxRequestHistory {
 		t.Fatalf("requests length = %d", len(requests))
+	}
+}
+
+func TestInferRequestSlotsFromSlotHistory(t *testing.T) {
+	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
+	base := time.Unix(1_700_000_000, 0)
+	dashboard.recordSlotHistory(base.Add(time.Second), []llamacpp.Slot{{
+		ID:                1,
+		TaskID:            77,
+		IsProcessing:      true,
+		State:             "generating",
+		PromptCacheTokens: 42,
+	}}, "model-a")
+	dashboard.recordSlotHistory(base.Add(2*time.Second), []llamacpp.Slot{{
+		ID:                2,
+		TaskID:            88,
+		IsProcessing:      true,
+		State:             "prompt-processing",
+		PromptCacheTokens: 20,
+	}}, "model-a")
+
+	slotIDs, taskIDs, promptCacheTokens := dashboard.inferRequestSlots(base, base.Add(1200*time.Millisecond))
+	if len(slotIDs) != 1 || slotIDs[0] != 1 {
+		t.Fatalf("slot ids = %#v", slotIDs)
+	}
+	if len(taskIDs) != 1 || taskIDs[0] != 77 {
+		t.Fatalf("task ids = %#v", taskIDs)
+	}
+	if promptCacheTokens != 42 {
+		t.Fatalf("prompt cache tokens = %d", promptCacheTokens)
 	}
 }
 

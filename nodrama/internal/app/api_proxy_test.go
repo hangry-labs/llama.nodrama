@@ -15,6 +15,8 @@ func TestChatCompletionsProxyTracksRequest(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n")
+		_, _ = io.WriteString(w, "data: {\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":2,\"total_tokens\":6}}\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
 	}))
 	defer upstream.Close()
 
@@ -50,6 +52,9 @@ func TestChatCompletionsProxyTracksRequest(t *testing.T) {
 	}
 	if requests[0].ResponseBytes == 0 {
 		t.Fatal("response bytes were not tracked")
+	}
+	if requests[0].Usage == nil || requests[0].Usage.TotalTokens != 6 {
+		t.Fatalf("usage = %#v", requests[0].Usage)
 	}
 }
 

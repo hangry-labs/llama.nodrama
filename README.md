@@ -1,9 +1,9 @@
 # llama.nodrama
 
 `llama.nodrama` is a small Go dashboard for operating `llama.cpp` servers. It
-serves a browser UI, proxies selected llama.cpp endpoints, and normalizes slot
-and metrics data so concurrency, queueing, and token throughput are easier to
-inspect.
+serves a browser UI and a typed backend API that normalizes slots, metrics,
+requests, suggestions, and timelines so concurrency, queueing, and token
+throughput are easier to inspect.
 
 ## Install
 
@@ -58,9 +58,11 @@ Useful flags:
 ```text
 --server   llama.cpp server base URL, default http://127.0.0.1:18080
 --listen   dashboard listen address, default :39080
---poll     polling interval, default 1s
---timeout  upstream request timeout, default 5s
---version  print build version and exit
+--log        optional llama.cpp log file path for /api/logs/tail
+--poll       polling interval, default 1s
+--raw-proxy  expose selected raw llama.cpp proxy routes for debugging
+--timeout    upstream request timeout, default 5s
+--version    print build version and exit
 ```
 
 ## Releases
