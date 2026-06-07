@@ -203,6 +203,7 @@
     display: flex; align-items: center; gap: 8px;
     font-family: var(--mono); font-size: 13px;
   }
+  .slot-head .grow { flex: 1; }
   .slot-head .id { color: var(--fg-dim); }
   .slot-head .badge {
     font-size: 11px; padding: 1px 6px; border-radius: 999px;
@@ -210,6 +211,7 @@
     border: 1px solid var(--border);
   }
   .slot-head .badge.active { background: #1d3a5c; color: #9cc3ff; border-color: #2f6db1; }
+  .slot-head .badge.rate { color: var(--accent-2); border-color: #2f4969; }
   .slot-actions { display: flex; gap: 6px; flex-wrap: wrap; }
   .slot-actions button { font-size: 11px; padding: 2px 8px; }
   .slot .progress {
@@ -3365,6 +3367,8 @@ function makeSlotNode(s) {
     el("div", { class: "slot-head" }, [
       el("span", { class: "id" }, "slot " + s.id),
       el("span", { class: "badge", "data-role": "state" }, t("slots.idle")),
+      el("span", { class: "grow" }),
+      el("span", { class: "badge rate", "data-role": "pp-rate", title: "prompt processing tok/s" }, "pp —"),
     ]),
     el("div", { class: "progress", "data-role": "progress" }, [
       el("div", { class: "pct-bar" }, el("span", { style: "width: 0%" })),
@@ -3397,6 +3401,14 @@ function updateSlotNode(node, s) {
   const promptTokens = isActive ? slotPromptTokens(s) : 0;
   const promptProcessed = isActive ? slotPromptProcessedTokens(s) : 0;
   const promptCache = isActive ? slotPromptCacheTokens(s) : 0;
+  const historyPoints = state.history && state.history.slots && state.history.slots[String(s.id)];
+  const latestHistory = latestSlotHistoryPoint(historyPoints);
+  const promptRate = latestHistory ? Number(latestHistory.promptTokensPerSec || 0) : 0;
+  const ppRate = node.querySelector('[data-role="pp-rate"]');
+  if (ppRate) {
+    ppRate.hidden = !isActive;
+    ppRate.textContent = isActive && promptRate > 0 ? ("pp " + fmtNumber(promptRate) + " tok/s") : "pp —";
+  }
 
   const progress = node.querySelector('[data-role="progress"]');
   progress.hidden = !isActive;
@@ -3414,9 +3426,7 @@ function updateSlotNode(node, s) {
 
   const historyHost = node.querySelector('[data-role="slot-history"]');
   if (historyHost) {
-    const points = normalizeSlotHistoryPoints(
-      state.history && state.history.slots && state.history.slots[String(s.id)]
-    );
+    const points = normalizeSlotHistoryPoints(historyPoints);
     historyHost.innerHTML = "";
     historyHost.appendChild(sparkline(points, { min: 0 }));
   }
@@ -3477,11 +3487,18 @@ function normalizeSlotHistoryPoints(points) {
     const t = typeof p.t === "number" ? p.t : Date.parse(p.t);
     if (!isFinite(t)) continue;
     const gen = Number(p.generationTokensPerSec || 0);
-    const prompt = Number(p.promptTokensPerSec || 0);
-    const v = Math.max(0, isFinite(gen) ? gen : 0, isFinite(prompt) ? prompt : 0);
+    const v = Math.max(0, isFinite(gen) ? gen : 0);
     out.push({ t, v });
   }
   return out;
+}
+
+function latestSlotHistoryPoint(points) {
+  if (!Array.isArray(points) || !points.length) return null;
+  for (let i = points.length - 1; i >= 0; i--) {
+    if (points[i]) return points[i];
+  }
+  return null;
 }
 
 function ensureQueriesSection() {
