@@ -3,14 +3,15 @@ package llamacpp
 import "encoding/json"
 
 type ModelSummary struct {
-	ID      string   `json:"id"`
-	Aliases []string `json:"aliases,omitempty"`
-	OwnedBy string   `json:"ownedBy,omitempty"`
-	Object  string   `json:"object,omitempty"`
-	Family  string   `json:"family,omitempty"`
-	Format  string   `json:"format,omitempty"`
-	Size    float64  `json:"size,omitempty"`
-	Params  float64  `json:"params,omitempty"`
+	ID      string         `json:"id"`
+	Aliases []string       `json:"aliases,omitempty"`
+	OwnedBy string         `json:"ownedBy,omitempty"`
+	Object  string         `json:"object,omitempty"`
+	Family  string         `json:"family,omitempty"`
+	Format  string         `json:"format,omitempty"`
+	Size    float64        `json:"size,omitempty"`
+	Params  float64        `json:"params,omitempty"`
+	Meta    map[string]any `json:"meta,omitempty"`
 }
 
 func DecodeModels(body []byte) ([]ModelSummary, error) {
@@ -49,6 +50,7 @@ func DecodeModels(body []byte) ([]ModelSummary, error) {
 			Object:  model.Object,
 			Size:    numberAt(model.Meta, "size"),
 			Params:  numberAt(model.Meta, "n_params"),
+			Meta:    model.Meta,
 		})
 	}
 	for _, model := range envelope.Models {
@@ -65,6 +67,58 @@ func DecodeModels(body []byte) ([]ModelSummary, error) {
 			Family: model.Details.Family,
 			Format: model.Details.Format,
 		})
+	}
+	return out, nil
+}
+
+func DecodeRouterModels(body []byte) ([]map[string]any, bool, error) {
+	list, err := decodeObjectList(body, "data", "models")
+	if err != nil {
+		return nil, false, err
+	}
+	router := false
+	for _, item := range list {
+		status, ok := item["status"].(map[string]any)
+		if ok {
+			_, router = status["value"]
+		}
+		if router {
+			break
+		}
+	}
+	return list, router, nil
+}
+
+func DecodeLoraAdapters(body []byte) ([]map[string]any, error) {
+	return decodeObjectList(body, "data", "adapters", "lora_adapters")
+}
+
+func decodeObjectList(body []byte, keys ...string) ([]map[string]any, error) {
+	var raw any
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, err
+	}
+
+	var list []any
+	switch value := raw.(type) {
+	case []any:
+		list = value
+	case map[string]any:
+		for _, key := range keys {
+			if nested, ok := value[key].([]any); ok {
+				list = nested
+				break
+			}
+		}
+	}
+
+	out := make([]map[string]any, 0, len(list))
+	for _, item := range list {
+		object, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		out = append(out, object)
 	}
 	return out, nil
 }

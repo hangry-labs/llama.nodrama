@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"net/http"
 	"sync"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 type Snapshot struct {
 	App            string                    `json:"app"`
 	Build          BuildInfo                 `json:"build"`
+	Mode           string                    `json:"mode"`
 	Server         string                    `json:"server"`
 	PollIntervalMS int64                     `json:"pollIntervalMs"`
 	StartedAt      time.Time                 `json:"startedAt"`
@@ -21,6 +23,8 @@ type Snapshot struct {
 	Props          llamacpp.PropsSummary     `json:"props"`
 	Metrics        llamacpp.MetricsSummary   `json:"metrics"`
 	Models         []llamacpp.ModelSummary   `json:"models"`
+	RouterModels   []map[string]any          `json:"routerModels,omitempty"`
+	LoraAdapters   []map[string]any          `json:"loraAdapters,omitempty"`
 	Slots          []llamacpp.Slot           `json:"slots"`
 	GPU            gpu.Snapshot              `json:"gpu"`
 	Warnings       []string                  `json:"warnings"`
@@ -51,7 +55,16 @@ type Dashboard struct {
 	mu           sync.RWMutex
 	snapshot     Snapshot
 	previousSlot map[int]llamacpp.Slot
+	rateHistory  []metricRateSample
 }
+
+type metricRateSample struct {
+	at             time.Time
+	promptTotal    float64
+	generatedTotal float64
+}
+
+const liveRateWindow = 5 * time.Second
 
 func NewDashboard(client *llamacpp.Client, cfg Config, build BuildInfo) *Dashboard {
 	now := time.Now()
@@ -64,6 +77,7 @@ func NewDashboard(client *llamacpp.Client, cfg Config, build BuildInfo) *Dashboa
 		snapshot: Snapshot{
 			App:            "llama.nodrama",
 			Build:          build,
+			Mode:           "single",
 			Server:         cfg.Server,
 			PollIntervalMS: cfg.PollInterval.Milliseconds(),
 			StartedAt:      now,
@@ -100,6 +114,44 @@ func (m *Dashboard) Snapshot() Snapshot {
 	return m.snapshot
 }
 
+func (m *Dashboard) deriveLiveRates(now time.Time, promptTotal, generatedTotal float64) (float64, float64) {
+	if len(m.rateHistory) > 0 {
+		prev := m.rateHistory[len(m.rateHistory)-1]
+		if promptTotal < prev.promptTotal || generatedTotal < prev.generatedTotal {
+			m.rateHistory = nil
+		}
+	}
+
+	m.rateHistory = append(m.rateHistory, metricRateSample{
+		at:             now,
+		promptTotal:    promptTotal,
+		generatedTotal: generatedTotal,
+	})
+
+	cutoff := now.Add(-liveRateWindow)
+	for len(m.rateHistory) > 1 && m.rateHistory[0].at.Before(cutoff) {
+		m.rateHistory = m.rateHistory[1:]
+	}
+	if len(m.rateHistory) < 2 {
+		return 0, 0
+	}
+	base := m.rateHistory[0]
+	elapsed := now.Sub(base.at).Seconds()
+	if elapsed <= 0 {
+		return 0, 0
+	}
+	promptRate := counterRate(base.promptTotal, promptTotal, elapsed)
+	generatedRate := counterRate(base.generatedTotal, generatedTotal, elapsed)
+	return promptRate, generatedRate
+}
+
+func counterRate(previous, current, elapsedSeconds float64) float64 {
+	if current < previous || elapsedSeconds <= 0 {
+		return 0
+	}
+	return (current - previous) / elapsedSeconds
+}
+
 func (m *Dashboard) poll(parent context.Context) {
 	ctx, cancel := context.WithTimeout(parent, m.cfg.Timeout*4)
 	defer cancel()
@@ -107,6 +159,7 @@ func (m *Dashboard) poll(parent context.Context) {
 	endpoints := map[string]llamacpp.Probe{}
 	lastErrors := map[string]string{}
 	warnings := []string{}
+	mode := "single"
 
 	healthProbe, _ := m.client.Get(ctx, "/health")
 	endpoints["health"] = healthProbe
@@ -133,12 +186,16 @@ func (m *Dashboard) poll(parent context.Context) {
 	}
 
 	metricsProbe, metricsBody := m.client.Get(ctx, "/metrics")
+	metricsAt := time.Now()
 	endpoints["metrics"] = metricsProbe
 	rawMetrics := map[string]float64{}
 	metrics := llamacpp.MetricsSummary{}
 	if metricsProbe.OK {
 		rawMetrics = llamacpp.ParsePrometheus(string(metricsBody))
 		metrics = llamacpp.SummarizeMetrics(rawMetrics)
+		metrics.PromptTokensLivePerSec, metrics.GenerationTokensLivePerSec = m.deriveLiveRates(metricsAt, metrics.PromptTokensTotal, metrics.GeneratedTokensTotal)
+		rawMetrics["nodrama:prompt_tokens_rate"] = metrics.PromptTokensLivePerSec
+		rawMetrics["nodrama:tokens_predicted_rate"] = metrics.GenerationTokensLivePerSec
 	} else {
 		lastErrors["metrics"] = metricsProbe.Error
 		warnings = append(warnings, "llama.cpp /metrics is unavailable; throughput and queue cards are degraded.")
@@ -179,6 +236,43 @@ func (m *Dashboard) poll(parent context.Context) {
 		lastErrors["models"] = modelsProbe.Error
 	}
 
+	routerProbe, routerBody := m.client.Get(ctx, "/models")
+	endpoints["routerModels"] = routerProbe
+	routerModels := []map[string]any{}
+	if routerProbe.OK {
+		parsed, isRouter, err := llamacpp.DecodeRouterModels(routerBody)
+		if err != nil {
+			routerProbe.OK = false
+			routerProbe.Error = err.Error()
+			endpoints["routerModels"] = routerProbe
+			lastErrors["routerModels"] = err.Error()
+		} else {
+			routerModels = parsed
+			if isRouter {
+				mode = "router"
+			}
+		}
+	} else if routerProbe.Status != http.StatusNotFound && routerProbe.Status != http.StatusNotImplemented {
+		lastErrors["routerModels"] = routerProbe.Error
+	}
+
+	loraProbe, loraBody := m.client.Get(ctx, "/lora-adapters")
+	endpoints["loraAdapters"] = loraProbe
+	loraAdapters := []map[string]any{}
+	if loraProbe.OK {
+		parsed, err := llamacpp.DecodeLoraAdapters(loraBody)
+		if err != nil {
+			loraProbe.OK = false
+			loraProbe.Error = err.Error()
+			endpoints["loraAdapters"] = loraProbe
+			lastErrors["loraAdapters"] = err.Error()
+		} else {
+			loraAdapters = parsed
+		}
+	} else if loraProbe.Status != http.StatusNotFound && loraProbe.Status != http.StatusNotImplemented {
+		lastErrors["loraAdapters"] = loraProbe.Error
+	}
+
 	gpuSnapshot := gpu.Collect(ctx)
 	if !gpuSnapshot.Available {
 		warnings = append(warnings, "nvidia-smi is unavailable; GPU telemetry is degraded.")
@@ -204,8 +298,8 @@ func (m *Dashboard) poll(parent context.Context) {
 		Online:                 healthProbe.OK || propsProbe.OK || slotsProbe.OK,
 		RequestsProcessing:     metrics.RequestsProcessing,
 		RequestsDeferred:       metrics.RequestsDeferred,
-		PromptTokensPerSec:     metrics.PromptTokensPerSec,
-		GenerationTokensPerSec: metrics.GenerationTokensPerSec,
+		PromptTokensPerSec:     metrics.PromptTokensLivePerSec,
+		GenerationTokensPerSec: metrics.GenerationTokensLivePerSec,
 		BusySlots:              busySlots,
 		TotalSlots:             totalSlots,
 		PromptTokensTotal:      metrics.PromptTokensTotal,
@@ -232,6 +326,7 @@ func (m *Dashboard) poll(parent context.Context) {
 	snapshot := Snapshot{
 		App:            "llama.nodrama",
 		Build:          m.build,
+		Mode:           mode,
 		Server:         m.cfg.Server,
 		PollIntervalMS: m.cfg.PollInterval.Milliseconds(),
 		StartedAt:      m.started,
@@ -241,6 +336,8 @@ func (m *Dashboard) poll(parent context.Context) {
 		Props:          props,
 		Metrics:        metrics,
 		Models:         models,
+		RouterModels:   routerModels,
+		LoraAdapters:   loraAdapters,
 		Slots:          slots,
 		GPU:            gpuSnapshot,
 		Warnings:       warnings,

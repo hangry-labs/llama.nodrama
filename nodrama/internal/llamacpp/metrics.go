@@ -8,15 +8,17 @@ import (
 )
 
 type MetricsSummary struct {
-	RequestsProcessing     float64 `json:"requestsProcessing"`
-	RequestsDeferred       float64 `json:"requestsDeferred"`
-	PromptTokensPerSec     float64 `json:"promptTokensPerSec"`
-	GenerationTokensPerSec float64 `json:"generationTokensPerSec"`
-	BusySlotsPerDecode     float64 `json:"busySlotsPerDecode"`
-	PromptTokensTotal      float64 `json:"promptTokensTotal"`
-	GeneratedTokensTotal   float64 `json:"generatedTokensTotal"`
-	DecodeTotal            float64 `json:"decodeTotal"`
-	TokensMax              float64 `json:"tokensMax"`
+	RequestsProcessing         float64 `json:"requestsProcessing"`
+	RequestsDeferred           float64 `json:"requestsDeferred"`
+	PromptTokensPerSec         float64 `json:"promptTokensPerSec"`
+	GenerationTokensPerSec     float64 `json:"generationTokensPerSec"`
+	PromptTokensLivePerSec     float64 `json:"promptTokensLivePerSec"`
+	GenerationTokensLivePerSec float64 `json:"generationTokensLivePerSec"`
+	BusySlotsPerDecode         float64 `json:"busySlotsPerDecode"`
+	PromptTokensTotal          float64 `json:"promptTokensTotal"`
+	GeneratedTokensTotal       float64 `json:"generatedTokensTotal"`
+	DecodeTotal                float64 `json:"decodeTotal"`
+	TokensMax                  float64 `json:"tokensMax"`
 }
 
 var metricLine = regexp.MustCompile(`^([A-Za-z_:][\w:]*)(\{[^}]*\})?\s+(-?[\d.eE+\-]+|NaN|\+?Inf|-Inf)`)

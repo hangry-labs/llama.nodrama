@@ -70,6 +70,15 @@ func DecodeSlots(body []byte, previous map[int]Slot) ([]Slot, error) {
 }
 
 func normalizeSlot(raw rawSlot, previous Slot) (Slot, error) {
+	if !raw.IsProcessing {
+		return Slot{
+			ID:            raw.ID,
+			State:         "idle",
+			IsProcessing:  false,
+			ContextTokens: raw.ContextTokens,
+		}, nil
+	}
+
 	next, shape, err := decodeNextToken(raw.NextToken)
 	if err != nil {
 		return Slot{}, fmt.Errorf("slot %d next_token: %w", raw.ID, err)
@@ -110,18 +119,14 @@ func normalizeSlot(raw rawSlot, previous Slot) (Slot, error) {
 	}
 
 	contextEstimate := max(raw.PromptTokens, raw.PromptProcessedTokens, raw.PromptCacheTokens) + decoded
-	state := "idle"
-	if raw.IsProcessing {
-		switch {
-		case counterState == "settling":
-			state = "starting"
-		case decoded > 0 || remaining > 0:
-			state = "generating"
-		case raw.PromptTokens > 0 && raw.PromptProcessedTokens < raw.PromptTokens:
-			state = "prompt-processing"
-		default:
-			state = "processing"
-		}
+	state := "processing"
+	switch {
+	case counterState == "settling":
+		state = "starting"
+	case decoded > 0 || remaining > 0:
+		state = "generating"
+	case raw.PromptTokens > 0 && raw.PromptProcessedTokens < raw.PromptTokens:
+		state = "prompt-processing"
 	}
 
 	return Slot{

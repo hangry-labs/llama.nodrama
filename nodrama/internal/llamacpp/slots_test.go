@@ -119,3 +119,46 @@ func TestDecodeSlotsSuppressesUnchangedNextTokenOnTaskChange(t *testing.T) {
 		t.Fatalf("stale decoded/remain were not reset: %d/%d", slot.DecodedTokens, slot.RemainingTokens)
 	}
 }
+
+func TestDecodeSlotsSuppressesIdleStaleCounters(t *testing.T) {
+	body := []byte(`[
+	  {
+	    "id": 2,
+	    "n_ctx": 262144,
+	    "is_processing": false,
+	    "id_task": 26746,
+	    "n_prompt_tokens": 539,
+	    "n_prompt_tokens_processed": 14,
+	    "n_prompt_tokens_cache": 0,
+	    "params": {"temperature": 0.7, "n_predict": 512},
+	    "next_token": [{"n_remain": 258, "n_decoded": 254}]
+	  }
+	]`)
+
+	slots, err := DecodeSlots(body, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	slot := slots[0]
+	if slot.State != "idle" || slot.IsProcessing {
+		t.Fatalf("state/processing = %s/%v", slot.State, slot.IsProcessing)
+	}
+	if slot.TaskID != 0 {
+		t.Fatalf("idle task id should be suppressed: %d", slot.TaskID)
+	}
+	if slot.PromptTokens != 0 || slot.PromptProcessedTokens != 0 || slot.PromptCacheTokens != 0 {
+		t.Fatalf("idle prompt counters leaked: %d/%d/%d", slot.PromptTokens, slot.PromptProcessedTokens, slot.PromptCacheTokens)
+	}
+	if slot.DecodedTokens != 0 || slot.RemainingTokens != 0 {
+		t.Fatalf("idle generation counters leaked: %d/%d", slot.DecodedTokens, slot.RemainingTokens)
+	}
+	if slot.GenerationProgress != 0 || slot.PromptProgress != 0 || slot.ContextEstimateTokens != 0 {
+		t.Fatalf("idle progress leaked: gen=%v prompt=%v ctx=%d", slot.GenerationProgress, slot.PromptProgress, slot.ContextEstimateTokens)
+	}
+	if slot.Params != nil || slot.SamplerSummary != nil {
+		t.Fatalf("idle params leaked: %#v %#v", slot.Params, slot.SamplerSummary)
+	}
+	if slot.ContextTokens != 262144 {
+		t.Fatalf("context capacity should remain visible: %d", slot.ContextTokens)
+	}
+}
