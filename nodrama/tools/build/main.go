@@ -133,7 +133,7 @@ func nativeGoEnv() []string {
 		}
 		out = append(out, value)
 	}
-	return out
+	return append(out, "GOOS="+runtime.GOOS, "GOARCH="+runtime.GOARCH)
 }
 
 func gitCommit() string {
