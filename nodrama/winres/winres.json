@@ -27,19 +27,19 @@
       "0000": {
         "fixed": {
           "file_version": "0.4.0.0",
-          "flags": "Prerelease",
+          "flags": "",
           "product_version": "0.4.0.0"
         },
         "info": {
           "0409": {
             "CompanyName": "Hangry Labs",
             "FileDescription": "llama.cpp dashboard",
-            "FileVersion": "v0.4.0-SNAPSHOT",
+            "FileVersion": "v0.4.0",
             "InternalName": "llama-nodrama",
             "LegalCopyright": "MIT License",
             "OriginalFilename": "llama-nodrama.exe",
             "ProductName": "llama.nodrama",
-            "ProductVersion": "v0.4.0-SNAPSHOT"
+            "ProductVersion": "v0.4.0"
           }
         }
       }
