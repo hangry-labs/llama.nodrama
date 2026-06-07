@@ -1,9 +1,21 @@
 # llama.nodrama
 
 `llama.nodrama` is a small Go dashboard for operating `llama.cpp` servers. It
-serves a browser UI and a typed backend API that normalizes slots, metrics,
-requests, suggestions, and timelines so concurrency, queueing, and token
-throughput are easier to inspect.
+exists because running `llama.cpp` with multiple slots should not feel like
+guesswork. The goal is simple: point it at your llama, get a clear visual
+overview, and have no drama.
+
+The dashboard focuses on the things that are hard to see from raw logs alone:
+slot activity, query flow, queueing, token throughput, cache reuse, and timelines
+of what changed while the server was under load. It serves a browser UI and a
+typed backend API that normalize `llama.cpp` metrics, slots, requests,
+suggestions, and historical values into one live view.
+
+This is especially useful when running on a budget machine where concurrency and
+KV cache behavior matter. If you need several clients to share limited compute
+and memory, balancing slots, cache reuse, prompt processing, and generation speed
+requires visibility. `llama.nodrama` is meant to make that operational picture
+obvious without turning monitoring itself into another project.
 
 ## UI Preview
 
