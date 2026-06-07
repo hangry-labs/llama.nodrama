@@ -1516,6 +1516,10 @@ function pickLang(requested) {
  *  Global state. One object, no hidden globals.
  * ──────────────────────────────────────────────────────────────────── */
 const params = parseParams();
+function emptyHistory() {
+  return { metrics: {}, slots: {} };
+}
+
 const state = {
   params,
   lang: pickLang(params.lang),
@@ -1530,7 +1534,7 @@ const state = {
   metrics: null,
   slots: [],
   snapshot: null,
-  history: { metrics: [], slots: [] }, /* time series buffers */
+  history: emptyHistory(),
   paused: false,
   /* `healthy` flips true only when /props came back at least once.
    * The status LED reads this — never `lastUpdate` alone — so a
@@ -2075,6 +2079,7 @@ function applySnapshot(snapshot, opts) {
   state.loraAdapters = Array.isArray(snapshot && snapshot.loraAdapters) ? snapshot.loraAdapters : [];
   state.metrics = (snapshot && snapshot.rawMetrics) || {};
   state.slots = Array.isArray(snapshot && snapshot.slots) ? snapshot.slots : [];
+  state.history = (snapshot && snapshot.history) || emptyHistory();
   if (snapshot && snapshot.server) {
     $("#server-display").textContent = snapshot.server;
     $("#server-display").title = snapshot.server;
@@ -2099,7 +2104,7 @@ function applySnapshot(snapshot, opts) {
     state.healthy ? "header.status.online" : "header.status.offline");
 
   if (o.render !== false) {
-    renderMetrics(state.metrics);
+    renderMetrics(state.metrics, state.history.metrics);
     renderSlots(state.slots);
     const supportSignature = JSON.stringify({
       mode: state.mode,
@@ -2737,7 +2742,9 @@ const RULES = [
       sustained("idle_slow", false, 10);
       return null;
     }
-    const hist = histories["predicted_tps"] || [];
+    const hist = normalizeHistoryPoints(
+      s.history && s.history.metrics && s.history.metrics["nodrama:tokens_predicted_rate"]
+    );
     /* need at least 20s of samples to call a "baseline" */
     if (hist.length < 20) { sustained("idle_slow", false, 10); return null; }
     const sorted = hist.map(function (p) { return p.v; })
@@ -3142,49 +3149,36 @@ function startSecondaryPollers() {
 }
 
 /* ──────────────────────────────────────────────────────────────────────
- *  Prometheus text parser. We only need plain numeric metrics — no
- *  histograms or labelled series — so a minimal regex parser is fine.
- *  Lines look like:    metric_name{label="x"} 42.0
- *  We strip comments, ignore label sets, and keep the last value seen.
+ *  Backend-owned time series. The UI only normalizes and renders points
+ *  returned by /api/snapshot so history survives browser refreshes.
  * ──────────────────────────────────────────────────────────────────── */
-function parsePrometheus(text) {
-  const out = {};
-  const lines = text.split(/\r?\n/);
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (!line || line.startsWith("#")) continue;
-    /* metric name = up to first '{' or whitespace */
-    const m = line.match(/^([A-Za-z_:][\w:]*)(\{[^}]*\})?\s+(-?[\d.eE+\-]+|NaN|\+?Inf|-Inf)/);
-    if (!m) continue;
-    const name = m[1];
-    const v = m[3];
-    let n;
-    if (v === "NaN") n = NaN;
-    else if (v === "+Inf" || v === "Inf") n = Infinity;
-    else if (v === "-Inf") n = -Infinity;
-    else n = parseFloat(v);
-    out[name] = n;
+function normalizeHistoryPoints(points) {
+  if (!Array.isArray(points)) return [];
+  const out = [];
+  for (const p of points) {
+    if (!p || p.v === undefined || p.v === null) continue;
+    const t = typeof p.t === "number" ? p.t : Date.parse(p.t);
+    const v = Number(p.v);
+    if (!isFinite(t) || !isFinite(v)) continue;
+    out.push({ t, v });
   }
   return out;
 }
 
-/* ──────────────────────────────────────────────────────────────────────
- *  Time series buffers — fixed-length ring of {t, v} samples per metric.
- *  60 s window at 1 s sampling = ~60 points. Enough for a sparkline.
- * ──────────────────────────────────────────────────────────────────── */
-const HISTORY_SECONDS = 60;
-const histories = Object.create(null);
-function pushHistory(key, v) {
-  let h = histories[key];
-  if (!h) h = histories[key] = [];
-  const now = Date.now();
-  h.push({ t: now, v });
-  const cutoff = now - HISTORY_SECONDS * 1000;
-  while (h.length && h[0].t < cutoff) h.shift();
-  return h;
-}
-function resetHistories() {
-  for (const k in histories) delete histories[k];
+async function resetHistories() {
+  state.history = emptyHistory();
+  if (state.metrics) renderMetrics(state.metrics, state.history.metrics);
+  try {
+    await fetchJSON("/api/history/reset", {
+      method: "POST",
+      withModel: false,
+      timeout: 4000,
+    });
+    await refreshSnapshot({ timeout: 6000 });
+    clearBanner("history-reset");
+  } catch (e) {
+    showBanner("history-reset", "history reset: " + e.message, "warn");
+  }
 }
 
 /* ──────────────────────────────────────────────────────────────────────
@@ -3359,12 +3353,13 @@ function renderMetricsDisabled() {
   showBanner("metrics-disabled", t("error.metrics_disabled"), "warn");
 }
 
-function renderMetrics(parsed) {
+function renderMetrics(parsed, metricHistory) {
   ensureMetricCards();
   clearBanner("metrics-disabled");
+  const historyByMetric = metricHistory || {};
   for (const c of METRIC_CARDS) {
     const v = parsed[c.metric];
-    pushHistory(c.id, isFinite(v) ? v : 0);
+    const points = normalizeHistoryPoints(historyByMetric[c.metric]);
 
     const card = $("#metric-" + c.id);
     card.classList.remove("warn", "bad", "disabled");
@@ -3386,7 +3381,7 @@ function renderMetrics(parsed) {
 
     const sparkHost = $("#metric-" + c.id + "-spark");
     sparkHost.innerHTML = "";
-    sparkHost.appendChild(sparkline(histories[c.id], {
+    sparkHost.appendChild(sparkline(points, {
       min: c.min !== undefined ? c.min : undefined,
       max: c.max !== undefined ? c.max : undefined,
     }));
@@ -3620,9 +3615,7 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     setPaused(!state.paused);
   } else if (e.key === "r" || e.key === "R") {
-    resetHistories();
-    /* repaint sparklines with empty data on next tick */
-    if (state.metrics) renderMetrics(state.metrics);
+    void resetHistories();
   }
 });
 

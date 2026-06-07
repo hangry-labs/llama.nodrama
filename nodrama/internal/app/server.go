@@ -64,6 +64,10 @@ func Run(ctx context.Context, cfg Config, info BuildInfo) error {
 	mux.HandleFunc("GET /api/snapshot", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, dashboard.Snapshot())
 	})
+	mux.HandleFunc("POST /api/history/reset", func(w http.ResponseWriter, r *http.Request) {
+		dashboard.ResetHistory()
+		writeJSON(w, map[string]string{"status": "ok"})
+	})
 
 	server := &http.Server{
 		Addr:              cfg.Listen,

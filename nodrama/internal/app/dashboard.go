@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"math"
 	"net/http"
 	"sync"
 	"time"
@@ -27,9 +28,19 @@ type Snapshot struct {
 	LoraAdapters   []map[string]any          `json:"loraAdapters,omitempty"`
 	Slots          []llamacpp.Slot           `json:"slots"`
 	GPU            gpu.Snapshot              `json:"gpu"`
+	History        SnapshotHistory           `json:"history"`
 	Warnings       []string                  `json:"warnings"`
 	RawMetrics     map[string]float64        `json:"rawMetrics,omitempty"`
 	LastErrors     map[string]string         `json:"lastErrors,omitempty"`
+}
+
+type SnapshotHistory struct {
+	Metrics map[string][]HistoryPoint `json:"metrics"`
+}
+
+type HistoryPoint struct {
+	T int64   `json:"t"`
+	V float64 `json:"v"`
 }
 
 type Overview struct {
@@ -55,7 +66,10 @@ type Dashboard struct {
 	mu           sync.RWMutex
 	snapshot     Snapshot
 	previousSlot map[int]llamacpp.Slot
-	rateHistory  []metricRateSample
+
+	historyMu     sync.Mutex
+	rateHistory   []metricRateSample
+	metricHistory map[string][]HistoryPoint
 }
 
 type metricRateSample struct {
@@ -64,16 +78,21 @@ type metricRateSample struct {
 	generatedTotal float64
 }
 
-const liveRateWindow = 5 * time.Second
+const (
+	liveRateWindow       = 5 * time.Second
+	metricHistoryWindow  = time.Minute
+	maxMetricHistorySize = 600
+)
 
 func NewDashboard(client *llamacpp.Client, cfg Config, build BuildInfo) *Dashboard {
 	now := time.Now()
 	return &Dashboard{
-		client:       client,
-		cfg:          cfg,
-		build:        build,
-		started:      now,
-		previousSlot: map[int]llamacpp.Slot{},
+		client:        client,
+		cfg:           cfg,
+		build:         build,
+		started:       now,
+		previousSlot:  map[int]llamacpp.Slot{},
+		metricHistory: map[string][]HistoryPoint{},
 		snapshot: Snapshot{
 			App:            "llama.nodrama",
 			Build:          build,
@@ -83,6 +102,7 @@ func NewDashboard(client *llamacpp.Client, cfg Config, build BuildInfo) *Dashboa
 			StartedAt:      now,
 			UpdatedAt:      now,
 			Endpoints:      map[string]llamacpp.Probe{},
+			History:        SnapshotHistory{Metrics: map[string][]HistoryPoint{}},
 			Warnings:       []string{"Waiting for first poll."},
 		},
 	}
@@ -115,6 +135,9 @@ func (m *Dashboard) Snapshot() Snapshot {
 }
 
 func (m *Dashboard) deriveLiveRates(now time.Time, promptTotal, generatedTotal float64) (float64, float64) {
+	m.historyMu.Lock()
+	defer m.historyMu.Unlock()
+
 	if len(m.rateHistory) > 0 {
 		prev := m.rateHistory[len(m.rateHistory)-1]
 		if promptTotal < prev.promptTotal || generatedTotal < prev.generatedTotal {
@@ -150,6 +173,70 @@ func counterRate(previous, current, elapsedSeconds float64) float64 {
 		return 0
 	}
 	return (current - previous) / elapsedSeconds
+}
+
+func (m *Dashboard) recordMetricHistory(now time.Time, metrics map[string]float64) SnapshotHistory {
+	m.historyMu.Lock()
+	defer m.historyMu.Unlock()
+
+	if m.metricHistory == nil {
+		m.metricHistory = map[string][]HistoryPoint{}
+	}
+
+	t := now.UnixMilli()
+	cutoff := now.Add(-metricHistoryWindow).UnixMilli()
+	for name, value := range metrics {
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			continue
+		}
+		points := append(m.metricHistory[name], HistoryPoint{T: t, V: value})
+		points = trimHistoryPoints(points, cutoff)
+		if len(points) > maxMetricHistorySize {
+			points = points[len(points)-maxMetricHistorySize:]
+		}
+		m.metricHistory[name] = points
+	}
+
+	for name, points := range m.metricHistory {
+		points = trimHistoryPoints(points, cutoff)
+		if len(points) == 0 {
+			delete(m.metricHistory, name)
+			continue
+		}
+		m.metricHistory[name] = points
+	}
+
+	return m.copyMetricHistoryLocked()
+}
+
+func trimHistoryPoints(points []HistoryPoint, cutoff int64) []HistoryPoint {
+	i := 0
+	for i < len(points) && points[i].T < cutoff {
+		i++
+	}
+	return points[i:]
+}
+
+func (m *Dashboard) copyMetricHistoryLocked() SnapshotHistory {
+	out := SnapshotHistory{Metrics: make(map[string][]HistoryPoint, len(m.metricHistory))}
+	for name, points := range m.metricHistory {
+		copied := make([]HistoryPoint, len(points))
+		copy(copied, points)
+		out.Metrics[name] = copied
+	}
+	return out
+}
+
+func (m *Dashboard) ResetHistory() {
+	m.historyMu.Lock()
+	m.rateHistory = nil
+	m.metricHistory = map[string][]HistoryPoint{}
+	empty := m.copyMetricHistoryLocked()
+	m.historyMu.Unlock()
+
+	m.mu.Lock()
+	m.snapshot.History = empty
+	m.mu.Unlock()
 }
 
 func (m *Dashboard) poll(parent context.Context) {
@@ -200,6 +287,7 @@ func (m *Dashboard) poll(parent context.Context) {
 		lastErrors["metrics"] = metricsProbe.Error
 		warnings = append(warnings, "llama.cpp /metrics is unavailable; throughput and queue cards are degraded.")
 	}
+	history := m.recordMetricHistory(metricsAt, rawMetrics)
 
 	slotsProbe, slotsBody := m.client.Get(ctx, "/slots")
 	endpoints["slots"] = slotsProbe
@@ -340,6 +428,7 @@ func (m *Dashboard) poll(parent context.Context) {
 		LoraAdapters:   loraAdapters,
 		Slots:          slots,
 		GPU:            gpuSnapshot,
+		History:        history,
 		Warnings:       warnings,
 		RawMetrics:     rawMetrics,
 		LastErrors:     lastErrors,
