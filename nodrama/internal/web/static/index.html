@@ -189,6 +189,8 @@
     min-width: 0;
   }
   .query-card.running { border-color: #2f6feb; box-shadow: 0 0 0 1px #2f6feb33 inset; }
+  .query-card.queued { border-color: var(--warn); }
+  .query-card.resident { box-shadow: 0 0 0 1px #3fb95033 inset; }
   .query-card.error { border-color: var(--bad); }
   .query-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
   .query-id { font-family: var(--mono); color: var(--fg-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -637,12 +639,14 @@ const I18N = {
     "queries.title":            "Queries",
     "queries.empty":            "No tracked queries yet. Requests sent through llama.nodrama will appear here.",
     "queries.status.running":   "running",
+    "queries.status.queued":    "queued",
     "queries.status.complete":  "complete",
     "queries.status.error":     "error",
     "queries.slot":             "slot",
     "queries.task":             "task",
     "queries.tokens":           "tokens",
     "queries.cache":            "cache",
+    "queries.cache_resident":   "resident",
     "queries.rate":             "rate",
     "queries.duration":         "duration",
 
@@ -3416,7 +3420,7 @@ function ensureQueriesSection() {
 
 function renderQueries(queries) {
   ensureQueriesSection();
-  const list = Array.isArray(queries) ? queries.slice(-12).reverse() : [];
+  const list = Array.isArray(queries) ? queries : [];
   const empty = $("#queries-empty");
   const grid = $("#query-grid");
   if (!grid || !empty) return;
@@ -3436,13 +3440,17 @@ function renderQueryCard(q) {
   ].join(" / ");
   const slot = Array.isArray(q.slotIds) && q.slotIds.length ? q.slotIds.join(", ") : "—";
   const task = Array.isArray(q.taskIds) && q.taskIds.length ? q.taskIds.join(", ") : "—";
-  const cache = q.lastCacheAction || (q.promptCacheTokens ? String(q.promptCacheTokens) + " tok" : "—");
+  const cacheParts = [];
+  if (q.cacheResident) cacheParts.push(t("queries.cache_resident"));
+  if (q.lastCacheAction) cacheParts.push(q.lastCacheAction);
+  if (q.promptCacheTokens) cacheParts.push(String(q.promptCacheTokens) + " tok");
+  const cache = cacheParts.length ? cacheParts.join(" · ") : "—";
   const rate = q.currentTokensPerSec ? fmtNumber(q.currentTokensPerSec) + " tok/s" : "—";
-  const duration = q.durationMs ? (q.durationMs / 1000).toFixed(1) + "s" : (status === "running" ? "active" : "—");
-  return el("div", { class: "query-card " + status, title: q.id || "" }, [
+  const duration = q.durationMs ? (q.durationMs / 1000).toFixed(1) + "s" : (status === "running" ? "active" : status === "queued" ? "queued" : "—");
+  return el("div", { class: "query-card " + status + (q.cacheResident ? " resident" : ""), title: q.id || "" }, [
     el("div", { class: "query-head" }, [
       el("span", { class: "query-id" }, q.id || "query"),
-      el("span", { class: "badge " + (status === "error" ? "bad" : status === "running" ? "on" : "") },
+      el("span", { class: "badge " + (status === "error" ? "bad" : status === "running" ? "on" : status === "queued" ? "warn" : "") },
         t("queries.status." + status)),
     ]),
     el("div", { class: "query-details" }, [

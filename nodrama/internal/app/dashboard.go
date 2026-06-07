@@ -105,6 +105,7 @@ type QuerySummary struct {
 	ID                  string     `json:"id"`
 	Status              string     `json:"status"`
 	Route               string     `json:"route"`
+	RequestIDs          []string   `json:"requestIds,omitempty"`
 	Model               string     `json:"model,omitempty"`
 	Stream              bool       `json:"stream"`
 	StartedAt           time.Time  `json:"startedAt"`
@@ -116,10 +117,12 @@ type QuerySummary struct {
 	CompletionTokens    int        `json:"completionTokens,omitempty"`
 	TotalTokens         int        `json:"totalTokens,omitempty"`
 	PromptCacheTokens   int        `json:"promptCacheTokens,omitempty"`
+	CacheResident       bool       `json:"cacheResident"`
 	CurrentTokensPerSec float64    `json:"currentTokensPerSec,omitempty"`
 	LastTimingEventAt   *time.Time `json:"lastTimingEventAt,omitempty"`
 	LastCacheAction     string     `json:"lastCacheAction,omitempty"`
 	LastCacheEventAt    *time.Time `json:"lastCacheEventAt,omitempty"`
+	LastEventAt         *time.Time `json:"lastEventAt,omitempty"`
 	Error               string     `json:"error,omitempty"`
 }
 
@@ -162,6 +165,12 @@ type Dashboard struct {
 	requestMu  sync.Mutex
 	requests   []RequestSummary
 
+	queryMu         sync.Mutex
+	queries         map[string]QuerySummary
+	slotQuery       map[int]string
+	lastSlotQuery   map[int]string
+	seenQueryEvents map[string]bool
+
 	sustainedSince map[string]time.Time
 }
 
@@ -191,15 +200,19 @@ const (
 func NewDashboard(client *llamacpp.Client, cfg Config, build BuildInfo) *Dashboard {
 	now := time.Now()
 	return &Dashboard{
-		client:         client,
-		cfg:            cfg,
-		build:          build,
-		started:        now,
-		previousSlot:   map[int]llamacpp.Slot{},
-		slotRateLast:   map[int]slotRateSample{},
-		metricHistory:  map[string][]HistoryPoint{},
-		slotHistory:    map[int][]SlotHistoryPoint{},
-		sustainedSince: map[string]time.Time{},
+		client:          client,
+		cfg:             cfg,
+		build:           build,
+		started:         now,
+		previousSlot:    map[int]llamacpp.Slot{},
+		slotRateLast:    map[int]slotRateSample{},
+		metricHistory:   map[string][]HistoryPoint{},
+		slotHistory:     map[int][]SlotHistoryPoint{},
+		queries:         map[string]QuerySummary{},
+		slotQuery:       map[int]string{},
+		lastSlotQuery:   map[int]string{},
+		seenQueryEvents: map[string]bool{},
+		sustainedSince:  map[string]time.Time{},
 		snapshot: Snapshot{
 			App:            "llama.nodrama",
 			Build:          build,
@@ -482,6 +495,13 @@ func (m *Dashboard) ResetHistory() {
 	m.snapshot.Events = nil
 	m.snapshot.Queries = nil
 	m.mu.Unlock()
+
+	m.queryMu.Lock()
+	m.queries = map[string]QuerySummary{}
+	m.slotQuery = map[int]string{}
+	m.lastSlotQuery = map[int]string{}
+	m.seenQueryEvents = map[string]bool{}
+	m.queryMu.Unlock()
 }
 
 func (m *Dashboard) StartRequest(route, model string, stream bool) string {
@@ -854,7 +874,7 @@ func (m *Dashboard) poll(parent context.Context) {
 		History:        history,
 		Suggestions:    suggestions,
 		Requests:       requests,
-		Queries:        queriesFromRequests(requests, events),
+		Queries:        m.updateQueries(snapshotAt, modelAlias, slots, requests, events),
 		Events:         events,
 		Warnings:       warnings,
 		RawMetrics:     rawMetrics,

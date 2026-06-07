@@ -3,6 +3,7 @@ package app
 import (
 	"io"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 )
 
 const maxLogReadBytes = 1024 * 1024
+const maxRecentQueries = 10
 
 func (m *Dashboard) pollLogEvents(now time.Time) ([]llamacpp.LogEvent, error) {
 	if m.cfg.LogPath == "" {
@@ -110,32 +112,268 @@ func (m *Dashboard) copyLogEvents() []llamacpp.LogEvent {
 	return out
 }
 
-func queriesFromRequests(requests []RequestSummary, events []llamacpp.LogEvent) []QuerySummary {
-	queries := make([]QuerySummary, 0, len(requests))
-	for _, request := range requests {
-		query := QuerySummary{
-			ID:                request.ID,
-			Status:            requestStatus(request),
-			Route:             request.Route,
-			Model:             request.Model,
-			Stream:            request.Stream,
-			StartedAt:         request.StartedAt,
-			EndedAt:           request.EndedAt,
-			DurationMS:        request.DurationMS,
-			SlotIDs:           append([]int(nil), request.SlotIDs...),
-			TaskIDs:           append([]int(nil), request.TaskIDs...),
-			PromptCacheTokens: request.PromptCacheTokens,
-			Error:             request.Error,
-		}
-		if request.Usage != nil {
-			query.PromptTokens = request.Usage.PromptTokens
-			query.CompletionTokens = request.Usage.CompletionTokens
-			query.TotalTokens = request.Usage.TotalTokens
-		}
-		enrichQueryFromEvents(&query, events)
-		queries = append(queries, query)
+func (m *Dashboard) updateQueries(now time.Time, model string, slots []llamacpp.Slot, requests []RequestSummary, events []llamacpp.LogEvent) []QuerySummary {
+	m.queryMu.Lock()
+	defer m.queryMu.Unlock()
+
+	if m.queries == nil {
+		m.queries = map[string]QuerySummary{}
 	}
-	return queries
+	if m.slotQuery == nil {
+		m.slotQuery = map[int]string{}
+	}
+	if m.lastSlotQuery == nil {
+		m.lastSlotQuery = map[int]string{}
+	}
+	if m.seenQueryEvents == nil {
+		m.seenQueryEvents = map[string]bool{}
+	}
+
+	requestByTask := requestsByTask(requests)
+	previousSlotQuery := m.slotQuery
+	m.slotQuery = map[int]string{}
+	activeQuery := map[string]bool{}
+
+	for _, slot := range slots {
+		if !slot.IsProcessing || slot.TaskID <= 0 {
+			continue
+		}
+		id := taskQueryID(slot.TaskID)
+		query := m.ensureQuery(id, now)
+		query.Status = "running"
+		query.Route = "llama.cpp"
+		if model != "" {
+			query.Model = model
+		}
+		query.SlotIDs = appendUniqueInt(query.SlotIDs, slot.ID)
+		query.TaskIDs = appendUniqueInt(query.TaskIDs, slot.TaskID)
+		query.PromptTokens = maxInt(query.PromptTokens, slot.PromptTokens)
+		query.CompletionTokens = maxInt(query.CompletionTokens, slot.DecodedTokens)
+		query.TotalTokens = maxInt(query.TotalTokens, query.PromptTokens+query.CompletionTokens)
+		query.PromptCacheTokens = maxInt(query.PromptCacheTokens, slot.PromptCacheTokens)
+		query.EndedAt = nil
+		query.DurationMS = now.Sub(query.StartedAt).Milliseconds()
+		query.LastEventAt = timePtr(now)
+		if request, ok := requestByTask[slot.TaskID]; ok {
+			mergeRequestIntoQuery(&query, request)
+		}
+		m.queries[id] = query
+		m.slotQuery[slot.ID] = id
+		m.lastSlotQuery[slot.ID] = id
+		activeQuery[id] = true
+	}
+
+	for slotID, queryID := range previousSlotQuery {
+		if _, ok := m.slotQuery[slotID]; ok {
+			continue
+		}
+		query := m.queries[queryID]
+		if query.ID == "" || query.Status != "running" {
+			continue
+		}
+		query.Status = "complete"
+		query.EndedAt = timePtr(now)
+		query.DurationMS = now.Sub(query.StartedAt).Milliseconds()
+		query.LastEventAt = timePtr(now)
+		m.queries[queryID] = query
+	}
+
+	for _, request := range requests {
+		ids := queryIDsForRequest(request)
+		if len(request.TaskIDs) > 0 {
+			delete(m.queries, request.ID)
+		}
+		for _, id := range ids {
+			query := m.ensureQuery(id, request.StartedAt)
+			mergeRequestIntoQuery(&query, request)
+			if activeQuery[id] {
+				query.Status = "running"
+				query.EndedAt = nil
+			}
+			m.queries[id] = query
+		}
+	}
+
+	for _, event := range events {
+		if event.ID != "" && m.seenQueryEvents[event.ID] {
+			continue
+		}
+		if event.ID != "" {
+			m.seenQueryEvents[event.ID] = true
+		}
+		m.applyEventToQuery(event, now)
+	}
+
+	return m.pruneAndCopyQueries()
+}
+
+func (m *Dashboard) ensureQuery(id string, startedAt time.Time) QuerySummary {
+	query := m.queries[id]
+	if query.ID == "" {
+		query.ID = id
+		query.Status = "complete"
+		query.Route = "llama.cpp"
+		query.StartedAt = startedAt
+		query.LastEventAt = timePtr(startedAt)
+	}
+	return query
+}
+
+func (m *Dashboard) applyEventToQuery(event llamacpp.LogEvent, fallbackTime time.Time) {
+	queryID := ""
+	if event.TaskID > 0 {
+		queryID = taskQueryID(event.TaskID)
+	} else if event.SlotID > 0 {
+		if id, ok := m.slotQuery[event.SlotID]; ok {
+			queryID = id
+		} else if id, ok := m.lastSlotQuery[event.SlotID]; ok {
+			queryID = id
+		}
+	}
+	if queryID == "" {
+		return
+	}
+
+	eventAt := event.At
+	if eventAt.IsZero() {
+		eventAt = fallbackTime
+	}
+	query := m.ensureQuery(queryID, eventAt)
+	if event.SlotID > 0 {
+		query.SlotIDs = appendUniqueInt(query.SlotIDs, event.SlotID)
+	}
+	if event.TaskID > 0 {
+		query.TaskIDs = appendUniqueInt(query.TaskIDs, event.TaskID)
+	}
+	switch event.Kind {
+	case "timing":
+		query.CurrentTokensPerSec = event.TokensPerSecond
+		query.CompletionTokens = maxInt(query.CompletionTokens, event.DecodedTokens)
+		query.TotalTokens = maxInt(query.TotalTokens, query.PromptTokens+query.CompletionTokens)
+		query.LastTimingEventAt = timePtr(eventAt)
+	case "cache":
+		query.LastCacheAction = event.CacheAction
+		query.LastCacheEventAt = timePtr(eventAt)
+		if resident, known := cacheActionResidentState(event.CacheAction, event.Message); known {
+			query.CacheResident = resident
+		}
+	case "warning", "error":
+		if strings.Contains(strings.ToLower(event.Message), "erased invalidated context checkpoint") {
+			query.LastCacheAction = "invalidate"
+			query.LastCacheEventAt = timePtr(eventAt)
+			query.CacheResident = false
+		}
+		if event.Kind == "error" {
+			query.Status = "error"
+			query.Error = event.Message
+		}
+	}
+	query.LastEventAt = timePtr(eventAt)
+	m.queries[query.ID] = query
+}
+
+func (m *Dashboard) pruneAndCopyQueries() []QuerySummary {
+	queries := make([]QuerySummary, 0, len(m.queries))
+	for _, query := range m.queries {
+		queries = append(queries, cloneQuery(query))
+	}
+	sort.SliceStable(queries, func(i, j int) bool {
+		return querySortTime(queries[i]).After(querySortTime(queries[j]))
+	})
+
+	kept := make([]QuerySummary, 0, len(queries))
+	recentNonResident := 0
+	keepIDs := map[string]bool{}
+	for _, query := range queries {
+		keep := query.Status == "running" || query.Status == "queued" || query.CacheResident
+		if !keep && recentNonResident < maxRecentQueries {
+			keep = true
+			recentNonResident++
+		}
+		if !keep {
+			continue
+		}
+		kept = append(kept, query)
+		keepIDs[query.ID] = true
+	}
+	for id := range m.queries {
+		if !keepIDs[id] {
+			delete(m.queries, id)
+		}
+	}
+	for slotID, id := range m.lastSlotQuery {
+		if !keepIDs[id] {
+			delete(m.lastSlotQuery, slotID)
+		}
+	}
+	return kept
+}
+
+func requestsByTask(requests []RequestSummary) map[int]RequestSummary {
+	out := map[int]RequestSummary{}
+	for _, request := range requests {
+		for _, taskID := range request.TaskIDs {
+			if taskID > 0 {
+				out[taskID] = request
+			}
+		}
+	}
+	return out
+}
+
+func queryIDsForRequest(request RequestSummary) []string {
+	if len(request.TaskIDs) == 0 {
+		return []string{request.ID}
+	}
+	ids := make([]string, 0, len(request.TaskIDs))
+	for _, taskID := range request.TaskIDs {
+		if taskID > 0 {
+			ids = append(ids, taskQueryID(taskID))
+		}
+	}
+	if len(ids) == 0 {
+		return []string{request.ID}
+	}
+	return ids
+}
+
+func mergeRequestIntoQuery(query *QuerySummary, request RequestSummary) {
+	query.RequestIDs = appendUniqueString(query.RequestIDs, request.ID)
+	if request.Route != "" {
+		query.Route = request.Route
+	}
+	if request.Model != "" {
+		query.Model = request.Model
+	}
+	query.Stream = request.Stream
+	if request.StartedAt.Before(query.StartedAt) || query.StartedAt.IsZero() {
+		query.StartedAt = request.StartedAt
+	}
+	if request.EndedAt != nil {
+		query.EndedAt = cloneTimePtr(request.EndedAt)
+		query.DurationMS = request.DurationMS
+		query.Status = requestStatus(request)
+		query.LastEventAt = cloneTimePtr(request.EndedAt)
+	} else if len(query.TaskIDs) == 0 {
+		query.Status = "queued"
+	} else {
+		query.Status = "running"
+	}
+	if taskID := taskIDFromQueryID(query.ID); taskID > 0 {
+		query.TaskIDs = appendUniqueInt(query.TaskIDs, taskID)
+	} else {
+		query.SlotIDs = appendUniqueInts(query.SlotIDs, request.SlotIDs)
+		query.TaskIDs = appendUniqueInts(query.TaskIDs, request.TaskIDs)
+	}
+	query.PromptCacheTokens = maxInt(query.PromptCacheTokens, request.PromptCacheTokens)
+	if request.Usage != nil {
+		query.PromptTokens = maxInt(query.PromptTokens, request.Usage.PromptTokens)
+		query.CompletionTokens = maxInt(query.CompletionTokens, request.Usage.CompletionTokens)
+		query.TotalTokens = maxInt(query.TotalTokens, request.Usage.TotalTokens)
+	}
+	if request.Error != "" {
+		query.Error = request.Error
+	}
 }
 
 func requestStatus(request RequestSummary) string {
@@ -148,42 +386,101 @@ func requestStatus(request RequestSummary) string {
 	return "complete"
 }
 
-func enrichQueryFromEvents(query *QuerySummary, events []llamacpp.LogEvent) {
-	taskSet := map[int]bool{}
-	slotSet := map[int]bool{}
-	for _, taskID := range query.TaskIDs {
-		taskSet[taskID] = true
-	}
-	for _, slotID := range query.SlotIDs {
-		slotSet[slotID] = true
-	}
-	if len(taskSet) == 0 && len(slotSet) == 0 {
-		return
-	}
+func taskQueryID(taskID int) string {
+	return "task_" + strconv.Itoa(taskID)
+}
 
-	for _, event := range events {
-		if !eventMatchesQuery(event, taskSet, slotSet) {
-			continue
+func taskIDFromQueryID(id string) int {
+	raw, ok := strings.CutPrefix(id, "task_")
+	if !ok {
+		return 0
+	}
+	parsed, _ := strconv.Atoi(raw)
+	return parsed
+}
+
+func querySortTime(query QuerySummary) time.Time {
+	if query.LastEventAt != nil {
+		return *query.LastEventAt
+	}
+	if query.EndedAt != nil {
+		return *query.EndedAt
+	}
+	return query.StartedAt
+}
+
+func cacheActionResidentState(action, message string) (bool, bool) {
+	lower := strings.ToLower(message)
+	switch action {
+	case "evict", "clear":
+		return false, true
+	case "save", "load", "reuse", "hit":
+		return true, true
+	default:
+		if strings.Contains(lower, "removing oldest entry") || strings.Contains(lower, "evict") {
+			return false, true
 		}
-		switch event.Kind {
-		case "timing":
-			query.CurrentTokensPerSec = event.TokensPerSecond
-			at := event.At
-			query.LastTimingEventAt = &at
-		case "cache":
-			query.LastCacheAction = event.CacheAction
-			at := event.At
-			query.LastCacheEventAt = &at
-		}
+		return false, false
 	}
 }
 
-func eventMatchesQuery(event llamacpp.LogEvent, taskSet, slotSet map[int]bool) bool {
-	if event.TaskID > 0 && taskSet[event.TaskID] {
-		return true
+func appendUniqueInts(base []int, values []int) []int {
+	for _, value := range values {
+		base = appendUniqueInt(base, value)
 	}
-	if event.SlotID > 0 && slotSet[event.SlotID] {
-		return true
+	return base
+}
+
+func appendUniqueInt(values []int, value int) []int {
+	if value <= 0 {
+		return values
 	}
-	return false
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
+}
+
+func appendUniqueString(values []string, value string) []string {
+	if value == "" {
+		return values
+	}
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
+}
+
+func cloneQuery(query QuerySummary) QuerySummary {
+	query.RequestIDs = append([]string(nil), query.RequestIDs...)
+	query.SlotIDs = append([]int(nil), query.SlotIDs...)
+	query.TaskIDs = append([]int(nil), query.TaskIDs...)
+	query.EndedAt = cloneTimePtr(query.EndedAt)
+	query.LastTimingEventAt = cloneTimePtr(query.LastTimingEventAt)
+	query.LastCacheEventAt = cloneTimePtr(query.LastCacheEventAt)
+	query.LastEventAt = cloneTimePtr(query.LastEventAt)
+	return query
+}
+
+func cloneTimePtr(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
+func timePtr(value time.Time) *time.Time {
+	return &value
+}
+
+func maxInt(a, b int) int {
+	if b > a {
+		return b
+	}
+	return a
 }
