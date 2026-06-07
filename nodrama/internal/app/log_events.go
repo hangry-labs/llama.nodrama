@@ -256,18 +256,23 @@ func (m *Dashboard) applyEventToQuery(event llamacpp.LogEvent, fallbackTime time
 		query.TotalTokens = maxInt(query.TotalTokens, query.PromptTokens+query.CompletionTokens)
 		query.LastTimingEventAt = timePtr(eventAt)
 	case "cache":
-		query.LastCacheAction = event.CacheAction
-		query.LastCacheEventAt = timePtr(eventAt)
-		if resident, known := cacheActionResidentState(event.CacheAction, event.Message); known {
-			query.CacheResident = resident
+		switch event.CacheAction {
+		case "hit", "load", "reuse":
+			query.LastCacheAction = event.CacheAction
+			query.LastCacheEventAt = timePtr(eventAt)
+			query.CacheReuseCount++
 		}
 	case "warning", "error":
+		if strings.Contains(strings.ToLower(event.Message), "restored context checkpoint") {
+			query.LastCacheAction = "restore"
+			query.LastCacheEventAt = timePtr(eventAt)
+			query.CacheReuseCount++
+		}
 		if strings.Contains(strings.ToLower(event.Message), "erased invalidated context checkpoint") {
 			if query.Status != "running" {
 				query.LastCacheAction = "invalidate"
 				query.LastCacheEventAt = timePtr(eventAt)
 			}
-			query.CacheResident = false
 		}
 		if event.Kind == "error" {
 			query.Status = "error"
@@ -284,19 +289,19 @@ func (m *Dashboard) pruneAndCopyQueries() []QuerySummary {
 		queries = append(queries, cloneQuery(query))
 	}
 	sort.SliceStable(queries, func(i, j int) bool {
+		if queryRunningRank(queries[i]) != queryRunningRank(queries[j]) {
+			return queryRunningRank(queries[i]) < queryRunningRank(queries[j])
+		}
+		if queries[i].CacheReuseCount != queries[j].CacheReuseCount {
+			return queries[i].CacheReuseCount > queries[j].CacheReuseCount
+		}
 		return querySortTime(queries[i]).After(querySortTime(queries[j]))
 	})
 
 	kept := make([]QuerySummary, 0, len(queries))
-	recentNonResident := 0
 	keepIDs := map[string]bool{}
 	for _, query := range queries {
-		keep := query.Status == "running" || query.Status == "queued" || query.CacheResident
-		if !keep && recentNonResident < maxRecentQueries {
-			keep = true
-			recentNonResident++
-		}
-		if !keep {
+		if query.Status != "running" && query.Status != "queued" && len(kept) >= maxRecentQueries {
 			continue
 		}
 		kept = append(kept, query)
@@ -415,18 +420,14 @@ func querySortTime(query QuerySummary) time.Time {
 	return query.StartedAt
 }
 
-func cacheActionResidentState(action, message string) (bool, bool) {
-	lower := strings.ToLower(message)
-	switch action {
-	case "evict", "clear":
-		return false, true
-	case "save", "load", "reuse", "hit":
-		return true, true
+func queryRunningRank(query QuerySummary) int {
+	switch query.Status {
+	case "running":
+		return 0
+	case "queued":
+		return 1
 	default:
-		if strings.Contains(lower, "removing oldest entry") || strings.Contains(lower, "evict") {
-			return false, true
-		}
-		return false, false
+		return 2
 	}
 }
 

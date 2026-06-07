@@ -65,6 +65,24 @@ func TestRecordMetricHistoryTrimsWindow(t *testing.T) {
 	}
 }
 
+func TestRecordMetricHistoryTracksPeakFacts(t *testing.T) {
+	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
+	base := time.Unix(1_700_000_000, 0)
+
+	dashboard.recordMetricHistory(base, map[string]float64{"llamacpp:n_tokens_max": 100})
+	dashboard.recordMetricHistory(base.Add(time.Second), map[string]float64{"llamacpp:n_tokens_max": 90})
+	dashboard.recordMetricHistory(base.Add(2*time.Second), map[string]float64{"llamacpp:n_tokens_max": 120})
+
+	facts := dashboard.copyMetricFacts()
+	fact := facts["llamacpp:n_tokens_max"]
+	if fact.PeakValue != 120 {
+		t.Fatalf("peak = %v", fact.PeakValue)
+	}
+	if fact.PeakAt == nil || !fact.PeakAt.Equal(base.Add(2*time.Second)) {
+		t.Fatalf("peak at = %v", fact.PeakAt)
+	}
+}
+
 func TestDeriveSlotLiveRatesSumsActiveSlotDeltas(t *testing.T) {
 	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
 	base := time.Unix(1_700_000_000, 0)
@@ -89,6 +107,17 @@ func TestDeriveSlotLiveRatesSumsActiveSlotDeltas(t *testing.T) {
 	}
 	if promptRate != 15 {
 		t.Fatalf("prompt rate = %v", promptRate)
+	}
+
+	history := dashboard.recordSlotHistory(base.Add(2*time.Second), []llamacpp.Slot{
+		{ID: 1, TaskID: 10, IsProcessing: true},
+		{ID: 2, TaskID: 20, IsProcessing: true},
+	}, "model-a")
+	if got := history.Slots["1"][0].GenerationTokensPerSec; got != 40 {
+		t.Fatalf("slot 1 generation rate = %v", got)
+	}
+	if got := history.Slots["2"][0].GenerationTokensPerSec; got != 30 {
+		t.Fatalf("slot 2 generation rate = %v", got)
 	}
 }
 

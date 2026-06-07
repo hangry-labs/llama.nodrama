@@ -142,6 +142,7 @@
     color: var(--accent-2);
   }
   .metric-card .unit { color: var(--fg-mute); font-size: 13px; font-family: var(--mono); }
+  .metric-card .metric-note { color: var(--fg-mute); font-size: 11px; min-height: 14px; }
   .metric-card svg { width: 100%; height: 36px; display: block; }
   .metric-card .spark-area  { fill: #58a6ff22; }
   .metric-card .spark-line  { fill: none; stroke: var(--accent); stroke-width: 1.5; }
@@ -190,7 +191,8 @@
   }
   .query-card.running { border-color: #2f6feb; box-shadow: 0 0 0 1px #2f6feb33 inset; }
   .query-card.queued { border-color: var(--warn); }
-  .query-card.resident { box-shadow: 0 0 0 1px #3fb95033 inset; }
+  .query-card.reused { border-color: var(--good); box-shadow: 0 0 0 1px #3fb95033 inset; }
+  .query-card.unreused.complete { opacity: 0.82; }
   .query-card.error { border-color: var(--bad); }
   .query-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
   .query-id { font-family: var(--mono); color: var(--fg-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -647,7 +649,6 @@ const I18N = {
     "queries.task":             "task",
     "queries.tokens":           "tokens",
     "queries.cache":            "cache",
-    "queries.cache_resident":   "resident",
     "queries.rate":             "rate",
     "queries.duration":         "duration",
 
@@ -1571,6 +1572,7 @@ const state = {
   models: [],
   loraAdapters: [],
   metrics: null,
+  metricFacts: {},
   slots: [],
   queries: [],
   events: [],
@@ -2119,6 +2121,7 @@ function applySnapshot(snapshot, opts) {
     : [];
   state.loraAdapters = Array.isArray(snapshot && snapshot.loraAdapters) ? snapshot.loraAdapters : [];
   state.metrics = (snapshot && snapshot.rawMetrics) || {};
+  state.metricFacts = (snapshot && snapshot.metricFacts) || {};
   state.slots = Array.isArray(snapshot && snapshot.slots) ? snapshot.slots : [];
   state.queries = Array.isArray(snapshot && snapshot.queries) ? snapshot.queries : [];
   state.events = Array.isArray(snapshot && snapshot.events) ? snapshot.events : [];
@@ -2148,7 +2151,7 @@ function applySnapshot(snapshot, opts) {
     state.healthy ? "header.status.online" : "header.status.offline");
 
   if (o.render !== false) {
-    renderMetrics(state.metrics, state.history.metrics);
+    renderMetrics(state.metrics, state.history.metrics, state.metricFacts);
     renderSlots(state.slots);
     renderQueries(state.queries);
     const supportSignature = JSON.stringify({
@@ -2992,7 +2995,8 @@ function normalizeHistoryPoints(points) {
 
 async function resetHistories() {
   state.history = emptyHistory();
-  if (state.metrics) renderMetrics(state.metrics, state.history.metrics);
+  state.metricFacts = {};
+  if (state.metrics) renderMetrics(state.metrics, state.history.metrics, state.metricFacts);
   try {
     await fetchJSON("/api/history/reset", {
       method: "POST",
@@ -3092,10 +3096,11 @@ const METRIC_CARDS = [
     help: "Number of requests waiting because no slot is currently available. Sustained values > 0 indicate queueing latency." },
   { id: "busy_slots",    titleKey: "metrics.busy_slots",
     metric: "llamacpp:n_busy_slots_per_decode",  unit: "",      min: 0,
-    help: "Average number of busy slots participating in decode calls. It is a lifetime-style metric, not an exact live busy-slot count." },
+    help: "llama.cpp's average number of slots included in decode batches. It helps show batching efficiency/parallelism: near 1 means mostly single-slot decode; higher values mean decode calls often batch work from several slots. It is not the exact current busy-slot count." },
   { id: "n_tokens_max",  titleKey: "metrics.n_tokens_max",
     metric: "llamacpp:n_tokens_max",             unit: "tok",   min: 0,
-    help: "Largest token batch/working set observed by llama.cpp decode metrics. It is useful as a rough pressure signal, not context size." },
+    peakNote: true,
+    help: "Raw llama.cpp metric. Largest token batch/working set observed by llama.cpp decode metrics since server start. The timestamp shown is when llama.nodrama first observed the current peak, not necessarily the exact internal llama.cpp moment." },
   { id: "prompt_total",  titleKey: "metrics.prompt_total",
     metric: "llamacpp:prompt_tokens_total",      unit: "tok",   min: 0, cumulative: true,
     help: "Cumulative number of prompt tokens processed since the llama.cpp server started." },
@@ -3104,12 +3109,12 @@ const METRIC_CARDS = [
     help: "Cumulative number of generated output tokens since the llama.cpp server started." },
   { id: "decode_total", titleKey: "metrics.decode_total",
     metric: "llamacpp:n_decode_total",           unit: "",      min: 0, cumulative: true,
-    help: "Cumulative number of llama_decode() calls. This is a low-level decode workload counter." },
+    help: "Raw llama.cpp counter. Cumulative calls into llama_decode(). One decode call can process prompt tokens, generated tokens, and sometimes batched work from multiple slots, so it is a workload/batching counter rather than a request count." },
   { id: "prompt_seconds_total", titleKey: "metrics.prompt_seconds_total",
-    metric: "llamacpp:prompt_seconds_total",     unit: "s",     min: 0, cumulative: true,
+    metric: "llamacpp:prompt_seconds_total",     unit: "",     min: 0, cumulative: true, duration: true,
     help: "Cumulative wall time spent processing prompts since server start." },
   { id: "predicted_seconds_total", titleKey: "metrics.predicted_seconds_total",
-    metric: "llamacpp:tokens_predicted_seconds_total", unit: "s", min: 0, cumulative: true,
+    metric: "llamacpp:tokens_predicted_seconds_total", unit: "", min: 0, cumulative: true, duration: true,
     help: "Cumulative wall time spent generating output tokens since server start." },
 ];
 
@@ -3124,6 +3129,35 @@ function fmtNumber(n, opts) {
   if (n >= 100) return n.toFixed(0);
   if (n >= 10)  return n.toFixed(1);
   return n.toFixed(2);
+}
+
+function fmtDuration(seconds) {
+  if (seconds === undefined || seconds === null || !isFinite(seconds)) return "—";
+  const units = [
+    ["w", 7 * 24 * 3600],
+    ["d", 24 * 3600],
+    ["h", 3600],
+    ["m", 60],
+    ["s", 1],
+  ];
+  let remaining = Math.max(0, seconds);
+  const out = [];
+  for (const [label, size] of units) {
+    const value = Math.floor(remaining / size);
+    if (!value && out.length === 0 && label !== "s") continue;
+    if (value) {
+      out.push(value + label);
+      remaining -= value * size;
+    }
+    if (out.length >= 2) break;
+  }
+  return out.length ? out.join(" ") : "0s";
+}
+
+function fmtTime(ts) {
+  const tMs = typeof ts === "number" ? ts : Date.parse(ts);
+  if (!isFinite(tMs)) return "—";
+  return new Date(tMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
 function ensureMetricCards() {
@@ -3151,6 +3185,7 @@ function ensureMetricCards() {
         ? el("div", { class: "pct-bar", id: "metric-" + c.id + "-bar" },
             el("span", { style: "width: 0%" }))
         : null,
+      el("div", { class: "metric-note", id: "metric-" + c.id + "-note" }, ""),
       el("div", { class: "spark", id: "metric-" + c.id + "-spark" }),
     ]);
     sec.appendChild(card);
@@ -3178,10 +3213,11 @@ function renderMetricsDisabled() {
   showBanner("metrics-disabled", t("error.metrics_disabled"), "warn");
 }
 
-function renderMetrics(parsed, metricHistory) {
+function renderMetrics(parsed, metricHistory, metricFacts) {
   ensureMetricCards();
   clearBanner("metrics-disabled");
   const historyByMetric = metricHistory || {};
+  const factsByMetric = metricFacts || {};
   for (const c of METRIC_CARDS) {
     const v = parsed[c.metric];
     const points = normalizeHistoryPoints(historyByMetric[c.metric]);
@@ -3192,7 +3228,15 @@ function renderMetrics(parsed, metricHistory) {
     if (c.badAt  !== undefined && v >= c.badAt)  { card.classList.remove("warn"); card.classList.add("bad"); }
 
     $("#metric-" + c.id + "-value").textContent =
-      fmtNumber(v, { percent: c.percent });
+      c.duration ? fmtDuration(v) : fmtNumber(v, { percent: c.percent });
+
+    const note = $("#metric-" + c.id + "-note");
+    if (note) {
+      const fact = factsByMetric[c.metric];
+      note.textContent = c.peakNote && fact && fact.peakAt
+        ? ("peak " + fmtNumber(fact.peakValue) + " at " + fmtTime(fact.peakAt))
+        : "";
+    }
 
     if (c.percent) {
       const bar = $("#metric-" + c.id + "-bar");
@@ -3370,7 +3414,7 @@ function updateSlotNode(node, s) {
       state.history && state.history.slots && state.history.slots[String(s.id)]
     );
     historyHost.innerHTML = "";
-    historyHost.appendChild(sparkline(points, { min: 0, max: 1 }));
+    historyHost.appendChild(sparkline(points, { min: 0 }));
   }
 
   /* params expander — re-render only when open or first time, since it's
@@ -3428,7 +3472,10 @@ function normalizeSlotHistoryPoints(points) {
     if (!p) continue;
     const t = typeof p.t === "number" ? p.t : Date.parse(p.t);
     if (!isFinite(t)) continue;
-    out.push({ t, v: p.isProcessing ? 1 : 0 });
+    const gen = Number(p.generationTokensPerSec || 0);
+    const prompt = Number(p.promptTokensPerSec || 0);
+    const v = Math.max(0, isFinite(gen) ? gen : 0, isFinite(prompt) ? prompt : 0);
+    out.push({ t, v });
   }
   return out;
 }
@@ -3468,13 +3515,15 @@ function renderQueryCard(q) {
   const slot = Array.isArray(q.slotIds) && q.slotIds.length ? q.slotIds.join(", ") : "—";
   const task = Array.isArray(q.taskIds) && q.taskIds.length ? q.taskIds.join(", ") : "—";
   const cacheParts = [];
-  if (q.cacheResident) cacheParts.push(t("queries.cache_resident"));
-  if (q.lastCacheAction) cacheParts.push(q.lastCacheAction);
+  if (q.cacheReuseCount) cacheParts.push("reuse x" + q.cacheReuseCount);
+  if (!q.cacheReuseCount && q.lastCacheAction && q.lastCacheAction !== "save" && q.lastCacheAction !== "invalidate") {
+    cacheParts.push(q.lastCacheAction);
+  }
   if (q.promptCacheTokens) cacheParts.push(String(q.promptCacheTokens) + " tok");
   const cache = cacheParts.length ? cacheParts.join(" · ") : "—";
   const rate = q.currentTokensPerSec ? fmtNumber(q.currentTokensPerSec) + " tok/s" : "—";
   const duration = q.durationMs ? (q.durationMs / 1000).toFixed(1) + "s" : (status === "running" ? "active" : status === "queued" ? "queued" : "—");
-  return el("div", { class: "query-card " + status + (q.cacheResident ? " resident" : ""), title: q.id || "" }, [
+  return el("div", { class: "query-card " + status + (q.cacheReuseCount ? " reused" : " unreused"), title: q.id || "" }, [
     el("div", { class: "query-head" }, [
       el("span", { class: "query-id" }, q.id || "query"),
       el("span", { class: "badge " + (status === "error" ? "bad" : status === "running" ? "on" : status === "queued" ? "warn" : "") },

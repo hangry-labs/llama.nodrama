@@ -32,6 +32,7 @@ type Snapshot struct {
 	Slots          []llamacpp.Slot           `json:"slots"`
 	GPU            gpu.Snapshot              `json:"gpu"`
 	History        SnapshotHistory           `json:"history"`
+	MetricFacts    map[string]MetricFact     `json:"metricFacts,omitempty"`
 	Suggestions    []Suggestion              `json:"suggestions"`
 	Requests       []RequestSummary          `json:"requests,omitempty"`
 	Queries        []QuerySummary            `json:"queries,omitempty"`
@@ -51,22 +52,29 @@ type HistoryPoint struct {
 	V float64 `json:"v"`
 }
 
+type MetricFact struct {
+	PeakValue float64    `json:"peakValue,omitempty"`
+	PeakAt    *time.Time `json:"peakAt,omitempty"`
+}
+
 type SlotHistoryPoint struct {
-	T                     int64   `json:"t"`
-	ID                    int     `json:"id"`
-	TaskID                int     `json:"taskId,omitempty"`
-	State                 string  `json:"state"`
-	IsProcessing          bool    `json:"isProcessing"`
-	ContextTokens         int     `json:"contextTokens,omitempty"`
-	ContextEstimateTokens int     `json:"contextEstimateTokens,omitempty"`
-	PromptTokens          int     `json:"promptTokens,omitempty"`
-	PromptProcessedTokens int     `json:"promptProcessedTokens,omitempty"`
-	PromptCacheTokens     int     `json:"promptCacheTokens,omitempty"`
-	DecodedTokens         int     `json:"decodedTokens,omitempty"`
-	RemainingTokens       int     `json:"remainingTokens,omitempty"`
-	GenerationProgress    float64 `json:"generationProgress,omitempty"`
-	PromptProgress        float64 `json:"promptProgress,omitempty"`
-	Model                 string  `json:"model,omitempty"`
+	T                      int64   `json:"t"`
+	ID                     int     `json:"id"`
+	TaskID                 int     `json:"taskId,omitempty"`
+	State                  string  `json:"state"`
+	IsProcessing           bool    `json:"isProcessing"`
+	ContextTokens          int     `json:"contextTokens,omitempty"`
+	ContextEstimateTokens  int     `json:"contextEstimateTokens,omitempty"`
+	PromptTokens           int     `json:"promptTokens,omitempty"`
+	PromptProcessedTokens  int     `json:"promptProcessedTokens,omitempty"`
+	PromptCacheTokens      int     `json:"promptCacheTokens,omitempty"`
+	DecodedTokens          int     `json:"decodedTokens,omitempty"`
+	RemainingTokens        int     `json:"remainingTokens,omitempty"`
+	PromptTokensPerSec     float64 `json:"promptTokensPerSec,omitempty"`
+	GenerationTokensPerSec float64 `json:"generationTokensPerSec,omitempty"`
+	GenerationProgress     float64 `json:"generationProgress,omitempty"`
+	PromptProgress         float64 `json:"promptProgress,omitempty"`
+	Model                  string  `json:"model,omitempty"`
 }
 
 type Suggestion struct {
@@ -117,7 +125,7 @@ type QuerySummary struct {
 	CompletionTokens    int        `json:"completionTokens,omitempty"`
 	TotalTokens         int        `json:"totalTokens,omitempty"`
 	PromptCacheTokens   int        `json:"promptCacheTokens,omitempty"`
-	CacheResident       bool       `json:"cacheResident"`
+	CacheReuseCount     int        `json:"cacheReuseCount,omitempty"`
 	CurrentTokensPerSec float64    `json:"currentTokensPerSec,omitempty"`
 	LastTimingEventAt   *time.Time `json:"lastTimingEventAt,omitempty"`
 	LastCacheAction     string     `json:"lastCacheAction,omitempty"`
@@ -154,7 +162,9 @@ type Dashboard struct {
 	historyMu     sync.Mutex
 	rateHistory   []metricRateSample
 	slotRateLast  map[int]slotRateSample
+	slotLiveRates map[int]slotLiveRate
 	metricHistory map[string][]HistoryPoint
+	metricFacts   map[string]MetricFact
 	slotHistory   map[int][]SlotHistoryPoint
 	logOffset     int64
 	logPartial    string
@@ -188,6 +198,11 @@ type slotRateSample struct {
 	decodedTokens         int
 }
 
+type slotLiveRate struct {
+	promptTokensPerSec     float64
+	generationTokensPerSec float64
+}
+
 const (
 	liveRateWindow       = 5 * time.Second
 	metricHistoryWindow  = time.Minute
@@ -206,7 +221,9 @@ func NewDashboard(client *llamacpp.Client, cfg Config, build BuildInfo) *Dashboa
 		started:         now,
 		previousSlot:    map[int]llamacpp.Slot{},
 		slotRateLast:    map[int]slotRateSample{},
+		slotLiveRates:   map[int]slotLiveRate{},
 		metricHistory:   map[string][]HistoryPoint{},
+		metricFacts:     map[string]MetricFact{},
 		slotHistory:     map[int][]SlotHistoryPoint{},
 		queries:         map[string]QuerySummary{},
 		slotQuery:       map[int]string{},
@@ -320,6 +337,9 @@ func (m *Dashboard) deriveSlotLiveRates(now time.Time, slots []llamacpp.Slot) (f
 	if m.slotRateLast == nil {
 		m.slotRateLast = map[int]slotRateSample{}
 	}
+	if m.slotLiveRates == nil {
+		m.slotLiveRates = map[int]slotLiveRate{}
+	}
 
 	seen := map[int]bool{}
 	promptRate := 0.0
@@ -327,6 +347,7 @@ func (m *Dashboard) deriveSlotLiveRates(now time.Time, slots []llamacpp.Slot) (f
 	hasRate := false
 	for _, slot := range slots {
 		seen[slot.ID] = true
+		liveRate := slotLiveRate{}
 		current := slotRateSample{
 			at:                    now,
 			taskID:                slot.TaskID,
@@ -337,29 +358,36 @@ func (m *Dashboard) deriveSlotLiveRates(now time.Time, slots []llamacpp.Slot) (f
 		previous, ok := m.slotRateLast[slot.ID]
 		m.slotRateLast[slot.ID] = current
 		if !ok || !slot.IsProcessing || !previous.isProcessing {
+			m.slotLiveRates[slot.ID] = liveRate
 			continue
 		}
 		if slot.TaskID == 0 || previous.taskID == 0 || slot.TaskID != previous.taskID {
+			m.slotLiveRates[slot.ID] = liveRate
 			continue
 		}
 		elapsed := now.Sub(previous.at).Seconds()
 		if elapsed <= 0 {
+			m.slotLiveRates[slot.ID] = liveRate
 			continue
 		}
 		promptDelta := slot.PromptProcessedTokens - previous.promptProcessedTokens
 		if promptDelta > 0 {
-			promptRate += float64(promptDelta) / elapsed
+			liveRate.promptTokensPerSec = float64(promptDelta) / elapsed
+			promptRate += liveRate.promptTokensPerSec
 			hasRate = true
 		}
 		decodedDelta := slot.DecodedTokens - previous.decodedTokens
 		if decodedDelta > 0 {
-			generationRate += float64(decodedDelta) / elapsed
+			liveRate.generationTokensPerSec = float64(decodedDelta) / elapsed
+			generationRate += liveRate.generationTokensPerSec
 			hasRate = true
 		}
+		m.slotLiveRates[slot.ID] = liveRate
 	}
 	for slotID := range m.slotRateLast {
 		if !seen[slotID] {
 			delete(m.slotRateLast, slotID)
+			delete(m.slotLiveRates, slotID)
 		}
 	}
 	return promptRate, generationRate, hasRate
@@ -372,12 +400,20 @@ func (m *Dashboard) recordMetricHistory(now time.Time, metrics map[string]float6
 	if m.metricHistory == nil {
 		m.metricHistory = map[string][]HistoryPoint{}
 	}
+	if m.metricFacts == nil {
+		m.metricFacts = map[string]MetricFact{}
+	}
 
 	t := now.UnixMilli()
 	cutoff := now.Add(-metricHistoryWindow).UnixMilli()
 	for name, value := range metrics {
 		if math.IsNaN(value) || math.IsInf(value, 0) {
 			continue
+		}
+		fact := m.metricFacts[name]
+		if fact.PeakAt == nil || value > fact.PeakValue {
+			peakAt := now
+			m.metricFacts[name] = MetricFact{PeakValue: value, PeakAt: &peakAt}
 		}
 		points := append(m.metricHistory[name], HistoryPoint{T: t, V: value})
 		points = trimHistoryPoints(points, cutoff)
@@ -397,6 +433,20 @@ func (m *Dashboard) recordMetricHistory(now time.Time, metrics map[string]float6
 	}
 
 	return m.copyHistoryLocked()
+}
+
+func (m *Dashboard) copyMetricFacts() map[string]MetricFact {
+	m.historyMu.Lock()
+	defer m.historyMu.Unlock()
+
+	out := make(map[string]MetricFact, len(m.metricFacts))
+	for name, fact := range m.metricFacts {
+		out[name] = MetricFact{
+			PeakValue: fact.PeakValue,
+			PeakAt:    cloneTimePtr(fact.PeakAt),
+		}
+	}
+	return out
 }
 
 func trimHistoryPoints(points []HistoryPoint, cutoff int64) []HistoryPoint {
@@ -419,21 +469,23 @@ func (m *Dashboard) recordSlotHistory(now time.Time, slots []llamacpp.Slot, mode
 	cutoff := now.Add(-metricHistoryWindow).UnixMilli()
 	for _, slot := range slots {
 		points := append(m.slotHistory[slot.ID], SlotHistoryPoint{
-			T:                     t,
-			ID:                    slot.ID,
-			TaskID:                slot.TaskID,
-			State:                 slot.State,
-			IsProcessing:          slot.IsProcessing,
-			ContextTokens:         slot.ContextTokens,
-			ContextEstimateTokens: slot.ContextEstimateTokens,
-			PromptTokens:          slot.PromptTokens,
-			PromptProcessedTokens: slot.PromptProcessedTokens,
-			PromptCacheTokens:     slot.PromptCacheTokens,
-			DecodedTokens:         slot.DecodedTokens,
-			RemainingTokens:       slot.RemainingTokens,
-			GenerationProgress:    slot.GenerationProgress,
-			PromptProgress:        slot.PromptProgress,
-			Model:                 model,
+			T:                      t,
+			ID:                     slot.ID,
+			TaskID:                 slot.TaskID,
+			State:                  slot.State,
+			IsProcessing:           slot.IsProcessing,
+			ContextTokens:          slot.ContextTokens,
+			ContextEstimateTokens:  slot.ContextEstimateTokens,
+			PromptTokens:           slot.PromptTokens,
+			PromptProcessedTokens:  slot.PromptProcessedTokens,
+			PromptCacheTokens:      slot.PromptCacheTokens,
+			DecodedTokens:          slot.DecodedTokens,
+			RemainingTokens:        slot.RemainingTokens,
+			PromptTokensPerSec:     m.slotLiveRates[slot.ID].promptTokensPerSec,
+			GenerationTokensPerSec: m.slotLiveRates[slot.ID].generationTokensPerSec,
+			GenerationProgress:     slot.GenerationProgress,
+			PromptProgress:         slot.PromptProgress,
+			Model:                  model,
 		})
 		points = trimSlotHistoryPoints(points, cutoff)
 		if len(points) > maxMetricHistorySize {
@@ -484,7 +536,9 @@ func (m *Dashboard) ResetHistory() {
 	m.historyMu.Lock()
 	m.rateHistory = nil
 	m.metricHistory = map[string][]HistoryPoint{}
+	m.metricFacts = map[string]MetricFact{}
 	m.slotHistory = map[int][]SlotHistoryPoint{}
+	m.slotLiveRates = map[int]slotLiveRate{}
 	m.logEvents = nil
 	m.logEventSeq = 0
 	empty := m.copyHistoryLocked()
@@ -492,6 +546,7 @@ func (m *Dashboard) ResetHistory() {
 
 	m.mu.Lock()
 	m.snapshot.History = empty
+	m.snapshot.MetricFacts = nil
 	m.snapshot.Events = nil
 	m.snapshot.Queries = nil
 	m.mu.Unlock()
@@ -707,6 +762,7 @@ func (m *Dashboard) poll(parent context.Context) {
 	rawMetrics["nodrama:prompt_tokens_rate"] = metrics.PromptTokensLivePerSec
 	rawMetrics["nodrama:tokens_predicted_rate"] = metrics.GenerationTokensLivePerSec
 	history := m.recordMetricHistory(time.Now(), rawMetrics)
+	metricFacts := m.copyMetricFacts()
 
 	models := previous.Models
 	if pollSlow {
@@ -872,6 +928,7 @@ func (m *Dashboard) poll(parent context.Context) {
 		Slots:          slots,
 		GPU:            gpuSnapshot,
 		History:        history,
+		MetricFacts:    metricFacts,
 		Suggestions:    suggestions,
 		Requests:       requests,
 		Queries:        m.updateQueries(snapshotAt, modelAlias, slots, requests, events),

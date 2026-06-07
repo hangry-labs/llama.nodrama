@@ -3,6 +3,7 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -129,11 +130,69 @@ func TestUpdateQueriesMergesRequestAndEvents(t *testing.T) {
 	if queries[0].LastCacheAction != "reuse" {
 		t.Fatalf("cache action = %q", queries[0].LastCacheAction)
 	}
-	if !queries[0].CacheResident {
-		t.Fatal("query should be marked cache resident")
+	if queries[0].CacheReuseCount != 1 {
+		t.Fatalf("cache reuse count = %d", queries[0].CacheReuseCount)
 	}
 	if len(queries[0].RequestIDs) != 1 || queries[0].RequestIDs[0] != "req_1" {
 		t.Fatalf("request ids = %#v", queries[0].RequestIDs)
+	}
+}
+
+func TestUpdateQueriesCountsRestoredCheckpointAsReuse(t *testing.T) {
+	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
+	now := time.Unix(1_700_000_000, 0)
+
+	queries := dashboard.updateQueries(now, "model-a", []llamacpp.Slot{{
+		ID:           1,
+		TaskID:       88,
+		IsProcessing: true,
+		State:        "prompt-processing",
+	}}, nil, []llamacpp.LogEvent{{
+		ID:       "evt_restore",
+		At:       now,
+		Kind:     "warning",
+		Severity: "W",
+		SlotID:   1,
+		TaskID:   88,
+		Message:  "slot update_slots: id  1 | task 88 | restored context checkpoint",
+	}})
+	if len(queries) != 1 {
+		t.Fatalf("queries = %d", len(queries))
+	}
+	if queries[0].LastCacheAction != "restore" {
+		t.Fatalf("cache action = %q", queries[0].LastCacheAction)
+	}
+	if queries[0].CacheReuseCount != 1 {
+		t.Fatalf("cache reuse count = %d", queries[0].CacheReuseCount)
+	}
+}
+
+func TestUpdateQueriesIgnoresCacheSaveForQueryReuse(t *testing.T) {
+	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
+	now := time.Unix(1_700_000_000, 0)
+
+	queries := dashboard.updateQueries(now, "model-a", []llamacpp.Slot{{
+		ID:           1,
+		TaskID:       88,
+		IsProcessing: true,
+		State:        "generating",
+	}}, nil, []llamacpp.LogEvent{{
+		ID:          "evt_save",
+		At:          now,
+		Kind:        "cache",
+		SlotID:      1,
+		TaskID:      88,
+		CacheAction: "save",
+		Message:     "saving idle slot to prompt cache",
+	}})
+	if len(queries) != 1 {
+		t.Fatalf("queries = %d", len(queries))
+	}
+	if queries[0].LastCacheAction != "" {
+		t.Fatalf("save should not surface as query cache action: %#v", queries[0])
+	}
+	if queries[0].CacheReuseCount != 0 {
+		t.Fatalf("save should not count as reuse: %d", queries[0].CacheReuseCount)
 	}
 }
 
@@ -251,7 +310,7 @@ func TestUpdateQueriesDoesNotShowInvalidateActionForRunningQuery(t *testing.T) {
 	}
 }
 
-func TestUpdateQueriesKeepsRecentPlusCacheResident(t *testing.T) {
+func TestUpdateQueriesRanksRunningThenReuseThenRecent(t *testing.T) {
 	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
 	base := time.Unix(1_700_000_000, 0)
 
@@ -259,7 +318,7 @@ func TestUpdateQueriesKeepsRecentPlusCacheResident(t *testing.T) {
 		started := base.Add(time.Duration(i) * time.Second)
 		ended := started.Add(500 * time.Millisecond)
 		requests := []RequestSummary{{
-			ID:         "req_" + string(rune('a'+i)),
+			ID:         "req_" + strconv.Itoa(i),
 			Route:      "/api/chat/completions",
 			StartedAt:  started,
 			EndedAt:    &ended,
@@ -270,23 +329,57 @@ func TestUpdateQueriesKeepsRecentPlusCacheResident(t *testing.T) {
 		dashboard.updateQueries(ended, "", nil, requests, nil)
 	}
 
-	queries := dashboard.updateQueries(base.Add(time.Minute), "", nil, nil, []llamacpp.LogEvent{{
-		ID:          "evt_cache_resident",
-		At:          base.Add(time.Minute),
-		Kind:        "cache",
-		TaskID:      1,
-		CacheAction: "save",
-		Message:     "saving idle slot to prompt cache",
-	}})
+	events := []llamacpp.LogEvent{}
+	for i := 1; i <= 3; i++ {
+		events = append(events, llamacpp.LogEvent{
+			ID:       "evt_restore_" + strconv.Itoa(i),
+			At:       base.Add(time.Minute + time.Duration(i)*time.Second),
+			Kind:     "warning",
+			Severity: "W",
+			TaskID:   1,
+			Message:  "slot update_slots: restored context checkpoint",
+		})
+	}
+	queries := dashboard.updateQueries(base.Add(time.Minute), "", []llamacpp.Slot{{
+		ID:           9,
+		TaskID:       999,
+		IsProcessing: true,
+		State:        "generating",
+	}}, nil, events)
 
-	if len(queries) != maxRecentQueries+1 {
+	if len(queries) != maxRecentQueries {
 		t.Fatalf("queries = %d", len(queries))
 	}
-	if !hasQuery(queries, "task_1") {
-		t.Fatalf("resident older query was pruned: %#v", queries)
+	if queries[0].ID != "task_999" || queries[0].Status != "running" {
+		t.Fatalf("running query should rank first: %#v", queries)
+	}
+	if queries[1].ID != "task_1" || queries[1].CacheReuseCount != 3 {
+		t.Fatalf("reused query should rank ahead of newer completed queries: %#v", queries)
 	}
 	if hasQuery(queries, "task_2") {
-		t.Fatalf("old non-resident query should be pruned: %#v", queries)
+		t.Fatalf("old unreused query should be pruned: %#v", queries)
+	}
+}
+
+func TestUpdateQueriesRestoredCheckpointsAreCapped(t *testing.T) {
+	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
+	base := time.Unix(1_700_000_000, 0)
+
+	events := make([]llamacpp.LogEvent, 0, maxRecentQueries+20)
+	for i := 1; i <= maxRecentQueries+20; i++ {
+		events = append(events, llamacpp.LogEvent{
+			ID:       "evt_restore_" + strconv.Itoa(i),
+			At:       base.Add(time.Duration(i) * time.Second),
+			Kind:     "warning",
+			Severity: "W",
+			TaskID:   i,
+			Message:  "slot update_slots: restored context checkpoint",
+		})
+	}
+
+	queries := dashboard.updateQueries(base.Add(time.Minute), "", nil, nil, events)
+	if len(queries) != maxRecentQueries {
+		t.Fatalf("queries = %d", len(queries))
 	}
 }
 
