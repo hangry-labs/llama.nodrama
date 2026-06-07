@@ -92,12 +92,42 @@ jobs:
           env -u GOOS -u GOARCH go install github.com/tc-hib/go-winres@latest
           build windows amd64 ".exe"
           build windows arm64 ".exe"
-          rm -f dist/SHA256SUMS
-          (cd dist && sha256sum llama-nodrama-* > SHA256SUMS)
           windows_amd64_hash="$(sha256sum dist/llama-nodrama-windows-amd64.zip | awk '{print $1}')"
           windows_arm64_hash="$(sha256sum dist/llama-nodrama-windows-arm64.zip | awk '{print $1}')"
           winget_version="${version#v}"
-          cat > dist/HangryLabs.LlamaNodrama.winget.yaml <<EOF
+          winget_dir="dist/winget"
+          mkdir -p "$winget_dir"
+          cat > "${winget_dir}/HangryLabs.LlamaNodrama.yaml" <<EOF
+          # yaml-language-server: \$schema=https://aka.ms/winget-manifest.version.1.10.0.schema.json
+          PackageIdentifier: HangryLabs.LlamaNodrama
+          PackageVersion: ${winget_version}
+          DefaultLocale: en-US
+          ManifestType: version
+          ManifestVersion: 1.10.0
+          EOF
+          cat > "${winget_dir}/HangryLabs.LlamaNodrama.installer.yaml" <<EOF
+          # yaml-language-server: \$schema=https://aka.ms/winget-manifest.installer.1.10.0.schema.json
+          PackageIdentifier: HangryLabs.LlamaNodrama
+          PackageVersion: ${winget_version}
+          InstallerType: zip
+          NestedInstallerType: portable
+          NestedInstallerFiles:
+            - RelativeFilePath: llama-nodrama.exe
+              PortableCommandAlias: llama-nodrama
+          Commands:
+            - llama-nodrama
+          Installers:
+            - Architecture: x64
+              InstallerUrl: https://github.com/hangry-labs/llama.nodrama/releases/download/${version}/llama-nodrama-windows-amd64.zip
+              InstallerSha256: ${windows_amd64_hash}
+            - Architecture: arm64
+              InstallerUrl: https://github.com/hangry-labs/llama.nodrama/releases/download/${version}/llama-nodrama-windows-arm64.zip
+              InstallerSha256: ${windows_arm64_hash}
+          ManifestType: installer
+          ManifestVersion: 1.10.0
+          EOF
+          cat > "${winget_dir}/HangryLabs.LlamaNodrama.locale.en-US.yaml" <<EOF
+          # yaml-language-server: \$schema=https://aka.ms/winget-manifest.defaultLocale.1.10.0.schema.json
           PackageIdentifier: HangryLabs.LlamaNodrama
           PackageVersion: ${winget_version}
           PackageLocale: en-US
@@ -117,23 +147,13 @@ jobs:
             - ai
             - dashboard
             - monitor
-          Commands:
-            - llama-nodrama
-          InstallerType: zip
-          NestedInstallerType: portable
-          NestedInstallerFiles:
-            - RelativeFilePath: llama-nodrama.exe
-              PortableCommandAlias: llama-nodrama
-          Installers:
-            - Architecture: x64
-              InstallerUrl: https://github.com/hangry-labs/llama.nodrama/releases/download/${version}/llama-nodrama-windows-amd64.zip
-              InstallerSha256: ${windows_amd64_hash}
-            - Architecture: arm64
-              InstallerUrl: https://github.com/hangry-labs/llama.nodrama/releases/download/${version}/llama-nodrama-windows-arm64.zip
-              InstallerSha256: ${windows_arm64_hash}
-          ManifestType: singleton
+          ManifestType: defaultLocale
           ManifestVersion: 1.10.0
           EOF
+          (cd dist && zip -qr HangryLabs.LlamaNodrama.winget.zip winget)
+          rm -rf "$winget_dir"
+          rm -f dist/SHA256SUMS
+          (cd dist && sha256sum HangryLabs.LlamaNodrama.winget.zip llama-nodrama-* > SHA256SUMS)
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
