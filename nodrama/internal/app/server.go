@@ -48,6 +48,9 @@ func Run(ctx context.Context, cfg Config, info BuildInfo) error {
 		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.Handle("GET /static/", http.StripPrefix("/static/", web.StaticHandler()))
+	if err := registerAPIProxies(mux, cfg.Server, dashboard); err != nil {
+		return err
+	}
 	if err := registerLlamaProxy(mux, cfg.Server); err != nil {
 		return err
 	}

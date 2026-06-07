@@ -62,3 +62,53 @@ func TestRecordMetricHistoryTrimsWindow(t *testing.T) {
 		t.Fatalf("remaining value = %v", points[0].V)
 	}
 }
+
+func TestRequestTracking(t *testing.T) {
+	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
+
+	id := dashboard.StartRequest("/api/chat/completions", "model-a", true)
+	dashboard.FinishRequest(id, 200, 1234, "")
+
+	requests := dashboard.Snapshot().Requests
+	if len(requests) != 1 {
+		t.Fatalf("requests length = %d", len(requests))
+	}
+	req := requests[0]
+	if req.ID != id {
+		t.Fatalf("request id = %q", req.ID)
+	}
+	if req.Route != "/api/chat/completions" {
+		t.Fatalf("route = %q", req.Route)
+	}
+	if req.Model != "model-a" {
+		t.Fatalf("model = %q", req.Model)
+	}
+	if !req.Stream {
+		t.Fatal("stream flag was not recorded")
+	}
+	if req.Status != 200 {
+		t.Fatalf("status = %d", req.Status)
+	}
+	if req.ResponseBytes != 1234 {
+		t.Fatalf("response bytes = %d", req.ResponseBytes)
+	}
+	if req.EndedAt == nil {
+		t.Fatal("endedAt was not recorded")
+	}
+	if req.DurationMS < 0 {
+		t.Fatalf("duration = %d", req.DurationMS)
+	}
+}
+
+func TestRequestTrackingCapsHistory(t *testing.T) {
+	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
+
+	for i := 0; i < maxRequestHistory+5; i++ {
+		dashboard.StartRequest("/api/chat/completions", "model-a", true)
+	}
+
+	requests := dashboard.Snapshot().Requests
+	if len(requests) != maxRequestHistory {
+		t.Fatalf("requests length = %d", len(requests))
+	}
+}

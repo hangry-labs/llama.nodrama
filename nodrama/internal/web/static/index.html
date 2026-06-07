@@ -1933,11 +1933,14 @@ function installDemoShim(mode) {
     if (path === "/metrics") return Promise.resolve(text(renderPrometheus()));
     if (path === "/slots")   return Promise.resolve(json(renderSlots()));
     if (path === "/lora-adapters") return Promise.resolve(json([]));
-    if (path === "/v1/chat/completions" && method.toUpperCase() === "POST") {
+    if ((path === "/api/chat/completions" || path === "/v1/chat/completions")
+        && method.toUpperCase() === "POST") {
       return Promise.resolve(streamingChat(init || {}));
     }
     /* slot save/restore/erase, model load/unload — pretend success */
-    if (path.startsWith("/slots/") || path.startsWith("/models/load") || path.startsWith("/models/unload")) {
+    if (path.startsWith("/api/slots/") || path.startsWith("/slots/")
+        || path.startsWith("/api/models/load") || path.startsWith("/api/models/unload")
+        || path.startsWith("/models/load") || path.startsWith("/models/unload")) {
       return Promise.resolve(json({ success: true, demo: true }));
     }
     /* server.log HEAD — return 404 so log panel hides cleanly */
@@ -2376,14 +2379,14 @@ function routerModelCard(m) {
     actions.appendChild(el("button", {
       onclick: () => confirmAction(
         t("models.confirm.unload", { name: m.id }),
-        () => callLoadOrUnload("/models/unload", m.id, "unload")
+        () => callLoadOrUnload("/api/models/unload", m.id, "unload")
       ),
     }, t("models.actions.unload")));
   } else {
     actions.appendChild(el("button", {
       onclick: () => confirmAction(
         t("models.confirm.load", { name: m.id }),
-        () => callLoadOrUnload("/models/load", m.id, "load")
+        () => callLoadOrUnload("/api/models/load", m.id, "load")
       ),
     }, t("models.actions.load")));
   }
@@ -2662,7 +2665,7 @@ async function slotAction(id, action) {
         filename: ($("#slot-fname") && $("#slot-fname").value) || ("slot_" + id + ".bin"),
       });
       try {
-        await fetchJSON("/slots/" + id + "?action=" + action, {
+        await fetchJSON("/api/slots/" + id + "/" + action, {
           method: "POST",
           withModel: false,
           headers: action === "erase" ? {} : { "Content-Type": "application/json" },
@@ -3631,7 +3634,7 @@ setInterval(tickLastUpdate, 1000);
  * so the "no setInterval for fetches" rule still holds. */
 
 /* ──────────────────────────────────────────────────────────────────────
- *  Chat panel — calls POST /v1/chat/completions with streaming SSE.
+ *  Chat panel — calls POST /api/chat/completions with streaming SSE.
  *
  *  Design notes:
  *  - History lives only in this module's `chat` state object. There is
@@ -4129,7 +4132,7 @@ async function sendChat() {
 
   const t0 = Date.now();
   try {
-    const url = state.serverBase.replace(/\/+$/, "") + "/v1/chat/completions";
+    const url = endpoint("/api/chat/completions", false);
     /* Each fanout target gets its own fetch so we exercise parallel slots. */
     const tasks = targets.map((target, idx) => streamOne(url, payload, ctrl.signal, target, t0, idx, n));
     const results = await Promise.allSettled(tasks);

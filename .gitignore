@@ -32,6 +32,7 @@ profiles/
 fixtures/private/
 testdata/private/
 scratch/
+plans/PLAN_1.md
 
 # Go build output
 bin/

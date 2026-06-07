@@ -4,7 +4,9 @@ import (
 	"context"
 	"math"
 	"net/http"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"llama.nodrama/nodrama/internal/gpu"
@@ -29,6 +31,7 @@ type Snapshot struct {
 	Slots          []llamacpp.Slot           `json:"slots"`
 	GPU            gpu.Snapshot              `json:"gpu"`
 	History        SnapshotHistory           `json:"history"`
+	Requests       []RequestSummary          `json:"requests,omitempty"`
 	Warnings       []string                  `json:"warnings"`
 	RawMetrics     map[string]float64        `json:"rawMetrics,omitempty"`
 	LastErrors     map[string]string         `json:"lastErrors,omitempty"`
@@ -41,6 +44,19 @@ type SnapshotHistory struct {
 type HistoryPoint struct {
 	T int64   `json:"t"`
 	V float64 `json:"v"`
+}
+
+type RequestSummary struct {
+	ID            string     `json:"id"`
+	Route         string     `json:"route"`
+	Model         string     `json:"model,omitempty"`
+	Stream        bool       `json:"stream"`
+	StartedAt     time.Time  `json:"startedAt"`
+	EndedAt       *time.Time `json:"endedAt,omitempty"`
+	DurationMS    int64      `json:"durationMs,omitempty"`
+	Status        int        `json:"status,omitempty"`
+	ResponseBytes int64      `json:"responseBytes,omitempty"`
+	Error         string     `json:"error,omitempty"`
 }
 
 type Overview struct {
@@ -70,6 +86,10 @@ type Dashboard struct {
 	historyMu     sync.Mutex
 	rateHistory   []metricRateSample
 	metricHistory map[string][]HistoryPoint
+
+	requestSeq uint64
+	requestMu  sync.Mutex
+	requests   []RequestSummary
 }
 
 type metricRateSample struct {
@@ -82,6 +102,7 @@ const (
 	liveRateWindow       = 5 * time.Second
 	metricHistoryWindow  = time.Minute
 	maxMetricHistorySize = 600
+	maxRequestHistory    = 200
 )
 
 func NewDashboard(client *llamacpp.Client, cfg Config, build BuildInfo) *Dashboard {
@@ -103,6 +124,7 @@ func NewDashboard(client *llamacpp.Client, cfg Config, build BuildInfo) *Dashboa
 			UpdatedAt:      now,
 			Endpoints:      map[string]llamacpp.Probe{},
 			History:        SnapshotHistory{Metrics: map[string][]HistoryPoint{}},
+			Requests:       []RequestSummary{},
 			Warnings:       []string{"Waiting for first poll."},
 		},
 	}
@@ -236,6 +258,74 @@ func (m *Dashboard) ResetHistory() {
 
 	m.mu.Lock()
 	m.snapshot.History = empty
+	m.mu.Unlock()
+}
+
+func (m *Dashboard) StartRequest(route, model string, stream bool) string {
+	now := time.Now()
+	seq := atomic.AddUint64(&m.requestSeq, 1)
+	id := "req_" + strconv.FormatInt(now.UnixNano(), 10) + "_" + strconv.FormatUint(seq, 10)
+
+	m.requestMu.Lock()
+	m.requests = append(m.requests, RequestSummary{
+		ID:        id,
+		Route:     route,
+		Model:     model,
+		Stream:    stream,
+		StartedAt: now,
+	})
+	if len(m.requests) > maxRequestHistory {
+		m.requests = m.requests[len(m.requests)-maxRequestHistory:]
+	}
+	requests := m.copyRequestsLocked()
+	m.requestMu.Unlock()
+
+	m.updateSnapshotRequests(requests)
+	return id
+}
+
+func (m *Dashboard) FinishRequest(id string, status int, responseBytes int64, errText string) {
+	ended := time.Now()
+
+	m.requestMu.Lock()
+	for i := len(m.requests) - 1; i >= 0; i-- {
+		if m.requests[i].ID != id {
+			continue
+		}
+		m.requests[i].EndedAt = &ended
+		m.requests[i].DurationMS = ended.Sub(m.requests[i].StartedAt).Milliseconds()
+		m.requests[i].Status = status
+		m.requests[i].ResponseBytes = responseBytes
+		m.requests[i].Error = errText
+		break
+	}
+	requests := m.copyRequestsLocked()
+	m.requestMu.Unlock()
+
+	m.updateSnapshotRequests(requests)
+}
+
+func (m *Dashboard) copyRequests() []RequestSummary {
+	m.requestMu.Lock()
+	defer m.requestMu.Unlock()
+	return m.copyRequestsLocked()
+}
+
+func (m *Dashboard) copyRequestsLocked() []RequestSummary {
+	out := make([]RequestSummary, len(m.requests))
+	for i, request := range m.requests {
+		out[i] = request
+		if request.EndedAt != nil {
+			ended := *request.EndedAt
+			out[i].EndedAt = &ended
+		}
+	}
+	return out
+}
+
+func (m *Dashboard) updateSnapshotRequests(requests []RequestSummary) {
+	m.mu.Lock()
+	m.snapshot.Requests = requests
 	m.mu.Unlock()
 }
 
@@ -429,6 +519,7 @@ func (m *Dashboard) poll(parent context.Context) {
 		Slots:          slots,
 		GPU:            gpuSnapshot,
 		History:        history,
+		Requests:       m.copyRequests(),
 		Warnings:       warnings,
 		RawMetrics:     rawMetrics,
 		LastErrors:     lastErrors,
