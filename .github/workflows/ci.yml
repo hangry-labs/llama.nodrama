@@ -72,23 +72,23 @@ jobs:
           cache-dependency-path: nodrama/go.mod
       - name: Build
         env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
+          TARGET_GOOS: ${{ matrix.goos }}
+          TARGET_GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
         run: |
           set -euo pipefail
           mkdir -p dist
           version="$(cat VERSION)"
           build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          if [ "${GOOS}" = "windows" ]; then
-            go install github.com/tc-hib/go-winres@latest
-            go run ./tools/windowsres
-            go-winres make --arch amd64,arm64
+          if [ "${TARGET_GOOS}" = "windows" ]; then
+            GOOS=linux GOARCH=amd64 go install github.com/tc-hib/go-winres@latest
+            GOOS=linux GOARCH=amd64 go run ./tools/windowsres
+            GOOS=linux GOARCH=amd64 go-winres make --arch "${TARGET_GOARCH}"
             strip_flags=""
           else
             strip_flags="-s -w"
           fi
-          go build -trimpath \
+          GOOS="${TARGET_GOOS}" GOARCH="${TARGET_GOARCH}" go build -trimpath \
             -ldflags "${strip_flags} -X main.version=${version} -X main.commit=${{ github.sha }} -X main.date=${build_date}" \
             -o dist/llama-nodrama-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} .
       - uses: actions/upload-artifact@v4

@@ -51,8 +51,8 @@ jobs:
             work_dir="$(mktemp -d)"
             out="${work_dir}/${bin_name}"
             if [ "$goos" = "windows" ]; then
-              env GOOS=linux GOARCH=amd64 go run ./tools/windowsres
-              env GOOS=linux GOARCH=amd64 go-winres make --arch "$goarch"
+              GOOS=linux GOARCH=amd64 go run ./tools/windowsres
+              GOOS=linux GOARCH=amd64 go-winres make --arch "$goarch"
               strip_flags=""
             else
               strip_flags="-s -w"
@@ -89,7 +89,7 @@ jobs:
           build linux arm64 ""
           build darwin amd64 ""
           build darwin arm64 ""
-          env GOOS=linux GOARCH=amd64 go install github.com/tc-hib/go-winres@latest
+          GOOS=linux GOARCH=amd64 go install github.com/tc-hib/go-winres@latest
           build windows amd64 ".exe"
           build windows arm64 ".exe"
           windows_amd64_hash="$(sha256sum dist/llama-nodrama-windows-amd64.zip | awk '{print $1}')"
