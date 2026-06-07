@@ -30,8 +30,9 @@ func (m *Dashboard) pollLogEvents(now time.Time) ([]llamacpp.LogEvent, error) {
 		return m.copyLogEvents(), nil
 	}
 
-	for _, line := range lines {
-		event, ok := llamacpp.ParseLogLine(line, now)
+	for i, line := range lines {
+		eventAt := now.Add(time.Duration(i) * time.Nanosecond)
+		event, ok := llamacpp.ParseLogLine(line, eventAt)
 		if !ok {
 			continue
 		}
@@ -60,6 +61,12 @@ func (m *Dashboard) readNewLogLines() ([]string, error) {
 	if size < m.logOffset {
 		m.logOffset = 0
 		m.logPartial = ""
+	}
+	if !m.logInitialized {
+		m.logInitialized = true
+		m.logOffset = size
+		m.logPartial = ""
+		return nil, nil
 	}
 	if size == m.logOffset {
 		return nil, nil
@@ -155,6 +162,7 @@ func (m *Dashboard) updateQueries(now time.Time, model string, slots []llamacpp.
 		if query.LastCacheAction == "invalidate" {
 			query.LastCacheAction = ""
 			query.LastCacheEventAt = nil
+			query.CacheCached = false
 		}
 		query.DurationMS = now.Sub(query.StartedAt).Milliseconds()
 		query.LastEventAt = timePtr(now)
@@ -260,15 +268,27 @@ func (m *Dashboard) applyEventToQuery(event llamacpp.LogEvent, fallbackTime time
 		case "hit", "load", "reuse":
 			query.LastCacheAction = event.CacheAction
 			query.LastCacheEventAt = timePtr(eventAt)
+			query.LastCacheReuseAt = timePtr(eventAt)
+			query.CacheCached = true
 			query.CacheReuseCount++
+		case "save":
+			query.CacheCached = true
+			query.LastCacheEventAt = timePtr(eventAt)
+		case "evict", "clear":
+			query.CacheCached = false
+			query.LastCacheAction = "evict"
+			query.LastCacheEventAt = timePtr(eventAt)
 		}
 	case "warning", "error":
 		if strings.Contains(strings.ToLower(event.Message), "restored context checkpoint") {
 			query.LastCacheAction = "restore"
 			query.LastCacheEventAt = timePtr(eventAt)
+			query.LastCacheReuseAt = timePtr(eventAt)
+			query.CacheCached = true
 			query.CacheReuseCount++
 		}
 		if strings.Contains(strings.ToLower(event.Message), "erased invalidated context checkpoint") {
+			query.CacheCached = false
 			if query.Status != "running" {
 				query.LastCacheAction = "invalidate"
 				query.LastCacheEventAt = timePtr(eventAt)
@@ -295,7 +315,17 @@ func (m *Dashboard) pruneAndCopyQueries() []QuerySummary {
 		if queries[i].CacheReuseCount != queries[j].CacheReuseCount {
 			return queries[i].CacheReuseCount > queries[j].CacheReuseCount
 		}
-		return querySortTime(queries[i]).After(querySortTime(queries[j]))
+		leftReuseAt := queryCacheReuseTime(queries[i])
+		rightReuseAt := queryCacheReuseTime(queries[j])
+		if !leftReuseAt.Equal(rightReuseAt) {
+			return leftReuseAt.After(rightReuseAt)
+		}
+		leftSortAt := querySortTime(queries[i])
+		rightSortAt := querySortTime(queries[j])
+		if !leftSortAt.Equal(rightSortAt) {
+			return leftSortAt.After(rightSortAt)
+		}
+		return queries[i].ID > queries[j].ID
 	})
 
 	kept := make([]QuerySummary, 0, len(queries))
@@ -420,6 +450,13 @@ func querySortTime(query QuerySummary) time.Time {
 	return query.StartedAt
 }
 
+func queryCacheReuseTime(query QuerySummary) time.Time {
+	if query.LastCacheReuseAt != nil {
+		return *query.LastCacheReuseAt
+	}
+	return time.Time{}
+}
+
 func queryRunningRank(query QuerySummary) int {
 	switch query.Status {
 	case "running":
@@ -468,6 +505,7 @@ func cloneQuery(query QuerySummary) QuerySummary {
 	query.TaskIDs = append([]int(nil), query.TaskIDs...)
 	query.EndedAt = cloneTimePtr(query.EndedAt)
 	query.LastTimingEventAt = cloneTimePtr(query.LastTimingEventAt)
+	query.LastCacheReuseAt = cloneTimePtr(query.LastCacheReuseAt)
 	query.LastCacheEventAt = cloneTimePtr(query.LastCacheEventAt)
 	query.LastEventAt = cloneTimePtr(query.LastEventAt)
 	return query

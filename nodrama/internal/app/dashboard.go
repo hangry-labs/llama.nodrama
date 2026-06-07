@@ -125,10 +125,12 @@ type QuerySummary struct {
 	CompletionTokens    int        `json:"completionTokens,omitempty"`
 	TotalTokens         int        `json:"totalTokens,omitempty"`
 	PromptCacheTokens   int        `json:"promptCacheTokens,omitempty"`
+	CacheCached         bool       `json:"cacheCached,omitempty"`
 	CacheReuseCount     int        `json:"cacheReuseCount,omitempty"`
 	CurrentTokensPerSec float64    `json:"currentTokensPerSec,omitempty"`
 	LastTimingEventAt   *time.Time `json:"lastTimingEventAt,omitempty"`
 	LastCacheAction     string     `json:"lastCacheAction,omitempty"`
+	LastCacheReuseAt    *time.Time `json:"lastCacheReuseAt,omitempty"`
 	LastCacheEventAt    *time.Time `json:"lastCacheEventAt,omitempty"`
 	LastEventAt         *time.Time `json:"lastEventAt,omitempty"`
 	Error               string     `json:"error,omitempty"`
@@ -159,17 +161,18 @@ type Dashboard struct {
 	snapshot     Snapshot
 	previousSlot map[int]llamacpp.Slot
 
-	historyMu     sync.Mutex
-	rateHistory   []metricRateSample
-	slotRateLast  map[int]slotRateSample
-	slotLiveRates map[int]slotLiveRate
-	metricHistory map[string][]HistoryPoint
-	metricFacts   map[string]MetricFact
-	slotHistory   map[int][]SlotHistoryPoint
-	logOffset     int64
-	logPartial    string
-	logEventSeq   uint64
-	logEvents     []llamacpp.LogEvent
+	historyMu      sync.Mutex
+	rateHistory    []metricRateSample
+	slotRateLast   map[int]slotRateSample
+	slotLiveRates  map[int]slotLiveRate
+	metricHistory  map[string][]HistoryPoint
+	metricFacts    map[string]MetricFact
+	slotHistory    map[int][]SlotHistoryPoint
+	logOffset      int64
+	logInitialized bool
+	logPartial     string
+	logEventSeq    uint64
+	logEvents      []llamacpp.LogEvent
 
 	requestSeq uint64
 	requestMu  sync.Mutex

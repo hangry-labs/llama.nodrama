@@ -10,7 +10,7 @@ import (
 	"llama.nodrama/nodrama/internal/llamacpp"
 )
 
-func TestPollLogEventsReadsIncrementally(t *testing.T) {
+func TestPollLogEventsTailsFromStartupOffset(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "llama.log")
 	if err := os.WriteFile(path, []byte("124.55.423.849 I slot print_timing: id  2 | task 248761 | n_decoded =   7609, tg =  38.97 t/s\n"), 0o600); err != nil {
@@ -22,18 +22,15 @@ func TestPollLogEventsReadsIncrementally(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(events) != 1 {
+	if len(events) != 0 {
 		t.Fatalf("events = %d", len(events))
-	}
-	if events[0].Kind != "timing" || events[0].SlotID != 2 || events[0].TaskID != 248761 {
-		t.Fatalf("event = %#v", events[0])
 	}
 
 	events, err = dashboard.pollLogEvents(time.Unix(1_700_000_001, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(events) != 1 {
+	if len(events) != 0 {
 		t.Fatalf("unchanged events = %d", len(events))
 	}
 
@@ -53,11 +50,40 @@ func TestPollLogEventsReadsIncrementally(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(events) != 2 {
+	if len(events) != 1 {
 		t.Fatalf("events after append = %d", len(events))
 	}
-	if events[1].Kind != "cache" || events[1].CacheAction != "reuse" {
-		t.Fatalf("cache event = %#v", events[1])
+	if events[0].Kind != "cache" || events[0].CacheAction != "reuse" {
+		t.Fatalf("cache event = %#v", events[0])
+	}
+}
+
+func TestPollLogEventsAssignsStableBatchOrder(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "llama.log")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	dashboard := NewDashboard(nil, Config{LogPath: path}, BuildInfo{})
+	if _, err := dashboard.pollLogEvents(time.Unix(1_700_000_000, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(
+		"124.55.424.000 I slot 1 kv cache reused, task 1\n"+
+			"124.55.424.001 I slot 1 kv cache reused, task 2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	events, err := dashboard.pollLogEvents(time.Unix(1_700_000_001, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("events = %d", len(events))
+	}
+	if !events[1].At.After(events[0].At) {
+		t.Fatalf("batch timestamps should preserve line order: %#v", events)
 	}
 }
 
@@ -133,6 +159,12 @@ func TestUpdateQueriesMergesRequestAndEvents(t *testing.T) {
 	if queries[0].CacheReuseCount != 1 {
 		t.Fatalf("cache reuse count = %d", queries[0].CacheReuseCount)
 	}
+	if !queries[0].CacheCached {
+		t.Fatal("cache reuse should mark query cached")
+	}
+	if queries[0].LastCacheReuseAt == nil {
+		t.Fatal("cache reuse timestamp was not tracked")
+	}
 	if len(queries[0].RequestIDs) != 1 || queries[0].RequestIDs[0] != "req_1" {
 		t.Fatalf("request ids = %#v", queries[0].RequestIDs)
 	}
@@ -165,6 +197,9 @@ func TestUpdateQueriesCountsRestoredCheckpointAsReuse(t *testing.T) {
 	if queries[0].CacheReuseCount != 1 {
 		t.Fatalf("cache reuse count = %d", queries[0].CacheReuseCount)
 	}
+	if !queries[0].CacheCached {
+		t.Fatal("restored checkpoint should mark query cached")
+	}
 }
 
 func TestUpdateQueriesIgnoresCacheSaveForQueryReuse(t *testing.T) {
@@ -193,6 +228,44 @@ func TestUpdateQueriesIgnoresCacheSaveForQueryReuse(t *testing.T) {
 	}
 	if queries[0].CacheReuseCount != 0 {
 		t.Fatalf("save should not count as reuse: %d", queries[0].CacheReuseCount)
+	}
+	if !queries[0].CacheCached {
+		t.Fatal("save should mark query as cached without counting as reuse")
+	}
+}
+
+func TestUpdateQueriesClearsCachedStateOnInvalidation(t *testing.T) {
+	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
+	now := time.Unix(1_700_000_000, 0)
+
+	queries := dashboard.updateQueries(now, "model-a", nil, nil, []llamacpp.LogEvent{{
+		ID:       "evt_restore",
+		At:       now,
+		Kind:     "warning",
+		Severity: "W",
+		TaskID:   88,
+		Message:  "slot update_slots: id  1 | task 88 | restored context checkpoint",
+	}})
+	if len(queries) != 1 || !queries[0].CacheCached {
+		t.Fatalf("restore should mark cached: %#v", queries)
+	}
+
+	queries = dashboard.updateQueries(now.Add(time.Second), "model-a", nil, nil, []llamacpp.LogEvent{{
+		ID:       "evt_invalidate",
+		At:       now.Add(time.Second),
+		Kind:     "warning",
+		Severity: "W",
+		TaskID:   88,
+		Message:  "slot update_slots: id  1 | task 88 | erased invalidated context checkpoint",
+	}})
+	if len(queries) != 1 {
+		t.Fatalf("queries = %d", len(queries))
+	}
+	if queries[0].CacheCached {
+		t.Fatalf("invalidate should clear cached badge state: %#v", queries[0])
+	}
+	if queries[0].CacheReuseCount != 1 {
+		t.Fatalf("reuse history should remain after invalidation: %d", queries[0].CacheReuseCount)
 	}
 }
 
@@ -355,6 +428,9 @@ func TestUpdateQueriesRanksRunningThenReuseThenRecent(t *testing.T) {
 	}
 	if queries[1].ID != "task_1" || queries[1].CacheReuseCount != 3 {
 		t.Fatalf("reused query should rank ahead of newer completed queries: %#v", queries)
+	}
+	if !queries[1].CacheCached {
+		t.Fatalf("reused query should expose cached badge state: %#v", queries[1])
 	}
 	if hasQuery(queries, "task_2") {
 		t.Fatalf("old unreused query should be pruned: %#v", queries)

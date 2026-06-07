@@ -191,8 +191,7 @@
   }
   .query-card.running { border-color: #2f6feb; box-shadow: 0 0 0 1px #2f6feb33 inset; }
   .query-card.queued { border-color: var(--warn); }
-  .query-card.reused { border-color: var(--good); box-shadow: 0 0 0 1px #3fb95033 inset; }
-  .query-card.unreused.complete { opacity: 0.82; }
+  .query-card.uncached.complete { opacity: 0.82; }
   .query-card.error { border-color: var(--bad); }
   .query-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
   .query-id { font-family: var(--mono); color: var(--fg-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -266,6 +265,10 @@
   .badge.status-unloaded { background: var(--bg-3); color: var(--fg-mute); }
   .badge.status-sleeping { background: #1d2a3d; color: #8eb0d6; border-color: #2f4969; }
   .badge.status-failed   { background: #3a1216; color: #ff9a93; border-color: #5e2329; }
+  .badge.cached          { background: #11321b; color: #6dd590; border-color: #2a6234; }
+  .badge.running         { background: #1d3a5c; color: #9cc3ff; border-color: #2f6db1; }
+  .badge.queued          { background: #2c2611; color: #e6c963; border-color: #5a4a14; }
+  .badge.error           { background: #3a1216; color: #ff9a93; border-color: #5e2329; }
   .args-block {
     background: #0a0d12; border: 1px solid var(--border);
     border-radius: 6px; padding: 6px 8px;
@@ -645,6 +648,7 @@ const I18N = {
     "queries.status.queued":    "queued",
     "queries.status.complete":  "complete",
     "queries.status.error":     "error",
+    "queries.status.cached":    "cached",
     "queries.slot":             "slot",
     "queries.task":             "task",
     "queries.tokens":           "tokens",
@@ -3523,11 +3527,13 @@ function renderQueryCard(q) {
   const cache = cacheParts.length ? cacheParts.join(" · ") : "—";
   const rate = q.currentTokensPerSec ? fmtNumber(q.currentTokensPerSec) + " tok/s" : "—";
   const duration = q.durationMs ? (q.durationMs / 1000).toFixed(1) + "s" : (status === "running" ? "active" : status === "queued" ? "queued" : "—");
-  return el("div", { class: "query-card " + status + (q.cacheReuseCount ? " reused" : " unreused"), title: q.id || "" }, [
+  const isCached = !!q.cacheCached;
+  const badgeText = status === "complete" && isCached ? t("queries.status.cached") : t("queries.status." + status);
+  const badgeClass = status === "complete" && isCached ? "cached" : status;
+  return el("div", { class: "query-card " + status + (isCached ? " cached" : " uncached"), title: q.id || "" }, [
     el("div", { class: "query-head" }, [
       el("span", { class: "query-id" }, q.id || "query"),
-      el("span", { class: "badge " + (status === "error" ? "bad" : status === "running" ? "on" : status === "queued" ? "warn" : "") },
-        t("queries.status." + status)),
+      el("span", { class: "badge " + badgeClass }, badgeText),
     ]),
     el("div", { class: "query-details" }, [
       el("div", { class: "k" }, t("queries.slot")), el("div", { class: "v" }, slot),
