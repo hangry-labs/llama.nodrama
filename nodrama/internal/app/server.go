@@ -44,7 +44,7 @@ func Run(ctx context.Context, cfg Config, info BuildInfo) error {
 		web.ServeIndex(w, r)
 	})
 	mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
+		web.ServeFavicon(w, r)
 	})
 	mux.HandleFunc("/server.log", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
