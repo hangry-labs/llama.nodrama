@@ -2,6 +2,11 @@ package app
 
 import "time"
 
+const (
+	DefaultServer = "http://127.0.0.1:8080"
+	DefaultListen = ":39080"
+)
+
 type Config struct {
 	Server       string
 	Listen       string

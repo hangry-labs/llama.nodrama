@@ -6,9 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
+	"strings"
 	"time"
 
 	"llama.nodrama/nodrama/internal/llamacpp"
@@ -23,10 +26,10 @@ func Run(ctx context.Context, cfg Config, info BuildInfo) error {
 		cfg.Timeout = 5 * time.Second
 	}
 	if cfg.Listen == "" {
-		cfg.Listen = ":39080"
+		cfg.Listen = DefaultListen
 	}
 	if cfg.Server == "" {
-		cfg.Server = "http://127.0.0.1:18080"
+		cfg.Server = DefaultServer
 	}
 
 	client, err := llamacpp.NewClient(cfg.Server, cfg.Timeout)
@@ -105,7 +108,8 @@ func Run(ctx context.Context, cfg Config, info BuildInfo) error {
 
 	errc := make(chan error, 1)
 	go func() {
-		log.Printf("llama.nodrama listening on http://%s, polling %s", cfg.Listen, cfg.Server)
+		logStartup(cfg, info)
+		go logEndpointDiagnostics(ctx, dashboard)
 		errc <- server.ListenAndServe()
 	}()
 
@@ -153,6 +157,92 @@ func registerLlamaProxy(mux *http.ServeMux, rawTarget string) error {
 		mux.Handle(path, handler)
 	}
 	return nil
+}
+
+func logStartup(cfg Config, info BuildInfo) {
+	openURL := dashboardOpenURL(cfg.Listen)
+	log.Printf("llama.nodrama %s", info.Version)
+	log.Printf("dashboard: %s", openURL)
+	log.Printf("listening: %s", cfg.Listen)
+	log.Printf("llama.cpp server: %s", cfg.Server)
+	log.Printf("poll interval: %s; upstream timeout: %s", cfg.PollInterval, cfg.Timeout)
+	if cfg.LogPath == "" {
+		log.Printf("log tail: not configured")
+		log.Printf("log tail hint: restart with --log <path-to-llama-server.log> or set Log file path in the UI Settings")
+	} else if _, err := os.Stat(cfg.LogPath); err != nil {
+		log.Printf("log tail: %s (not readable yet: %v)", cfg.LogPath, err)
+	} else {
+		log.Printf("log tail: %s", cfg.LogPath)
+	}
+	log.Printf("settings: open %s and click the Settings button to change server/log/poll/timeout at runtime", openURL)
+}
+
+func dashboardOpenURL(listen string) string {
+	host, port, err := net.SplitHostPort(listen)
+	if err != nil {
+		if strings.HasPrefix(listen, ":") {
+			return "http://127.0.0.1" + listen
+		}
+		return "http://" + listen
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" || host == "[::]" {
+		host = "127.0.0.1"
+	}
+	return "http://" + net.JoinHostPort(host, port)
+}
+
+func logEndpointDiagnostics(parent context.Context, dashboard *Dashboard) {
+	timer := time.NewTimer(1500 * time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-parent.Done():
+		return
+	case <-timer.C:
+	}
+
+	settings := dashboard.Settings()
+	client := dashboard.runtimeClient()
+	ctx, cancel := context.WithTimeout(parent, 3*time.Second)
+	defer cancel()
+
+	type endpointProbe struct {
+		path  string
+		label string
+		probe llamacpp.Probe
+	}
+	endpoints := []endpointProbe{
+		{path: "/health", label: "health"},
+		{path: "/props", label: "props"},
+		{path: "/metrics", label: "metrics"},
+		{path: "/slots", label: "slots"},
+	}
+	online := false
+	for i := range endpoints {
+		endpoints[i].probe, _ = client.Get(ctx, endpoints[i].path)
+		if endpoints[i].probe.OK {
+			online = true
+		}
+	}
+	if !online {
+		log.Printf("llama.cpp endpoints: nothing responded at %s", settings.Server)
+		log.Printf("llama.cpp hint: start llama-server with metrics enabled, for example:")
+		log.Printf("  llama-server --metrics --host 127.0.0.1 --port 8080 -m <model.gguf>")
+		log.Printf("llama.nodrama hint: if llama-server uses another port, restart with --server http://host:port or change Server URL in the UI Settings")
+		return
+	}
+	for _, endpoint := range endpoints {
+		if endpoint.probe.OK {
+			log.Printf("llama.cpp endpoint /%s: ok (%d ms)", endpoint.label, endpoint.probe.LatencyMS)
+			continue
+		}
+		log.Printf("llama.cpp endpoint /%s: unavailable (%s)", endpoint.label, endpoint.probe.Error)
+	}
+	if !endpoints[2].probe.OK {
+		log.Printf("metrics hint: start llama-server with --metrics for throughput and queue cards")
+	}
+	if !endpoints[3].probe.OK {
+		log.Printf("slots hint: ensure llama-server exposes /slots; do not start it with --no-slots")
+	}
 }
 
 func writeJSON(w http.ResponseWriter, value any) {

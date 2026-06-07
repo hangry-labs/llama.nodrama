@@ -85,7 +85,7 @@ func TestRecordMetricHistoryTracksPeakFacts(t *testing.T) {
 
 func TestDashboardUpdateSettingsAppliesRuntimeConfig(t *testing.T) {
 	dashboard := NewDashboard(nil, Config{
-		Server:       "http://127.0.0.1:18080",
+		Server:       DefaultServer,
 		Listen:       ":39080",
 		PollInterval: time.Second,
 		Timeout:      5 * time.Second,
@@ -114,7 +114,7 @@ func TestDashboardUpdateSettingsAppliesRuntimeConfig(t *testing.T) {
 
 func TestDashboardUpdateSettingsRejectsInvalidServer(t *testing.T) {
 	dashboard := NewDashboard(nil, Config{
-		Server:       "http://127.0.0.1:18080",
+		Server:       DefaultServer,
 		PollInterval: time.Second,
 		Timeout:      5 * time.Second,
 	}, BuildInfo{})
@@ -123,7 +123,7 @@ func TestDashboardUpdateSettingsRejectsInvalidServer(t *testing.T) {
 	if _, err := dashboard.UpdateSettings(RuntimeSettingsUpdate{Server: &badServer}); err == nil {
 		t.Fatal("expected invalid server error")
 	}
-	if dashboard.runtimeConfig().Server != "http://127.0.0.1:18080" {
+	if dashboard.runtimeConfig().Server != DefaultServer {
 		t.Fatalf("server changed after invalid update: %q", dashboard.runtimeConfig().Server)
 	}
 }

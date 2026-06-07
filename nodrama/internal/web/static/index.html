@@ -2740,7 +2740,7 @@ async function openSettingsModal() {
   const render = (settings) => {
     loaded = settings || {};
     body.innerHTML = "";
-    fields.server = el("input", { type: "url", value: loaded.server || "", placeholder: "http://127.0.0.1:18080" });
+    fields.server = el("input", { type: "url", value: loaded.server || "", placeholder: "http://127.0.0.1:8080" });
     fields.logPath = el("input", { type: "text", value: loaded.logPath || "", placeholder: "/path/to/llama.cpp.log" });
     fields.poll = el("input", { type: "number", min: "200", max: "60000", step: "50", value: String(loaded.pollIntervalMs || 1000) });
     fields.timeout = el("input", { type: "number", min: "250", max: "120000", step: "250", value: String(loaded.timeoutMs || 5000) });

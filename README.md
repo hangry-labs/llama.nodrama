@@ -44,7 +44,7 @@ llama-server --metrics
 Then run the dashboard:
 
 ```sh
-llama-nodrama --server http://127.0.0.1:18080 --listen :39080
+llama-nodrama --server http://127.0.0.1:8080 --listen :39080
 ```
 
 Open `http://127.0.0.1:39080`.
@@ -52,7 +52,7 @@ Open `http://127.0.0.1:39080`.
 `llama.nodrama` does not auto-discover `llama.cpp` servers yet. Point it at the
 specific deployment you want to monitor with `--server`; if `llama-server` runs
 on the same machine with the usual port, the default is already
-`http://127.0.0.1:18080`.
+`http://127.0.0.1:8080`.
 
 You can also change runtime settings from the UI settings button after startup:
 server URL, log path, backend poll interval, and upstream timeout. Changing the
@@ -70,7 +70,7 @@ go build -o llama-nodrama .
 Useful flags:
 
 ```text
---server   llama.cpp server base URL, default http://127.0.0.1:18080
+--server   llama.cpp server base URL, default http://127.0.0.1:8080
 --listen   dashboard listen address, default :39080
 --log        optional llama.cpp log file path for /api/logs/tail
 --poll       polling interval, default 1s
@@ -115,6 +115,11 @@ assets live in `nodrama/winres/icons/`; the resource generator preserves those
 files and only creates fallback placeholders when an expected size is missing.
 Windows binaries are not stripped so antivirus reputation systems have more
 normal debug metadata to inspect.
+
+Raw Linux binaries do not carry desktop icons in the same way Windows `.exe`
+files do. Linux icons are normally supplied by packages (`.deb`, `.rpm`,
+AppImage, Flatpak, etc.) through a `.desktop` file and installed icon assets.
+The existing PNG source assets can be reused when Linux packaging is added.
 
 Optional Authenticode signing is supported in the release workflow. Add these
 repository secrets to enable it:
