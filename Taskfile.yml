@@ -5,13 +5,13 @@ tasks:
     desc: Build local binary for the current OS/architecture into nodrama/bin
     dir: nodrama
     cmds:
-      - go run ./tools/build
+      - powershell -NoProfile -Command "Remove-Item Env:GOOS,Env:GOARCH -ErrorAction SilentlyContinue; go run ./tools/build"
 
   build-all:
     desc: Build common Linux, macOS, and Windows binaries into nodrama/bin
     dir: nodrama
     cmds:
-      - go run ./tools/build --all
+      - powershell -NoProfile -Command "Remove-Item Env:GOOS,Env:GOARCH -ErrorAction SilentlyContinue; go run ./tools/build --all"
 
   build-target:
     desc: Build one target into nodrama/bin, for example task build-target OS=linux ARCH=amd64
@@ -19,15 +19,15 @@ tasks:
     requires:
       vars: [OS, ARCH]
     cmds:
-      - go run ./tools/build --os {{.OS}} --arch {{.ARCH}}
+      - powershell -NoProfile -Command "Remove-Item Env:GOOS,Env:GOARCH -ErrorAction SilentlyContinue; go run ./tools/build --os {{.OS}} --arch {{.ARCH}}"
 
   windows-res:
     desc: Generate Windows icon/version resources
     dir: nodrama
     cmds:
-      - go run ./tools/windowsres
-      - go install github.com/tc-hib/go-winres@latest
-      - go-winres make --arch amd64,arm64
+      - powershell -NoProfile -Command "Remove-Item Env:GOOS,Env:GOARCH -ErrorAction SilentlyContinue; go run ./tools/windowsres"
+      - powershell -NoProfile -Command "Remove-Item Env:GOOS,Env:GOARCH -ErrorAction SilentlyContinue; go install github.com/tc-hib/go-winres@latest"
+      - powershell -NoProfile -Command "Remove-Item Env:GOOS,Env:GOARCH -ErrorAction SilentlyContinue; go-winres make --arch amd64,arm64"
 
   release:
     desc: Finalize VERSION, commit/tag release, bump next snapshot, and push

@@ -108,6 +108,7 @@ func buildTarget(target target, version, commit, buildDate string, matrixName bo
 
 func prepareWindowsResources(goarch string) error {
 	cmd := exec.Command("go", "run", "./tools/windowsres")
+	cmd.Env = nativeGoEnv()
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -117,9 +118,22 @@ func prepareWindowsResources(goarch string) error {
 		return fmt.Errorf("go-winres is required for Windows icon/version resources; run `task windows-res` once, then retry")
 	}
 	cmd = exec.Command("go-winres", "make", "--arch", goarch)
+	cmd.Env = nativeGoEnv()
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+func nativeGoEnv() []string {
+	env := os.Environ()
+	out := make([]string, 0, len(env))
+	for _, value := range env {
+		if strings.HasPrefix(value, "GOOS=") || strings.HasPrefix(value, "GOARCH=") {
+			continue
+		}
+		out = append(out, value)
+	}
+	return out
 }
 
 func gitCommit() string {

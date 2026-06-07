@@ -51,8 +51,8 @@ jobs:
             work_dir="$(mktemp -d)"
             out="${work_dir}/${bin_name}"
             if [ "$goos" = "windows" ]; then
-              go run ./tools/windowsres
-              go-winres make --arch amd64,arm64
+              env -u GOOS -u GOARCH go run ./tools/windowsres
+              env -u GOOS -u GOARCH go-winres make --arch "$goarch"
               strip_flags=""
             else
               strip_flags="-s -w"
@@ -89,7 +89,7 @@ jobs:
           build linux arm64 ""
           build darwin amd64 ""
           build darwin arm64 ""
-          go install github.com/tc-hib/go-winres@latest
+          env -u GOOS -u GOARCH go install github.com/tc-hib/go-winres@latest
           build windows amd64 ".exe"
           build windows arm64 ".exe"
           rm -f dist/SHA256SUMS
