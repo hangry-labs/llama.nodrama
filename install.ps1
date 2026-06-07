@@ -41,7 +41,7 @@ function Download-File {
 
 $Arch = Resolve-Arch
 $Asset = "llama-nodrama-windows-$Arch.zip"
-$Binary = "llama-nodrama-windows-$Arch.exe"
+$Binary = "llama-nodrama.exe"
 
 if ($Version -eq "latest") {
     $BaseUrl = "https://github.com/$Repo/releases/latest/download"

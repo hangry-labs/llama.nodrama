@@ -81,7 +81,7 @@ if [ "$os" = "windows" ]; then
 fi
 
 asset="llama-nodrama-${os}-${arch}.${archive_ext}"
-binary="llama-nodrama-${os}-${arch}${ext}"
+binary="llama-nodrama${ext}"
 
 if [ "$version" = "latest" ]; then
   base_url="https://github.com/${repo}/releases/latest/download"

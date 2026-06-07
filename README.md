@@ -112,10 +112,21 @@ Tags matching `v*` publish GitHub Release binaries for:
 - macOS amd64/arm64
 - Windows amd64/arm64
 
+Release archive filenames include platform and architecture. The executable
+inside each archive intentionally uses the stable command name:
+`llama-nodrama` on Linux/macOS and `llama-nodrama.exe` on Windows. This keeps
+manual installs and package-manager installs consistent.
+
 The install scripts consume those release assets. CI build artifacts from branch
 pushes are for validation only; public installs should use tagged releases.
 Normally you should not compile release binaries locally; push the tag and let
 the release workflow build and attach them to the GitHub Release.
+
+The release workflow also attaches `HangryLabs.LlamaNodrama.winget.yaml`, a
+Winget singleton manifest for the Windows amd64 and arm64 portable zips. To
+submit it to Winget, copy that manifest into the `microsoft/winget-pkgs`
+manifest path, validate it with `winget validate`, test it with
+`winget install --manifest`, and open the PR to the Winget community repository.
 
 Windows release binaries include an application icon, manifest, and file
 properties generated from `nodrama/VERSION` by `go-winres`. The PNG icon source

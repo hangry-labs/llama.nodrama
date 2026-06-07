@@ -46,8 +46,10 @@ jobs:
             goos="$1"
             goarch="$2"
             ext="$3"
-            name="llama-nodrama-${goos}-${goarch}"
-            out="dist/${name}${ext}"
+            archive_name="llama-nodrama-${goos}-${goarch}"
+            bin_name="llama-nodrama${ext}"
+            work_dir="$(mktemp -d)"
+            out="${work_dir}/${bin_name}"
             if [ "$goos" = "windows" ]; then
               go run ./tools/windowsres
               go-winres make --arch amd64,arm64
@@ -77,12 +79,11 @@ jobs:
               mv "${out}.signed" "$out"
             fi
             if [ "$goos" = "windows" ]; then
-              (cd dist && zip -q "${name}.zip" "${name}${ext}")
-              rm "$out"
+              (cd "$work_dir" && zip -q "${GITHUB_WORKSPACE}/nodrama/dist/${archive_name}.zip" "$bin_name")
             else
-              (cd dist && tar -czf "${name}.tar.gz" "${name}${ext}")
-              rm "$out"
+              (cd "$work_dir" && tar -czf "${GITHUB_WORKSPACE}/nodrama/dist/${archive_name}.tar.gz" "$bin_name")
             fi
+            rm -rf "$work_dir"
           }
           build linux amd64 ""
           build linux arm64 ""
@@ -93,6 +94,46 @@ jobs:
           build windows arm64 ".exe"
           rm -f dist/SHA256SUMS
           (cd dist && sha256sum llama-nodrama-* > SHA256SUMS)
+          windows_amd64_hash="$(sha256sum dist/llama-nodrama-windows-amd64.zip | awk '{print $1}')"
+          windows_arm64_hash="$(sha256sum dist/llama-nodrama-windows-arm64.zip | awk '{print $1}')"
+          winget_version="${version#v}"
+          cat > dist/HangryLabs.LlamaNodrama.winget.yaml <<EOF
+          PackageIdentifier: HangryLabs.LlamaNodrama
+          PackageVersion: ${winget_version}
+          PackageLocale: en-US
+          Publisher: Hangry Labs
+          PublisherUrl: https://github.com/hangry-labs
+          PublisherSupportUrl: https://github.com/hangry-labs/llama.nodrama/issues
+          Author: Hangry Labs
+          PackageName: llama.nodrama
+          PackageUrl: https://github.com/hangry-labs/llama.nodrama
+          License: MIT
+          LicenseUrl: https://github.com/hangry-labs/llama.nodrama/blob/master/LICENSE
+          ShortDescription: Dashboard and monitor for llama.cpp server slots, throughput, cache reuse, and request behavior.
+          Moniker: llama-nodrama
+          Tags:
+            - llama.cpp
+            - llm
+            - ai
+            - dashboard
+            - monitor
+          Commands:
+            - llama-nodrama
+          InstallerType: zip
+          NestedInstallerType: portable
+          NestedInstallerFiles:
+            - RelativeFilePath: llama-nodrama.exe
+              PortableCommandAlias: llama-nodrama
+          Installers:
+            - Architecture: x64
+              InstallerUrl: https://github.com/hangry-labs/llama.nodrama/releases/download/${version}/llama-nodrama-windows-amd64.zip
+              InstallerSha256: ${windows_amd64_hash}
+            - Architecture: arm64
+              InstallerUrl: https://github.com/hangry-labs/llama.nodrama/releases/download/${version}/llama-nodrama-windows-arm64.zip
+              InstallerSha256: ${windows_arm64_hash}
+          ManifestType: singleton
+          ManifestVersion: 1.10.0
+          EOF
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
