@@ -34,6 +34,8 @@ type Snapshot struct {
 	History        SnapshotHistory           `json:"history"`
 	Suggestions    []Suggestion              `json:"suggestions"`
 	Requests       []RequestSummary          `json:"requests,omitempty"`
+	Queries        []QuerySummary            `json:"queries,omitempty"`
+	Events         []llamacpp.LogEvent       `json:"events,omitempty"`
 	Warnings       []string                  `json:"warnings"`
 	RawMetrics     map[string]float64        `json:"rawMetrics,omitempty"`
 	LastErrors     map[string]string         `json:"lastErrors,omitempty"`
@@ -99,6 +101,28 @@ type TokenUsage struct {
 	TotalTokens      int `json:"totalTokens,omitempty"`
 }
 
+type QuerySummary struct {
+	ID                  string     `json:"id"`
+	Status              string     `json:"status"`
+	Route               string     `json:"route"`
+	Model               string     `json:"model,omitempty"`
+	Stream              bool       `json:"stream"`
+	StartedAt           time.Time  `json:"startedAt"`
+	EndedAt             *time.Time `json:"endedAt,omitempty"`
+	DurationMS          int64      `json:"durationMs,omitempty"`
+	SlotIDs             []int      `json:"slotIds,omitempty"`
+	TaskIDs             []int      `json:"taskIds,omitempty"`
+	PromptTokens        int        `json:"promptTokens,omitempty"`
+	CompletionTokens    int        `json:"completionTokens,omitempty"`
+	TotalTokens         int        `json:"totalTokens,omitempty"`
+	PromptCacheTokens   int        `json:"promptCacheTokens,omitempty"`
+	CurrentTokensPerSec float64    `json:"currentTokensPerSec,omitempty"`
+	LastTimingEventAt   *time.Time `json:"lastTimingEventAt,omitempty"`
+	LastCacheAction     string     `json:"lastCacheAction,omitempty"`
+	LastCacheEventAt    *time.Time `json:"lastCacheEventAt,omitempty"`
+	Error               string     `json:"error,omitempty"`
+}
+
 type Overview struct {
 	Online                 bool    `json:"online"`
 	RequestsProcessing     float64 `json:"requestsProcessing"`
@@ -126,8 +150,13 @@ type Dashboard struct {
 
 	historyMu     sync.Mutex
 	rateHistory   []metricRateSample
+	slotRateLast  map[int]slotRateSample
 	metricHistory map[string][]HistoryPoint
 	slotHistory   map[int][]SlotHistoryPoint
+	logOffset     int64
+	logPartial    string
+	logEventSeq   uint64
+	logEvents     []llamacpp.LogEvent
 
 	requestSeq uint64
 	requestMu  sync.Mutex
@@ -142,12 +171,21 @@ type metricRateSample struct {
 	generatedTotal float64
 }
 
+type slotRateSample struct {
+	at                    time.Time
+	taskID                int
+	isProcessing          bool
+	promptProcessedTokens int
+	decodedTokens         int
+}
+
 const (
 	liveRateWindow       = 5 * time.Second
 	metricHistoryWindow  = time.Minute
 	slowPollInterval     = 5 * time.Second
 	maxMetricHistorySize = 600
 	maxRequestHistory    = 200
+	maxLogEventHistory   = 500
 )
 
 func NewDashboard(client *llamacpp.Client, cfg Config, build BuildInfo) *Dashboard {
@@ -158,6 +196,7 @@ func NewDashboard(client *llamacpp.Client, cfg Config, build BuildInfo) *Dashboa
 		build:          build,
 		started:        now,
 		previousSlot:   map[int]llamacpp.Slot{},
+		slotRateLast:   map[int]slotRateSample{},
 		metricHistory:  map[string][]HistoryPoint{},
 		slotHistory:    map[int][]SlotHistoryPoint{},
 		sustainedSince: map[string]time.Time{},
@@ -259,6 +298,58 @@ func counterRate(previous, current, elapsedSeconds float64) float64 {
 		return 0
 	}
 	return (current - previous) / elapsedSeconds
+}
+
+func (m *Dashboard) deriveSlotLiveRates(now time.Time, slots []llamacpp.Slot) (float64, float64, bool) {
+	m.historyMu.Lock()
+	defer m.historyMu.Unlock()
+
+	if m.slotRateLast == nil {
+		m.slotRateLast = map[int]slotRateSample{}
+	}
+
+	seen := map[int]bool{}
+	promptRate := 0.0
+	generationRate := 0.0
+	hasRate := false
+	for _, slot := range slots {
+		seen[slot.ID] = true
+		current := slotRateSample{
+			at:                    now,
+			taskID:                slot.TaskID,
+			isProcessing:          slot.IsProcessing,
+			promptProcessedTokens: slot.PromptProcessedTokens,
+			decodedTokens:         slot.DecodedTokens,
+		}
+		previous, ok := m.slotRateLast[slot.ID]
+		m.slotRateLast[slot.ID] = current
+		if !ok || !slot.IsProcessing || !previous.isProcessing {
+			continue
+		}
+		if slot.TaskID == 0 || previous.taskID == 0 || slot.TaskID != previous.taskID {
+			continue
+		}
+		elapsed := now.Sub(previous.at).Seconds()
+		if elapsed <= 0 {
+			continue
+		}
+		promptDelta := slot.PromptProcessedTokens - previous.promptProcessedTokens
+		if promptDelta > 0 {
+			promptRate += float64(promptDelta) / elapsed
+			hasRate = true
+		}
+		decodedDelta := slot.DecodedTokens - previous.decodedTokens
+		if decodedDelta > 0 {
+			generationRate += float64(decodedDelta) / elapsed
+			hasRate = true
+		}
+	}
+	for slotID := range m.slotRateLast {
+		if !seen[slotID] {
+			delete(m.slotRateLast, slotID)
+		}
+	}
+	return promptRate, generationRate, hasRate
 }
 
 func (m *Dashboard) recordMetricHistory(now time.Time, metrics map[string]float64) SnapshotHistory {
@@ -381,11 +472,15 @@ func (m *Dashboard) ResetHistory() {
 	m.rateHistory = nil
 	m.metricHistory = map[string][]HistoryPoint{}
 	m.slotHistory = map[int][]SlotHistoryPoint{}
+	m.logEvents = nil
+	m.logEventSeq = 0
 	empty := m.copyHistoryLocked()
 	m.historyMu.Unlock()
 
 	m.mu.Lock()
 	m.snapshot.History = empty
+	m.snapshot.Events = nil
+	m.snapshot.Queries = nil
 	m.mu.Unlock()
 }
 
@@ -560,14 +655,10 @@ func (m *Dashboard) poll(parent context.Context) {
 	if metricsProbe.OK {
 		rawMetrics = llamacpp.ParsePrometheus(string(metricsBody))
 		metrics = llamacpp.SummarizeMetrics(rawMetrics)
-		metrics.PromptTokensLivePerSec, metrics.GenerationTokensLivePerSec = m.deriveLiveRates(metricsAt, metrics.PromptTokensTotal, metrics.GeneratedTokensTotal)
-		rawMetrics["nodrama:prompt_tokens_rate"] = metrics.PromptTokensLivePerSec
-		rawMetrics["nodrama:tokens_predicted_rate"] = metrics.GenerationTokensLivePerSec
 		delete(lastErrors, "metrics")
 	} else {
 		lastErrors["metrics"] = metricsProbe.Error
 	}
-	history := m.recordMetricHistory(metricsAt, rawMetrics)
 
 	slotsProbe, slotsBody := m.client.Get(ctx, "/slots")
 	endpoints["slots"] = slotsProbe
@@ -586,6 +677,16 @@ func (m *Dashboard) poll(parent context.Context) {
 	} else {
 		lastErrors["slots"] = slotsProbe.Error
 	}
+	if slotsProbe.OK {
+		slotPromptRate, slotGenerationRate, _ := m.deriveSlotLiveRates(time.Now(), slots)
+		metrics.PromptTokensLivePerSec = slotPromptRate
+		metrics.GenerationTokensLivePerSec = slotGenerationRate
+	} else if metricsProbe.OK {
+		metrics.PromptTokensLivePerSec, metrics.GenerationTokensLivePerSec = m.deriveLiveRates(metricsAt, metrics.PromptTokensTotal, metrics.GeneratedTokensTotal)
+	}
+	rawMetrics["nodrama:prompt_tokens_rate"] = metrics.PromptTokensLivePerSec
+	rawMetrics["nodrama:tokens_predicted_rate"] = metrics.GenerationTokensLivePerSec
+	history := m.recordMetricHistory(time.Now(), rawMetrics)
 
 	models := previous.Models
 	if pollSlow {
@@ -688,6 +789,14 @@ func (m *Dashboard) poll(parent context.Context) {
 		modelAlias = models[0].ID
 	}
 	snapshotAt := time.Now()
+	events := previous.Events
+	if m.cfg.LogPath != "" {
+		parsedEvents, err := m.pollLogEvents(snapshotAt)
+		if err != nil {
+			warnings = append(warnings, "Configured llama.cpp log could not be read: "+err.Error())
+		}
+		events = parsedEvents
+	}
 	history = m.recordSlotHistory(snapshotAt, slots, modelAlias)
 	propsOK := false
 	if probe, ok := endpoints["props"]; ok {
@@ -724,6 +833,7 @@ func (m *Dashboard) poll(parent context.Context) {
 		nextPrevious[slot.ID] = slot
 	}
 
+	requests := m.copyRequests()
 	snapshot := Snapshot{
 		App:            "llama.nodrama",
 		Build:          m.build,
@@ -743,7 +853,9 @@ func (m *Dashboard) poll(parent context.Context) {
 		GPU:            gpuSnapshot,
 		History:        history,
 		Suggestions:    suggestions,
-		Requests:       m.copyRequests(),
+		Requests:       requests,
+		Queries:        queriesFromRequests(requests, events),
+		Events:         events,
 		Warnings:       warnings,
 		RawMetrics:     rawMetrics,
 		LastErrors:     lastErrors,

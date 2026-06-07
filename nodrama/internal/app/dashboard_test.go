@@ -65,6 +65,67 @@ func TestRecordMetricHistoryTrimsWindow(t *testing.T) {
 	}
 }
 
+func TestDeriveSlotLiveRatesSumsActiveSlotDeltas(t *testing.T) {
+	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
+	base := time.Unix(1_700_000_000, 0)
+
+	_, _, hasRate := dashboard.deriveSlotLiveRates(base, []llamacpp.Slot{
+		{ID: 1, TaskID: 10, IsProcessing: true, DecodedTokens: 100, PromptProcessedTokens: 40},
+		{ID: 2, TaskID: 20, IsProcessing: true, DecodedTokens: 200, PromptProcessedTokens: 80},
+	})
+	if hasRate {
+		t.Fatal("first sample should only establish baselines")
+	}
+
+	promptRate, generationRate, hasRate := dashboard.deriveSlotLiveRates(base.Add(2*time.Second), []llamacpp.Slot{
+		{ID: 1, TaskID: 10, IsProcessing: true, DecodedTokens: 180, PromptProcessedTokens: 60},
+		{ID: 2, TaskID: 20, IsProcessing: true, DecodedTokens: 260, PromptProcessedTokens: 90},
+	})
+	if !hasRate {
+		t.Fatal("expected slot-derived rate")
+	}
+	if generationRate != 70 {
+		t.Fatalf("generation rate = %v", generationRate)
+	}
+	if promptRate != 15 {
+		t.Fatalf("prompt rate = %v", promptRate)
+	}
+}
+
+func TestDeriveSlotLiveRatesIgnoresTaskChangesAndResets(t *testing.T) {
+	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
+	base := time.Unix(1_700_000_000, 0)
+
+	dashboard.deriveSlotLiveRates(base, []llamacpp.Slot{
+		{ID: 1, TaskID: 10, IsProcessing: true, DecodedTokens: 100},
+		{ID: 2, TaskID: 20, IsProcessing: true, DecodedTokens: 200},
+	})
+
+	_, generationRate, hasRate := dashboard.deriveSlotLiveRates(base.Add(time.Second), []llamacpp.Slot{
+		{ID: 1, TaskID: 11, IsProcessing: true, DecodedTokens: 1000},
+		{ID: 2, TaskID: 20, IsProcessing: true, DecodedTokens: 150},
+	})
+	if hasRate {
+		t.Fatalf("task change/reset should not produce a rate, got %v", generationRate)
+	}
+}
+
+func TestDeriveSlotLiveRatesIgnoresFinalIdleDump(t *testing.T) {
+	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
+	base := time.Unix(1_700_000_000, 0)
+
+	dashboard.deriveSlotLiveRates(base, []llamacpp.Slot{
+		{ID: 1, TaskID: 10, IsProcessing: true, DecodedTokens: 1000},
+	})
+
+	_, generationRate, hasRate := dashboard.deriveSlotLiveRates(base.Add(time.Second), []llamacpp.Slot{
+		{ID: 1, TaskID: 10, IsProcessing: false, DecodedTokens: 50000},
+	})
+	if hasRate {
+		t.Fatalf("idle final counters should not produce a live rate, got %v", generationRate)
+	}
+}
+
 func TestRecordSlotHistory(t *testing.T) {
 	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
 	base := time.Unix(1_700_000_000, 0)

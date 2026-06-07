@@ -33,6 +33,7 @@ fixtures/private/
 testdata/private/
 scratch/
 plans/PLAN_1.md
+plans/PLAN_2.md
 
 # Go build output
 bin/

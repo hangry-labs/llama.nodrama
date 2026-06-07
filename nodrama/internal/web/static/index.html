@@ -178,6 +178,23 @@
     min-width: 0;
   }
   .slot.idle { opacity: 0.7; }
+  .query-grid {
+    display: grid; gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  }
+  .query-card {
+    background: var(--bg-2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 10px 12px;
+    display: flex; flex-direction: column; gap: 6px;
+    min-width: 0;
+  }
+  .query-card.running { border-color: #2f6feb; box-shadow: 0 0 0 1px #2f6feb33 inset; }
+  .query-card.error { border-color: var(--bad); }
+  .query-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+  .query-id { font-family: var(--mono); color: var(--fg-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .query-details { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 12px; }
+  .query-details .k { color: var(--fg-mute); }
+  .query-details .v { color: var(--fg-dim); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .slot.active { border-color: #2f6db1; box-shadow: 0 0 0 1px #2f6db166 inset; }
   .slot-head {
     display: flex; align-items: center; gap: 8px;
@@ -616,6 +633,18 @@ const I18N = {
     "slots.confirm.restore":    "Restore KV cache for slot {id} from file?",
     "slots.confirm.erase":      "Erase KV cache for slot {id}? This affects the running server.",
     "slots.disabled":           "Slot endpoint disabled",
+
+    "queries.title":            "Queries",
+    "queries.empty":            "No tracked queries yet. Requests sent through llama.nodrama will appear here.",
+    "queries.status.running":   "running",
+    "queries.status.complete":  "complete",
+    "queries.status.error":     "error",
+    "queries.slot":             "slot",
+    "queries.task":             "task",
+    "queries.tokens":           "tokens",
+    "queries.cache":            "cache",
+    "queries.rate":             "rate",
+    "queries.duration":         "duration",
 
     "models.title":             "Models",
     "models.selector":          "Active model",
@@ -1538,6 +1567,8 @@ const state = {
   loraAdapters: [],
   metrics: null,
   slots: [],
+  queries: [],
+  events: [],
   snapshot: null,
   history: emptyHistory(),
   suggestions: null,
@@ -2061,6 +2092,8 @@ function applySnapshot(snapshot, opts) {
   state.loraAdapters = Array.isArray(snapshot && snapshot.loraAdapters) ? snapshot.loraAdapters : [];
   state.metrics = (snapshot && snapshot.rawMetrics) || {};
   state.slots = Array.isArray(snapshot && snapshot.slots) ? snapshot.slots : [];
+  state.queries = Array.isArray(snapshot && snapshot.queries) ? snapshot.queries : [];
+  state.events = Array.isArray(snapshot && snapshot.events) ? snapshot.events : [];
   state.history = (snapshot && snapshot.history) || emptyHistory();
   state.suggestions = Array.isArray(snapshot && snapshot.suggestions) ? snapshot.suggestions : null;
   if (snapshot && snapshot.server) {
@@ -2089,6 +2122,7 @@ function applySnapshot(snapshot, opts) {
   if (o.render !== false) {
     renderMetrics(state.metrics, state.history.metrics);
     renderSlots(state.slots);
+    renderQueries(state.queries);
     const supportSignature = JSON.stringify({
       mode: state.mode,
       selectedModel: state.selectedModel,
@@ -2243,6 +2277,8 @@ function ensureRootScaffold() {
   root.appendChild(el("div", { id: "metrics-section", class: "full",
                                style: "display: contents;" }));
   root.appendChild(el("div", { id: "slots-section", class: "full",
+                               style: "display: contents;" }));
+  root.appendChild(el("div", { id: "queries-section", class: "full",
                                style: "display: contents;" }));
   root.appendChild(el("div", { id: "chat-section", class: "full",
                                style: "display: contents;" }));
@@ -3366,6 +3402,60 @@ function normalizeSlotHistoryPoints(points) {
   return out;
 }
 
+function ensureQueriesSection() {
+  const sec = $("#queries-section");
+  if (sec.dataset.built === "1") return;
+  sec.dataset.built = "1";
+  sec.innerHTML = "";
+  sec.appendChild(el("div", { class: "card full" }, [
+    el("h2", null, t("queries.title")),
+    el("div", { class: "sub", id: "queries-empty" }, t("queries.empty")),
+    el("div", { class: "query-grid", id: "query-grid" }),
+  ]));
+}
+
+function renderQueries(queries) {
+  ensureQueriesSection();
+  const list = Array.isArray(queries) ? queries.slice(-12).reverse() : [];
+  const empty = $("#queries-empty");
+  const grid = $("#query-grid");
+  if (!grid || !empty) return;
+  grid.innerHTML = "";
+  empty.style.display = list.length ? "none" : "";
+  for (const q of list) {
+    grid.appendChild(renderQueryCard(q));
+  }
+}
+
+function renderQueryCard(q) {
+  const status = q.status || "complete";
+  const tokens = [
+    num(q.promptTokens, 0),
+    num(q.completionTokens, 0),
+    num(q.totalTokens, 0),
+  ].join(" / ");
+  const slot = Array.isArray(q.slotIds) && q.slotIds.length ? q.slotIds.join(", ") : "—";
+  const task = Array.isArray(q.taskIds) && q.taskIds.length ? q.taskIds.join(", ") : "—";
+  const cache = q.lastCacheAction || (q.promptCacheTokens ? String(q.promptCacheTokens) + " tok" : "—");
+  const rate = q.currentTokensPerSec ? fmtNumber(q.currentTokensPerSec) + " tok/s" : "—";
+  const duration = q.durationMs ? (q.durationMs / 1000).toFixed(1) + "s" : (status === "running" ? "active" : "—");
+  return el("div", { class: "query-card " + status, title: q.id || "" }, [
+    el("div", { class: "query-head" }, [
+      el("span", { class: "query-id" }, q.id || "query"),
+      el("span", { class: "badge " + (status === "error" ? "bad" : status === "running" ? "on" : "") },
+        t("queries.status." + status)),
+    ]),
+    el("div", { class: "query-details" }, [
+      el("div", { class: "k" }, t("queries.slot")), el("div", { class: "v" }, slot),
+      el("div", { class: "k" }, t("queries.task")), el("div", { class: "v" }, task),
+      el("div", { class: "k" }, t("queries.tokens")), el("div", { class: "v" }, tokens),
+      el("div", { class: "k" }, t("queries.cache")), el("div", { class: "v" }, cache),
+      el("div", { class: "k" }, t("queries.rate")), el("div", { class: "v" }, rate),
+      el("div", { class: "k" }, t("queries.duration")), el("div", { class: "v" }, duration),
+    ]),
+  ]);
+}
+
 /* slotAction is defined in Phase 5 (confirm + POST). */
 
 /* Boot wiring → one backend snapshot poller. */
@@ -3373,6 +3463,7 @@ function startCorePollers() {
   stopAllPollers();
   ensureMetricCards();
   ensureSlotsSection();
+  ensureQueriesSection();
 
   startPoller("snapshot", state.params.poll, async () => {
     try {

@@ -69,6 +69,12 @@ func Run(ctx context.Context, cfg Config, info BuildInfo) error {
 	mux.HandleFunc("GET /api/snapshot", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, dashboard.Snapshot())
 	})
+	mux.HandleFunc("GET /api/events", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, dashboard.Snapshot().Events)
+	})
+	mux.HandleFunc("GET /api/queries", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, dashboard.Snapshot().Queries)
+	})
 	mux.HandleFunc("GET /api/logs/tail", logTailHandler(cfg.LogPath))
 	mux.HandleFunc("POST /api/history/reset", func(w http.ResponseWriter, r *http.Request) {
 		dashboard.ResetHistory()
