@@ -181,10 +181,14 @@ function setStatus(state_, textKey) {
   const led = $("#status-led");
   const txt = $("#status-text");
   led.classList.remove("on", "warn", "bad");
+  txt.classList.remove("online", "warn", "offline", "error");
   if (state_ === "online")  led.classList.add("on");
   if (state_ === "warn")    led.classList.add("warn");
   if (state_ === "offline") led.classList.add("bad");
   if (state_ === "error")   led.classList.add("bad");
+  if (state_ === "online" || state_ === "warn" || state_ === "offline" || state_ === "error") {
+    txt.classList.add(state_);
+  }
   txt.dataset.i18n = textKey;
   txt.textContent = t(textKey);
 }
@@ -1106,8 +1110,8 @@ const CONFIG_OPTION_HELP = {
   "chat_template": "Chat template used to convert messages into the final prompt string.",
   "build_info": "llama.cpp build identifier. Useful when comparing behavior across server versions.",
   "modalities": "Input/output modalities the model/server advertises, such as text, vision, or audio.",
-  "backend_sampling": "Controls where sampling is performed. For normal OpenAI-style chat/completions, leaving this off means request sampling parameters drive token choice in the usual server path. Turning it on is an advanced mode for backend-managed sampling behavior; change only if you know a client/workflow expects it.",
-  "chat_format": "How streamed chat deltas are shaped. Content-only means visible assistant text is emitted as normal content; reasoning may be separate or omitted depending on the template/model.",
+  "backend_sampling": "Controls where sampling is performed.\n\nCommon values: false/off = normal OpenAI-style requests choose tokens through the regular server path using request sampling parameters; true/on = advanced backend-managed sampling behavior.\n\nMost deployments should leave this off unless a specific client or experiment expects backend sampling.",
+  "chat_format": "How streamed chat deltas are shaped for chat clients.\n\nCommon shapes you may see: content-only = assistant text is emitted as normal content; reasoning-aware = thinking/reasoning may be emitted separately from visible content; template/tool specific = the server/model template controls extra fields.\n\nChange this only when a client expects a different streaming shape or you are debugging reasoning output.",
   "dry_allowed_length": "DRY anti-repetition ignores repeats shorter than this length. Higher values make DRY less aggressive on short repeated phrases.",
   "dry_base": "Base multiplier used by DRY anti-repetition. Higher values make repeat suppression ramp more strongly after a repeat is detected.",
   "dry_multiplier": "Strength of DRY anti-repetition. 0 disables DRY. Moderate values reduce loops without punishing all repeated words like repeat_penalty can.",
@@ -1116,14 +1120,14 @@ const CONFIG_OPTION_HELP = {
   "dynatemp_range": "Dynamic temperature adjustment range. 0 disables dynamic temperature. Higher values let temperature move around the base temperature during generation.",
   "frequency_penalty": "Penalizes tokens based on how often they already appeared. Higher values reduce repeated wording, but too high can hurt code and structured output.",
   "generation_prompt": "Extra text/template suffix inserted before assistant generation. Empty means no extra generation marker beyond the chat template.",
-  "ignore_eos": "If enabled, the model ignores end-of-sequence tokens and keeps generating until another stop condition. Useful for some tests, risky for normal chat.",
+  "ignore_eos": "Whether end-of-sequence tokens are respected.\n\nCommon values: false = stop normally when the model emits EOS; true = ignore EOS and continue until max tokens or another stop condition.\n\nTrue is useful for stress tests, but risky for normal chat because generations can run longer than expected.",
   "lora": "LoRA adapters applied by default. Empty means no adapter is active by default.",
   "min_keep": "Minimum number of candidate tokens preserved by probability filters. 0 means no extra minimum. Raising it can prevent samplers from becoming too narrow.",
   "temperature": "Sampling randomness. 0 is deterministic; higher values produce more varied output.",
   "top_k": "Limits sampling to the top K candidate tokens.",
   "top_p": "Nucleus sampling threshold; keeps tokens whose cumulative probability reaches this value.",
   "min_p": "Drops tokens below a probability relative to the most likely token.",
-  "mirostat": "Mirostat sampling mode. 0 disables it. When enabled, it targets a desired surprise/entropy level and changes how top_p/top_k should be interpreted.",
+  "mirostat": "Adaptive sampling mode that tries to keep output surprise/entropy near a target.\n\nCommon values: 0 = disabled; 1 = original Mirostat; 2 = Mirostat v2.\n\nWhen enabled, tune mirostat_tau and mirostat_eta; top_p/top_k become less central than in normal sampling.",
   "mirostat_eta": "Mirostat learning rate. Higher values adapt faster but can oscillate more.",
   "mirostat_tau": "Mirostat target entropy/surprise. Higher values allow more varied output.",
   "n_discard": "Context-shift discard amount. When context fills and shifting is allowed, this influences how much old context can be dropped.",
@@ -1133,15 +1137,15 @@ const CONFIG_OPTION_HELP = {
   "n_predict": "Default maximum generated tokens for completion-style requests.",
   "max_tokens": "Default maximum generated tokens for OpenAI-compatible requests.",
   "n_probs": "Number of token probabilities to return for each generated token. 0 disables probability output. Higher values add diagnostic data but increase response size.",
-  "post_sampling_probs": "If enabled, reported token probabilities are taken after sampler filtering. If disabled, probabilities reflect the pre/post path used by the server default.",
+  "post_sampling_probs": "Controls which probabilities are reported when n_probs/logprobs are requested.\n\nCommon values: false = report probabilities before final sampler filtering path; true = report probabilities after sampler filtering.\n\nUse true when you want diagnostics closer to what the sampler actually selected from.",
   "presence_penalty": "Penalizes tokens that have appeared at least once. Higher values encourage new topics/words; too high can make output drift.",
-  "reasoning_format": "How llama.cpp parses or exposes reasoning/thinking content for compatible models/templates.",
-  "reasoning_in_content": "Whether reasoning is emitted inside normal content instead of a separate reasoning field.",
-  "samplers": "Sampler chain order. Tokens pass through these filters/transforms before final selection. Order matters for advanced tuning.",
-  "seed": "Random seed. A fixed seed improves reproducibility; the max unsigned value usually means random seed.",
+  "reasoning_format": "How thinking/reasoning text is parsed or exposed for compatible models/templates.\n\nCommon modes depend on the server build and template: none/disabled = do not treat reasoning specially; separate = expose reasoning in a separate reasoning field; content = include reasoning in normal assistant content.\n\nUse separate when a UI should show thinking apart from the final answer.",
+  "reasoning_in_content": "Whether reasoning text is included inside normal assistant content.\n\nCommon values: false = keep reasoning separate when the server/template supports it; true = put reasoning in the visible content stream.\n\nFor chat UIs, false is usually cleaner because thinking can be rendered as its own bubble.",
+  "samplers": "Sampler chain order. Tokens pass through these filters/transforms before final selection.\n\nCommon sampler names include penalties, dry, top_k, typical_p, top_p, min_p, temperature, xtc, and top_n_sigma. Removing, adding, or reordering samplers changes generation style and can make output more deterministic, more creative, or more repetitive.\n\nOnly tune this when you are intentionally changing sampling behavior.",
+  "seed": "Random seed used for sampling.\n\nCommon values: a fixed integer = more reproducible output with the same prompt/settings; 4294967295 or similar max unsigned value = choose a random seed.\n\nUse a fixed seed for debugging; use random for normal chat variety.",
   "speculative.types": "Speculative decoding mode. 'none' means no draft/speculative model path is active.",
-  "stream": "Default streaming behavior. Requests can still override this. Streaming sends tokens incrementally instead of waiting for the full response.",
-  "timings_per_token": "If enabled, timing details can be reported per token. Useful for diagnostics, but adds overhead/noise.",
+  "stream": "Default streaming behavior.\n\nCommon values: false = return the full response only when complete; true = send tokens incrementally as they are generated.\n\nRequests can override this. Streaming is better for chat UX and live diagnostics.",
+  "timings_per_token": "Whether timing details are reported per generated token.\n\nCommon values: false = normal compact timing output; true = detailed per-token timing diagnostics.\n\nEnable only when investigating latency because it can add overhead and log/API noise.",
   "top_n_sigma": "Top-n-sigma sampler threshold. Negative values disable it. When enabled, it keeps tokens within a probability/logit band around the best token.",
   "typical_p": "Typical sampling threshold. Values below 1 filter unlikely or overly surprising tokens based on local entropy.",
   "xtc_probability": "XTC sampler activation probability. 0 disables it. Higher values more often apply XTC filtering for creative variation.",
@@ -1167,7 +1171,7 @@ function configOptionCard(option) {
   const open = () => showModal({
     title: label,
     bodyNode: el("div", null, [
-      el("div", null, help),
+      el("div", { style: "white-space: pre-line;" }, help),
       option.source ? el("div", { class: "sub", style: "margin-top: 8px;" }, "Source: " + option.source) : null,
     ]),
     okLabel: t("common.close"),
@@ -1325,8 +1329,21 @@ function renderLoraCard() {
   const sec = $("#lora-section");
   sec.innerHTML = "";
   const adapters = Array.isArray(state.loraAdapters) ? state.loraAdapters : [];
+  const showHelp = () => showModal({
+    title: t("lora.help_title"),
+    bodyNode: el("div", { style: "white-space: pre-line;" }, t("lora.help")),
+    okLabel: t("common.close"),
+  });
   const card = el("div", { class: "card full" }, [
-    el("h2", null, t("lora.title")),
+    el("h2", { class: "section-title-row" }, [
+      t("lora.title"),
+      el("button", {
+        class: "info-btn",
+        title: t("lora.help_title"),
+        "aria-label": t("lora.help_title"),
+        onclick: showHelp,
+      }, "?"),
+    ]),
   ]);
   sec.appendChild(card);
   if (!adapters.length) {

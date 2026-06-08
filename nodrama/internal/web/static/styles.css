@@ -59,19 +59,49 @@
     white-space: nowrap;
   }
   .led {
-    display: inline-block; width: 10px; height: 10px;
+    display: inline-block; width: 7px; height: 7px;
     border-radius: 50%; background: var(--fg-mute); vertical-align: middle;
-    box-shadow: 0 0 0 0 #0000;
-    transition: background 0.2s, box-shadow 0.4s;
+    box-shadow: 0 0 0 1px #ffffff14 inset;
+    color: var(--fg-mute);
+    position: relative;
+    transition: background 0.2s, box-shadow 0.4s, color 0.2s;
   }
-  .led.on    { background: var(--good); box-shadow: 0 0 8px #3fb95066; }
-  .led.warn  { background: var(--warn); box-shadow: 0 0 8px #d2992266; }
-  .led.bad   { background: var(--bad);  box-shadow: 0 0 8px #f8514966; }
+  .led::after {
+    content: "";
+    position: absolute;
+    inset: -7px;
+    border-radius: 50%;
+    background: radial-gradient(circle, currentColor 0%, #0000 64%);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .led.on {
+    background: var(--good);
+    color: var(--good);
+    box-shadow: 0 0 6px #3fb950cc, 0 0 16px #3fb95088, 0 0 30px #3fb95044;
+  }
+  .led.on::after { opacity: 0.45; animation: led-glow 1.8s ease-in-out infinite; }
+  .led.warn  { background: var(--warn); color: var(--warn); box-shadow: 0 0 10px #d2992288; }
+  .led.bad   { background: var(--bad);  color: var(--bad);  box-shadow: 0 0 10px #f8514988; }
+  @keyframes led-glow {
+    0%, 100% { opacity: 0.28; transform: scale(0.86); }
+    50% { opacity: 0.65; transform: scale(1.18); }
+  }
   .status-pill {
     display: inline-flex; align-items: center; gap: 6px;
     padding: 2px 8px; border-radius: 999px;
     background: var(--bg-3); border: 1px solid var(--border);
     color: var(--fg-dim); font-size: 12px;
+  }
+  .status-pill.online {
+    background: #11321b; border-color: #2a6234; color: #6dd590;
+  }
+  .status-pill.warn {
+    background: #2c2611; border-color: #5a4a14; color: #e6c963;
+  }
+  .status-pill.offline,
+  .status-pill.error {
+    background: #3a1216; border-color: #5e2329; color: #ff9a93;
   }
   main {
     padding: 14px;
@@ -390,6 +420,9 @@
     border: none; padding: 0 4px; font-size: 13px;
   }
   .info-btn:hover { color: var(--fg); }
+  .section-title-row {
+    display: flex; align-items: center; gap: 6px;
+  }
   /* guidance */
   .guidance-list {
     display: flex; flex-direction: column; gap: 8px;
@@ -473,6 +506,7 @@
   /* honor user reduced-motion preference */
   @media (prefers-reduced-motion: reduce) {
     .led, .pct-bar > span { transition: none; }
+    .led.on::after { animation: none; }
     header.app .version-display.update-available { animation: none; }
   }
   /* responsive */
