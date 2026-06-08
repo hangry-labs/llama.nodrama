@@ -26,6 +26,8 @@ Windows PowerShell:
 irm https://raw.githubusercontent.com/hangry-labs/llama.nodrama/master/install.ps1 | iex
 ```
 
+El instalador de Windows copia `llama-nodrama.exe` a un directorio local del usuario y añade ese directorio al PATH del usuario. También actualiza la sesión actual de PowerShell, así que `llama-nodrama --help` debería funcionar inmediatamente después de instalar.
+
 Ambos instaladores usan por defecto el GitHub Release más reciente. Para fijar una versión:
 
 ```sh

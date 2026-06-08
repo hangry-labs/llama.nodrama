@@ -26,6 +26,8 @@ Windows PowerShell:
 irm https://raw.githubusercontent.com/hangry-labs/llama.nodrama/master/install.ps1 | iex
 ```
 
+Windows 安装脚本会把 `llama-nodrama.exe` 复制到用户本地安装目录，并把该目录加入用户 PATH。当前 PowerShell 会话也会同步更新，因此安装后应能立即运行 `llama-nodrama --help`。
+
 两个安装脚本默认使用最新的 GitHub Release。如需固定版本：
 
 ```sh

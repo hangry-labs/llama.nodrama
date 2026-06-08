@@ -26,6 +26,8 @@ Windows PowerShell:
 irm https://raw.githubusercontent.com/hangry-labs/llama.nodrama/master/install.ps1 | iex
 ```
 
+Windows インストーラーは `llama-nodrama.exe` をユーザーのローカルインストールディレクトリにコピーし、そのディレクトリをユーザー PATH に追加します。現在の PowerShell セッションも更新されるため、インストール直後に `llama-nodrama --help` が使えるはずです。
+
 どちらのインストーラーも、既定では最新の GitHub Release を使用します。バージョンを固定する場合:
 
 ```sh

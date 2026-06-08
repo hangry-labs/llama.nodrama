@@ -1,7 +1,8 @@
 param(
     [string]$Repo = $env:LLAMA_NODRAMA_REPO,
     [string]$Version = $env:LLAMA_NODRAMA_VERSION,
-    [string]$InstallDir = $env:LLAMA_NODRAMA_INSTALL_DIR
+    [string]$InstallDir = $env:LLAMA_NODRAMA_INSTALL_DIR,
+    [switch]$NoPathUpdate
 )
 
 $ErrorActionPreference = "Stop"
@@ -37,6 +38,66 @@ function Download-File {
         [string]$OutputPath
     )
     Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $OutputPath
+}
+
+function Normalize-PathEntry {
+    param([string]$PathEntry)
+    if ([string]::IsNullOrWhiteSpace($PathEntry)) {
+        return ""
+    }
+    return $PathEntry.Trim().Trim('"').TrimEnd("\")
+}
+
+function Test-PathContains {
+    param(
+        [string]$PathValue,
+        [string]$Directory
+    )
+    $Needle = Normalize-PathEntry $Directory
+    if ([string]::IsNullOrWhiteSpace($Needle)) {
+        return $true
+    }
+    foreach ($Part in ($PathValue -split ";")) {
+        if ((Normalize-PathEntry $Part).Equals($Needle, [StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+    }
+    return $false
+}
+
+function Add-UserPath {
+    param([string]$Directory)
+
+    if ($NoPathUpdate) {
+        Write-Host "PATH update skipped because -NoPathUpdate was specified."
+        return
+    }
+
+    $NormalizedDir = Normalize-PathEntry $Directory
+    if ([string]::IsNullOrWhiteSpace($NormalizedDir)) {
+        return
+    }
+
+    $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    if ([string]::IsNullOrWhiteSpace($UserPath)) {
+        $NewUserPath = $NormalizedDir
+    } elseif (Test-PathContains -PathValue $UserPath -Directory $NormalizedDir) {
+        $NewUserPath = $UserPath
+    } else {
+        $NewUserPath = $UserPath.TrimEnd(";") + ";" + $NormalizedDir
+    }
+
+    if ($NewUserPath -ne $UserPath) {
+        [Environment]::SetEnvironmentVariable("Path", $NewUserPath, "User")
+        Write-Host "Added to user PATH: $NormalizedDir"
+    } else {
+        Write-Host "User PATH already includes: $NormalizedDir"
+    }
+
+    if (-not (Test-PathContains -PathValue $env:Path -Directory $NormalizedDir)) {
+        $env:Path = $env:Path.TrimEnd(";") + ";" + $NormalizedDir
+        Write-Host "Updated PATH for this PowerShell session."
+    }
 }
 
 $Arch = Resolve-Arch
@@ -90,10 +151,8 @@ try {
     Copy-Item -Force -Path $Source -Destination $Target
 
     Write-Host "Installed: $Target"
-    $PathParts = $env:Path -split ";" | ForEach-Object { $_.TrimEnd("\") }
-    if ($PathParts -notcontains $InstallDir.TrimEnd("\")) {
-        Write-Host "Add $InstallDir to PATH if llama-nodrama.exe is not found by PowerShell."
-    }
+    Add-UserPath -Directory $InstallDir
+    Write-Host "Run: llama-nodrama --help"
 } finally {
     Remove-Item -Recurse -Force -Path $TempDir -ErrorAction SilentlyContinue
 }

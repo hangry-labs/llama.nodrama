@@ -26,6 +26,8 @@ Windows PowerShell:
 irm https://raw.githubusercontent.com/hangry-labs/llama.nodrama/master/install.ps1 | iex
 ```
 
+Windows 설치 스크립트는 `llama-nodrama.exe`를 사용자 로컬 설치 디렉터리에 복사하고 그 디렉터리를 사용자 PATH에 추가합니다. 현재 PowerShell 세션도 함께 업데이트하므로 설치 직후 `llama-nodrama --help`가 동작해야 합니다.
+
 두 설치 스크립트는 기본적으로 최신 GitHub Release를 사용합니다. 특정 버전을 고정하려면 다음처럼 실행합니다.
 
 ```sh
