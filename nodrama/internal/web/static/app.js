@@ -44,12 +44,21 @@ function demoMode(v) {
 /* Pick a UI language from ?lang, then navigator.language, then 'en'. */
 function pickLang(requested) {
   const supported = Object.keys(I18N);
-  if (requested && supported.includes(requested)) return requested;
-  const nav = (navigator.language || "en").toLowerCase();
-  if (nav.startsWith("ko")) return "ko";
-  if (nav.startsWith("ja")) return "ja";
-  if (nav.startsWith("zh")) return "zh-CN";
-  if (nav.startsWith("es")) return "es";
+  const normalize = (value) => {
+    const lang = String(value || "").toLowerCase();
+    if (!lang) return "";
+    if (supported.includes(value)) return value;
+    if (lang.startsWith("ko")) return "ko";
+    if (lang.startsWith("ja")) return "ja";
+    if (lang.startsWith("zh")) return "zh-CN";
+    if (lang.startsWith("es")) return "es";
+    if (lang.startsWith("en")) return "en";
+    return "";
+  };
+  const requestedLang = normalize(requested);
+  if (requestedLang) return requestedLang;
+  const navLang = normalize(navigator.language || "en");
+  if (navLang) return navLang;
   return "en";
 }
 
@@ -1152,30 +1161,37 @@ const CONFIG_OPTION_HELP = {
   "xtc_threshold": "XTC filtering threshold. It only matters when xtc_probability is above 0.",
 };
 
+function configOptionHelpKey(key) {
+  return "config.help." + String(key || "unknown").replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+function configHelpText(key) {
+  const translated = t(configOptionHelpKey(key));
+  if (translated !== configOptionHelpKey(key)) return translated;
+  return CONFIG_OPTION_HELP[key] || t("config.help.unknown");
+}
+
 function defaultOptionHelp(key) {
-  const specific = CONFIG_OPTION_HELP[key] || "No detailed explanation is known yet.";
-  return specific + "\n\nDefault means this is the server fallback used when a request does not send '" + key + "'. If a request overrides it, that request value wins; this row still shows the fallback default.";
+  return configHelpText(key) + "\n\n" + t("config.help.default_note").replace("{key}", key);
 }
 
 function configHelpFor(option) {
   const key = option.key || option.label;
   if (option.isDefault) return defaultOptionHelp(key);
-  if (CONFIG_OPTION_HELP[key]) return CONFIG_OPTION_HELP[key];
-  return "Runtime or launch option. No detailed explanation is known yet.";
+  return configHelpText(key);
 }
 
 function configOptionCard(option) {
   const label = option.displayLabel || option.label;
   const help = option.help || configHelpFor(option);
-  const title = option.source ? (help + " Source: " + option.source) : help;
+  const sourceLabel = t("config.help.source");
+  const title = option.source ? (help + " " + sourceLabel + ": " + option.source) : help;
   const open = () => showModal({
     title: label,
     bodyNode: el("div", null, [
       el("div", { style: "white-space: pre-line;" }, help),
-      option.source ? el("div", { class: "sub", style: "margin-top: 8px;" }, "Source: " + option.source) : null,
+      option.source ? el("div", { class: "sub", style: "margin-top: 8px;" }, sourceLabel + ": " + option.source) : null,
     ]),
-    okLabel: t("common.close"),
-    onOk: () => {},
   });
   return el("div", {
     class: "option-card",
@@ -1394,7 +1410,12 @@ function showModal({ title, bodyNode, okLabel, onOk, mutating }) {
     back.remove();
     if (onKey) document.removeEventListener("keydown", onKey);
   };
-  const ok = el("button", { class: "primary", onclick: async () => {
+  const isAction = typeof onOk === "function";
+  const ok = el("button", { class: isAction ? "primary" : "", onclick: async () => {
+    if (!isAction) {
+      close();
+      return;
+    }
     ok.disabled = true;
     errorNode.hidden = true;
     try {
@@ -1405,8 +1426,8 @@ function showModal({ title, bodyNode, okLabel, onOk, mutating }) {
       errorNode.hidden = false;
       ok.disabled = false;
     }
-  }}, okLabel || t("common.confirm"));
-  const cancel = el("button", { onclick: close }, t("common.cancel"));
+  }}, okLabel || (isAction ? t("common.confirm") : t("common.close")));
+  const cancel = isAction ? el("button", { onclick: close }, t("common.cancel")) : null;
   /* mutating modals get a "this changes server state" warning; informational
    * modals (like the log help dialog) skip it. */
   const warnNode = mutating
@@ -1418,7 +1439,7 @@ function showModal({ title, bodyNode, okLabel, onOk, mutating }) {
     el("div", { class: "body" }, bodyNode),
     warnNode,
     errorNode,
-    el("div", { class: "actions" }, [cancel, ok]),
+    el("div", { class: "actions" }, [cancel, ok].filter(Boolean)),
   ].filter(Boolean));
   back.appendChild(m);
   back.addEventListener("click", (e) => { if (e.target === back) close(); });
@@ -1882,7 +1903,6 @@ function showLogHelp() {
     title: t("log.setup_help_title"),
     bodyNode: el("div", null, t("log.setup_help")),
     okLabel: t("common.close"),
-    onOk: () => {},
   });
 }
 
@@ -2017,46 +2037,50 @@ function sparkline(data, opts) {
 const METRIC_CARDS = [
   { id: "predicted_tps", titleKey: "metrics.gen_tps",
     metric: "nodrama:tokens_predicted_rate", unit: "tok/s", min: 0,
-    help: "Live aggregate generation throughput derived by llama.nodrama from the change in llamacpp:tokens_predicted_total over the poll interval. If three slots each produce about 40 tok/s at the same time, this should trend near 120 tok/s." },
+    helpKey: "metrics.help.predicted_tps" },
   { id: "prompt_tps",    titleKey: "metrics.prompt_tps",
     metric: "nodrama:prompt_tokens_rate",    unit: "tok/s", min: 0,
-    help: "Live aggregate prompt-processing throughput derived by llama.nodrama from the change in llamacpp:prompt_tokens_total over the poll interval. It is a current server-wide rate, not a per-slot average." },
+    helpKey: "metrics.help.prompt_tps" },
   { id: "processing",    titleKey: "metrics.processing",
     metric: "llamacpp:requests_processing",      unit: "",      min: 0,
-    help: "Number of requests currently being processed by llama.cpp. This should roughly track active slots." },
+    helpKey: "metrics.help.processing" },
   { id: "deferred",      titleKey: "metrics.deferred",
     metric: "llamacpp:requests_deferred",        unit: "",      min: 0,
     warnAt: 1, badAt: 5,
-    help: "Number of requests waiting because no slot is currently available. Sustained values > 0 indicate queueing latency." },
+    helpKey: "metrics.help.deferred" },
   { id: "busy_slots",    titleKey: "metrics.busy_slots",
     metric: "llamacpp:n_busy_slots_per_decode",  unit: "",      min: 0,
-    help: "llama.cpp's average number of slots included in decode batches. It helps show batching efficiency/parallelism: near 1 means mostly single-slot decode; higher values mean decode calls often batch work from several slots. It is not the exact current busy-slot count." },
+    helpKey: "metrics.help.busy_slots" },
   { id: "context_used", titleKey: "metrics.context_used",
     metric: "nodrama:context_active_tokens", unit: "tok", min: 0, contextUsed: true,
     capacityMetric: "nodrama:context_active_capacity_tokens",
     ratioMetric: "nodrama:context_active_ratio",
     warnRatio: 0.80, badRatio: 0.90, peakNote: true,
-    help: "Active slot context estimate. llama.nodrama sums context currently used by active slots and compares it with the server context capacity from cache-state startup/log data when available, otherwise visible slot capacity. Cached idle prompts are not counted as active slot context." },
+    helpKey: "metrics.help.context_used" },
   { id: "n_tokens_max",  titleKey: "metrics.n_tokens_max",
     metric: "llamacpp:n_tokens_max",             unit: "tok",   min: 0,
     peakNote: true,
-    help: "Raw llama.cpp metric. Largest token batch/working set observed by llama.cpp decode metrics since server start. The timestamp shown is when llama.nodrama first observed the current peak, not necessarily the exact internal llama.cpp moment." },
+    helpKey: "metrics.help.n_tokens_max" },
   { id: "prompt_total",  titleKey: "metrics.prompt_total",
     metric: "llamacpp:prompt_tokens_total",      unit: "tok",   min: 0, cumulative: true,
-    help: "Cumulative number of prompt tokens processed since the llama.cpp server started." },
+    helpKey: "metrics.help.prompt_total" },
   { id: "predicted_total", titleKey: "metrics.predicted_total",
     metric: "llamacpp:tokens_predicted_total",   unit: "tok",   min: 0, cumulative: true,
-    help: "Cumulative number of generated output tokens since the llama.cpp server started." },
+    helpKey: "metrics.help.predicted_total" },
   { id: "decode_total", titleKey: "metrics.decode_total",
     metric: "llamacpp:n_decode_total",           unit: "",      min: 0, cumulative: true,
-    help: "Raw llama.cpp counter. Cumulative calls into llama_decode(). One decode call can process prompt tokens, generated tokens, and sometimes batched work from multiple slots, so it is a workload/batching counter rather than a request count." },
+    helpKey: "metrics.help.decode_total" },
   { id: "prompt_seconds_total", titleKey: "metrics.prompt_seconds_total",
     metric: "llamacpp:prompt_seconds_total",     unit: "",     min: 0, cumulative: true, duration: true,
-    help: "Cumulative wall time spent processing prompts since server start." },
+    helpKey: "metrics.help.prompt_seconds_total" },
   { id: "predicted_seconds_total", titleKey: "metrics.predicted_seconds_total",
     metric: "llamacpp:tokens_predicted_seconds_total", unit: "", min: 0, cumulative: true, duration: true,
-    help: "Cumulative wall time spent generating output tokens since server start." },
+    helpKey: "metrics.help.predicted_seconds_total" },
 ];
+
+function metricHelp(card) {
+  return t(card.helpKey || "metrics.help.unknown");
+}
 
 function fmtNumber(n, opts) {
   if (n === undefined || n === null || !isFinite(n)) return "—";
@@ -2115,14 +2139,15 @@ function ensureMetricCards() {
   sec.dataset.built = "1";
   sec.innerHTML = "";
   for (const c of METRIC_CARDS) {
+    const help = metricHelp(c);
     const card = el("div", { class: "card metric-card", id: "metric-" + c.id }, [
       el("div", { class: "metric-title" }, [
         el("h2", null, t(c.titleKey)),
         el("button", {
           class: "info-btn",
           type: "button",
-          title: c.help,
-          "aria-label": t(c.titleKey) + ": " + c.help,
+          title: help,
+          "aria-label": t(c.titleKey) + ": " + help,
           onclick: () => showMetricHelp(c),
         }, "?"),
       ]),
@@ -2144,9 +2169,8 @@ function ensureMetricCards() {
 function showMetricHelp(card) {
   showModal({
     title: t(card.titleKey),
-    bodyNode: el("div", null, card.help),
+    bodyNode: el("div", null, metricHelp(card)),
     okLabel: t("common.close"),
-    onOk: () => {},
   });
 }
 
