@@ -262,14 +262,16 @@ func TestUpdateQueriesCountsRestoredCheckpointAsReuse(t *testing.T) {
 		TaskID:       88,
 		IsProcessing: true,
 		State:        "prompt-processing",
+		PromptTokens: 50000,
 	}}, true, true, nil, []llamacpp.LogEvent{{
-		ID:       "evt_restore",
-		At:       now,
-		Kind:     "warning",
-		Severity: "W",
-		SlotID:   1,
-		TaskID:   88,
-		Message:  "slot update_slots: id  1 | task 88 | restored context checkpoint",
+		ID:             "evt_restore",
+		At:             now,
+		Kind:           "warning",
+		Severity:       "W",
+		SlotID:         1,
+		TaskID:         88,
+		Message:        "slot update_slots: id  1 | task 88 | restored context checkpoint (n_tokens = 42800)",
+		RestoredTokens: 42800,
 	}})
 	if len(queries) != 1 {
 		t.Fatalf("queries = %d", len(queries))
@@ -282,6 +284,66 @@ func TestUpdateQueriesCountsRestoredCheckpointAsReuse(t *testing.T) {
 	}
 	if !queries[0].CacheCached {
 		t.Fatal("restored checkpoint should mark query cached")
+	}
+	if queries[0].CacheRestoredTokens != 42800 {
+		t.Fatalf("restored tokens = %d", queries[0].CacheRestoredTokens)
+	}
+}
+
+func TestUpdateQueriesDoesNotCountTinyRestoredPrefixAsReuse(t *testing.T) {
+	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
+	now := time.Unix(1_700_000_000, 0)
+
+	queries := dashboard.updateQueries(now, "model-a", []llamacpp.Slot{{
+		ID:           1,
+		TaskID:       3079110,
+		IsProcessing: true,
+		State:        "prompt-processing",
+	}}, true, true, nil, []llamacpp.LogEvent{{
+		ID:             "evt_restore",
+		At:             now,
+		Kind:           "warning",
+		Severity:       "W",
+		SlotID:         1,
+		TaskID:         3079110,
+		Message:        "slot update_slots: id  1 | task 3079110 | restored context checkpoint (pos_min = 6, pos_max = 6, n_tokens = 7, n_past = 7, size = 62.813 MiB)",
+		RestoredTokens: 7,
+	}})
+	if len(queries) != 1 {
+		t.Fatalf("queries = %d", len(queries))
+	}
+	if queries[0].CacheReuseCount != 0 {
+		t.Fatalf("tiny restore should not count as reuse before prompt tokens are known: %#v", queries[0])
+	}
+
+	queries = dashboard.updateQueries(now.Add(time.Second), "model-a", []llamacpp.Slot{{
+		ID:           1,
+		TaskID:       3079110,
+		IsProcessing: true,
+		State:        "generating",
+	}}, true, true, nil, []llamacpp.LogEvent{{
+		ID:           "evt_prompt",
+		At:           now.Add(time.Second),
+		Kind:         "prompt_eval",
+		SlotID:       1,
+		TaskID:       3079110,
+		Message:      "slot print_timing: id  1 | task 3079110 | prompt eval time = 355.18 ms / 590 tokens",
+		PromptTokens: 590,
+	}})
+	if len(queries) != 1 {
+		t.Fatalf("queries = %d", len(queries))
+	}
+	if queries[0].PromptTokens != 590 {
+		t.Fatalf("prompt tokens = %d", queries[0].PromptTokens)
+	}
+	if queries[0].CacheRestoredTokens != 7 {
+		t.Fatalf("restored tokens = %d", queries[0].CacheRestoredTokens)
+	}
+	if queries[0].CacheReuseCount != 0 {
+		t.Fatalf("tiny restore should not count as reuse after prompt tokens are known: %#v", queries[0])
+	}
+	if queries[0].LastCacheAction == "restore" {
+		t.Fatalf("tiny restore should not surface as cache reuse action: %#v", queries[0])
 	}
 }
 
@@ -321,14 +383,25 @@ func TestUpdateQueriesClearsCachedStateOnInvalidation(t *testing.T) {
 	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
 	now := time.Unix(1_700_000_000, 0)
 
-	queries := dashboard.updateQueries(now, "model-a", nil, false, false, nil, []llamacpp.LogEvent{{
-		ID:       "evt_restore",
-		At:       now,
-		Kind:     "warning",
-		Severity: "W",
-		TaskID:   88,
-		Message:  "slot update_slots: id  1 | task 88 | restored context checkpoint",
-	}})
+	queries := dashboard.updateQueries(now, "model-a", nil, false, false, nil, []llamacpp.LogEvent{
+		{
+			ID:             "evt_restore",
+			At:             now,
+			Kind:           "warning",
+			Severity:       "W",
+			TaskID:         88,
+			Message:        "slot update_slots: id  1 | task 88 | restored context checkpoint (n_tokens = 512)",
+			RestoredTokens: 512,
+		},
+		{
+			ID:           "evt_prompt",
+			At:           now.Add(time.Nanosecond),
+			Kind:         "prompt_eval",
+			TaskID:       88,
+			Message:      "slot print_timing: id 1 | task 88 | prompt eval time = 10 ms / 1024 tokens",
+			PromptTokens: 1024,
+		},
+	})
 	if len(queries) != 1 || !queries[0].CacheCached {
 		t.Fatalf("restore should mark cached: %#v", queries)
 	}
@@ -488,14 +561,23 @@ func TestUpdateQueriesRanksRunningThenReuseThenRecent(t *testing.T) {
 	events := []llamacpp.LogEvent{}
 	for i := 1; i <= 3; i++ {
 		events = append(events, llamacpp.LogEvent{
-			ID:       "evt_restore_" + strconv.Itoa(i),
-			At:       base.Add(time.Minute + time.Duration(i)*time.Second),
-			Kind:     "warning",
-			Severity: "W",
-			TaskID:   1,
-			Message:  "slot update_slots: restored context checkpoint",
+			ID:             "evt_restore_" + strconv.Itoa(i),
+			At:             base.Add(time.Minute + time.Duration(i)*time.Second),
+			Kind:           "warning",
+			Severity:       "W",
+			TaskID:         1,
+			Message:        "slot update_slots: restored context checkpoint (n_tokens = 512)",
+			RestoredTokens: 512,
 		})
 	}
+	events = append(events, llamacpp.LogEvent{
+		ID:           "evt_prompt_1",
+		At:           base.Add(time.Minute + 4*time.Second),
+		Kind:         "prompt_eval",
+		TaskID:       1,
+		Message:      "slot print_timing: id 1 | task 1 | prompt eval time = 10 ms / 1024 tokens",
+		PromptTokens: 1024,
+	})
 	queries := dashboard.updateQueries(base.Add(time.Minute), "", []llamacpp.Slot{{
 		ID:           9,
 		TaskID:       999,
@@ -527,12 +609,13 @@ func TestUpdateQueriesRestoredCheckpointsAreCapped(t *testing.T) {
 	events := make([]llamacpp.LogEvent, 0, maxRecentQueries+20)
 	for i := 1; i <= maxRecentQueries+20; i++ {
 		events = append(events, llamacpp.LogEvent{
-			ID:       "evt_restore_" + strconv.Itoa(i),
-			At:       base.Add(time.Duration(i) * time.Second),
-			Kind:     "warning",
-			Severity: "W",
-			TaskID:   i,
-			Message:  "slot update_slots: restored context checkpoint",
+			ID:             "evt_restore_" + strconv.Itoa(i),
+			At:             base.Add(time.Duration(i) * time.Second),
+			Kind:           "warning",
+			Severity:       "W",
+			TaskID:         i,
+			Message:        "slot update_slots: restored context checkpoint (n_tokens = 512)",
+			RestoredTokens: 512,
 		})
 	}
 

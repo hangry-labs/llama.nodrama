@@ -15,6 +15,8 @@ type LogEvent struct {
 	Severity        string    `json:"severity,omitempty"`
 	SlotID          int       `json:"slotId,omitempty"`
 	TaskID          int       `json:"taskId,omitempty"`
+	PromptTokens    int       `json:"promptTokens,omitempty"`
+	RestoredTokens  int       `json:"restoredTokens,omitempty"`
 	DecodedTokens   int       `json:"decodedTokens,omitempty"`
 	TokensPerSecond float64   `json:"tokensPerSecond,omitempty"`
 	CacheAction     string    `json:"cacheAction,omitempty"`
@@ -23,9 +25,11 @@ type LogEvent struct {
 }
 
 var (
-	logTimingPattern = regexp.MustCompile(`slot print_timing:\s*id\s+(\d+)\s*\|\s*task\s+(\d+)\s*\|\s*n_decoded\s*=\s*(\d+),\s*tg\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*t/s`)
-	logSlotPattern   = regexp.MustCompile(`\bslot\b[^\d]*(\d+)`)
-	logTaskPattern   = regexp.MustCompile(`\btask\b[^\d-]*(-?\d+)`)
+	logTimingPattern     = regexp.MustCompile(`slot print_timing:\s*id\s+(\d+)\s*\|\s*task\s+(\d+)\s*\|\s*n_decoded\s*=\s*(\d+),\s*tg\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*t/s`)
+	logPromptEvalPattern = regexp.MustCompile(`slot print_timing:\s*id\s+(\d+)\s*\|\s*task\s+(\d+)\s*\|\s*prompt eval time\s*=.*?/\s*(\d+)\s+tokens`)
+	logRestoredPattern   = regexp.MustCompile(`restored context checkpoint .*?\bn_tokens\s*=\s*(\d+)`)
+	logSlotPattern       = regexp.MustCompile(`\bslot\b[^\d]*(\d+)`)
+	logTaskPattern       = regexp.MustCompile(`\btask\b[^\d-]*(-?\d+)`)
 )
 
 func ParseLogLine(line string, observedAt time.Time) (LogEvent, bool) {
@@ -53,11 +57,20 @@ func ParseLogLine(line string, observedAt time.Time) (LogEvent, bool) {
 		return event, true
 	}
 
+	if matches := logPromptEvalPattern.FindStringSubmatch(message); len(matches) == 4 {
+		event.Kind = "prompt_eval"
+		event.SlotID = mustAtoi(matches[1])
+		event.TaskID = mustAtoi(matches[2])
+		event.PromptTokens = mustAtoi(matches[3])
+		return event, true
+	}
+
 	if strings.Contains(lower, "cache") || strings.Contains(lower, "kv self") || strings.Contains(lower, "kv cache") {
 		event.Kind = "cache"
 		event.CacheAction = classifyCacheAction(lower)
 		event.SlotID = firstRegexInt(logSlotPattern, message)
 		event.TaskID = firstRegexInt(logTaskPattern, message)
+		event.RestoredTokens = restoredTokens(message)
 		return event, true
 	}
 
@@ -68,10 +81,19 @@ func ParseLogLine(line string, observedAt time.Time) (LogEvent, bool) {
 		}
 		event.SlotID = firstRegexInt(logSlotPattern, message)
 		event.TaskID = firstRegexInt(logTaskPattern, message)
+		event.RestoredTokens = restoredTokens(message)
 		return event, true
 	}
 
 	return LogEvent{}, false
+}
+
+func restoredTokens(message string) int {
+	matches := logRestoredPattern.FindStringSubmatch(message)
+	if len(matches) < 2 {
+		return 0
+	}
+	return mustAtoi(matches[1])
 }
 
 func splitLogPrefix(line string) (string, string, string) {

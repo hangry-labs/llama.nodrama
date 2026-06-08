@@ -30,6 +30,22 @@ func TestParseTimingLogLine(t *testing.T) {
 	}
 }
 
+func TestParsePromptEvalLogLine(t *testing.T) {
+	event, ok := ParseLogLine("1699.58.709.999 I slot print_timing: id  1 | task 3079110 | prompt eval time =     355.18 ms /   590 tokens (    0.60 ms per token,  1661.15 tokens per second)", time.Unix(1_700_000_000, 0))
+	if !ok {
+		t.Fatal("prompt eval line was not parsed")
+	}
+	if event.Kind != "prompt_eval" {
+		t.Fatalf("kind = %q", event.Kind)
+	}
+	if event.SlotID != 1 || event.TaskID != 3079110 {
+		t.Fatalf("slot/task = %d/%d", event.SlotID, event.TaskID)
+	}
+	if event.PromptTokens != 590 {
+		t.Fatalf("prompt tokens = %d", event.PromptTokens)
+	}
+}
+
 func TestParseCacheLogLine(t *testing.T) {
 	event, ok := ParseLogLine("124.55.423.849 I slot 2 kv cache reused, task 248761", time.Unix(1_700_000_000, 0))
 	if !ok {
@@ -43,6 +59,22 @@ func TestParseCacheLogLine(t *testing.T) {
 	}
 	if event.SlotID != 2 || event.TaskID != 248761 {
 		t.Fatalf("slot/task = %d/%d", event.SlotID, event.TaskID)
+	}
+}
+
+func TestParseRestoredCheckpointTokens(t *testing.T) {
+	event, ok := ParseLogLine("1699.36.288.943 W slot update_slots: id  1 | task 3079110 | restored context checkpoint (pos_min = 6, pos_max = 6, n_tokens = 7, n_past = 7, size = 62.813 MiB)", time.Unix(1_700_000_000, 0))
+	if !ok {
+		t.Fatal("restore line was not parsed")
+	}
+	if event.Kind != "warning" {
+		t.Fatalf("kind = %q", event.Kind)
+	}
+	if event.SlotID != 1 || event.TaskID != 3079110 {
+		t.Fatalf("slot/task = %d/%d", event.SlotID, event.TaskID)
+	}
+	if event.RestoredTokens != 7 {
+		t.Fatalf("restored tokens = %d", event.RestoredTokens)
 	}
 }
 

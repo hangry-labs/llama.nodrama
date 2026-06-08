@@ -127,6 +127,8 @@ type QuerySummary struct {
 	CompletionTokens    int        `json:"completionTokens,omitempty"`
 	TotalTokens         int        `json:"totalTokens,omitempty"`
 	PromptCacheTokens   int        `json:"promptCacheTokens,omitempty"`
+	CacheRestoredTokens int        `json:"cacheRestoredTokens,omitempty"`
+	CacheReuseRatio     float64    `json:"cacheReuseRatio,omitempty"`
 	CacheCached         bool       `json:"cacheCached,omitempty"`
 	CacheReuseCount     int        `json:"cacheReuseCount,omitempty"`
 	CurrentTokensPerSec float64    `json:"currentTokensPerSec,omitempty"`
@@ -136,6 +138,9 @@ type QuerySummary struct {
 	LastCacheEventAt    *time.Time `json:"lastCacheEventAt,omitempty"`
 	LastEventAt         *time.Time `json:"lastEventAt,omitempty"`
 	Error               string     `json:"error,omitempty"`
+
+	cacheRestoreEvents        int
+	cacheRestoreEventsCounted int
 }
 
 type Overview struct {

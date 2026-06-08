@@ -3902,6 +3902,10 @@ function renderQueryCard(q) {
   if (!q.cacheReuseCount && q.lastCacheAction && q.lastCacheAction !== "save" && q.lastCacheAction !== "invalidate") {
     cacheParts.push(q.lastCacheAction);
   }
+  if (q.cacheRestoredTokens) {
+    const restored = String(q.cacheRestoredTokens) + (q.promptTokens ? "/" + String(q.promptTokens) : "") + " tok";
+    cacheParts.push("restored " + restored);
+  }
   if (q.promptCacheTokens) cacheParts.push(String(q.promptCacheTokens) + " tok");
   const cache = cacheParts.length ? cacheParts.join(" · ") : "—";
   const rate = q.currentTokensPerSec ? fmtNumber(q.currentTokensPerSec) + " tok/s" : "—";

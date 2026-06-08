@@ -14,6 +14,8 @@ import (
 const maxLogReadBytes = 1024 * 1024
 const maxRecentQueries = 10
 const staleQueuedRequestAge = 10 * time.Second
+const minMeaningfulCacheReuseTokens = 64
+const minMeaningfulCacheReuseRatio = 0.10
 
 func (m *Dashboard) pollLogEvents(logPath string, now time.Time) ([]llamacpp.LogEvent, error) {
 	if logPath == "" {
@@ -161,6 +163,7 @@ func (m *Dashboard) updateQueries(now time.Time, model string, slots []llamacpp.
 		query.CompletionTokens = maxInt(query.CompletionTokens, slot.DecodedTokens)
 		query.TotalTokens = maxInt(query.TotalTokens, query.PromptTokens+query.CompletionTokens)
 		query.PromptCacheTokens = maxInt(query.PromptCacheTokens, slot.PromptCacheTokens)
+		query = promoteRestoredCacheReuse(query, now)
 		query.EndedAt = nil
 		if query.LastCacheAction == "invalidate" {
 			query.LastCacheAction = ""
@@ -309,6 +312,10 @@ func (m *Dashboard) applyEventToQuery(event llamacpp.LogEvent, fallbackTime time
 		query.CompletionTokens = maxInt(query.CompletionTokens, event.DecodedTokens)
 		query.TotalTokens = maxInt(query.TotalTokens, query.PromptTokens+query.CompletionTokens)
 		query.LastTimingEventAt = timePtr(eventAt)
+	case "prompt_eval":
+		query.PromptTokens = maxInt(query.PromptTokens, event.PromptTokens)
+		query.TotalTokens = maxInt(query.TotalTokens, query.PromptTokens+query.CompletionTokens)
+		query = promoteRestoredCacheReuse(query, eventAt)
 	case "cache":
 		switch event.CacheAction {
 		case "hit", "load", "reuse":
@@ -327,11 +334,11 @@ func (m *Dashboard) applyEventToQuery(event llamacpp.LogEvent, fallbackTime time
 		}
 	case "warning", "error":
 		if strings.Contains(strings.ToLower(event.Message), "restored context checkpoint") {
-			query.LastCacheAction = "restore"
 			query.LastCacheEventAt = timePtr(eventAt)
-			query.LastCacheReuseAt = timePtr(eventAt)
+			query.CacheRestoredTokens = maxInt(query.CacheRestoredTokens, event.RestoredTokens)
+			query.cacheRestoreEvents++
 			query.CacheCached = true
-			query.CacheReuseCount++
+			query = promoteRestoredCacheReuse(query, eventAt)
 		}
 		if strings.Contains(strings.ToLower(event.Message), "erased invalidated context checkpoint") {
 			query.CacheCached = false
@@ -347,6 +354,43 @@ func (m *Dashboard) applyEventToQuery(event llamacpp.LogEvent, fallbackTime time
 	}
 	query.LastEventAt = timePtr(eventAt)
 	m.queries[query.ID] = query
+}
+
+func promoteRestoredCacheReuse(query QuerySummary, eventAt time.Time) QuerySummary {
+	if query.CacheRestoredTokens <= 0 || query.cacheRestoreEventsCounted >= query.cacheRestoreEvents {
+		return query
+	}
+	if !isMeaningfulCacheReuse(query.CacheRestoredTokens, query.PromptTokens) {
+		query.CacheReuseRatio = cacheReuseRatio(query.CacheRestoredTokens, query.PromptTokens)
+		return query
+	}
+	query.LastCacheAction = "restore"
+	query.LastCacheEventAt = timePtr(eventAt)
+	query.LastCacheReuseAt = timePtr(eventAt)
+	query.CacheCached = true
+	for query.cacheRestoreEventsCounted < query.cacheRestoreEvents {
+		query.CacheReuseCount++
+		query.cacheRestoreEventsCounted++
+	}
+	query.CacheReuseRatio = cacheReuseRatio(query.CacheRestoredTokens, query.PromptTokens)
+	return query
+}
+
+func isMeaningfulCacheReuse(restoredTokens, promptTokens int) bool {
+	if restoredTokens < minMeaningfulCacheReuseTokens {
+		return false
+	}
+	if promptTokens <= 0 {
+		return false
+	}
+	return cacheReuseRatio(restoredTokens, promptTokens) >= minMeaningfulCacheReuseRatio
+}
+
+func cacheReuseRatio(restoredTokens, promptTokens int) float64 {
+	if restoredTokens <= 0 || promptTokens <= 0 {
+		return 0
+	}
+	return float64(restoredTokens) / float64(promptTokens)
 }
 
 func (m *Dashboard) pruneAndCopyQueries() []QuerySummary {
