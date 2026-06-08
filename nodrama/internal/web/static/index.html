@@ -871,6 +871,10 @@ const I18N = {
     "chat.thinking_auto":      "Auto",
     "chat.thinking_on":        "Think",
     "chat.thinking_off":       "No think",
+    "chat.keep_thinking":      "Send thinking in history",
+    "chat.cache_prompt":       "Request cache reuse",
+    "chat.slot":               "Pinned slot",
+    "chat.slot_auto":          "Auto",
     "chat.temperature":        "Temperature",
     "chat.top_p":              "Top-p",
     "chat.max_tokens":         "Max tokens",
@@ -1086,6 +1090,10 @@ const I18N = {
     "chat.thinking_auto":      "자동",
     "chat.thinking_on":        "생각",
     "chat.thinking_off":       "생각 안 함",
+    "chat.keep_thinking":      "생각 내용을 기록에 포함",
+    "chat.cache_prompt":       "캐시 재사용 요청",
+    "chat.slot":               "고정 슬롯",
+    "chat.slot_auto":          "자동",
     "chat.temperature":        "Temperature",
     "chat.top_p":              "Top-p",
     "chat.max_tokens":         "최대 토큰",
@@ -1302,6 +1310,10 @@ const I18N = {
     "chat.thinking_auto":      "自動",
     "chat.thinking_on":        "Think",
     "chat.thinking_off":       "No think",
+    "chat.keep_thinking":      "思考を履歴に送信",
+    "chat.cache_prompt":       "キャッシュ再利用を要求",
+    "chat.slot":               "固定スロット",
+    "chat.slot_auto":          "自動",
     "chat.temperature":        "Temperature",
     "chat.top_p":              "Top-p",
     "chat.max_tokens":         "最大トークン",
@@ -1518,6 +1530,10 @@ const I18N = {
     "chat.thinking_auto":      "自动",
     "chat.thinking_on":        "思考",
     "chat.thinking_off":       "不思考",
+    "chat.keep_thinking":      "在历史中发送思考",
+    "chat.cache_prompt":       "请求缓存复用",
+    "chat.slot":               "固定 slot",
+    "chat.slot_auto":          "自动",
     "chat.temperature":        "Temperature",
     "chat.top_p":              "Top-p",
     "chat.max_tokens":         "最大 token 数",
@@ -1734,6 +1750,10 @@ const I18N = {
     "chat.thinking_auto":      "Auto",
     "chat.thinking_on":        "Pensar",
     "chat.thinking_off":       "No pensar",
+    "chat.keep_thinking":      "Enviar razonamiento en historial",
+    "chat.cache_prompt":       "Solicitar reutilización de caché",
+    "chat.slot":               "Slot fijo",
+    "chat.slot_auto":          "Auto",
     "chat.temperature":        "Temperatura",
     "chat.top_p":              "Top-p",
     "chat.max_tokens":         "Tokens máximos",
@@ -2437,6 +2457,7 @@ function applySnapshot(snapshot, opts) {
     }
     renderGuidance();
     updateChatTokenSlider();
+    updateChatSlotOptions();
   }
 }
 
@@ -4069,7 +4090,16 @@ const chat = {
   messages: [],          /* {role, content, stats?} */
   systemPrompt: "",
   inflight: null,        /* AbortController */
-  params: { temperature: 0.7, top_p: 0.95, max_tokens: 512, fanout: 1, thinking: "auto" },
+  params: {
+    temperature: 0.7,
+    top_p: 0.95,
+    max_tokens: 512,
+    fanout: 1,
+    thinking: "auto",
+    keepThinking: false,
+    cachePrompt: true,
+    slot: -1,
+  },
 };
 
 /* Keep the most recent turns. A turn is one user + one assistant message,
@@ -4102,6 +4132,33 @@ function updateChatTokenSlider() {
     range.value = String(max);
   }
   value.textContent = String(Math.round(chat.params.max_tokens || Number(range.value) || 0));
+}
+
+function updateChatSlotOptions() {
+  const select = $("#chat-slot");
+  if (!select) return;
+  const current = String(chat.params.slot);
+  const options = [el("option", { value: "-1" }, t("chat.slot_auto"))];
+  for (const slot of state.slots) {
+    options.push(el("option", { value: String(slot.id) }, "slot " + slot.id));
+  }
+  select.innerHTML = "";
+  for (const option of options) select.appendChild(option);
+  const stillExists = Array.from(select.options).some((option) => option.value === current);
+  if (stillExists) {
+    select.value = current;
+  } else {
+    chat.params.slot = -1;
+    select.value = "-1";
+  }
+}
+
+function chatHistoryContent(message) {
+  if (!message || message.role !== "assistant") return message ? message.content : "";
+  if (!chat.params.keepThinking || !message.reasoning) return message.content || "";
+  const content = message.content || "";
+  const reasoning = message.reasoning || "";
+  return "<think>\n" + reasoning + "\n</think>" + (content ? "\n\n" + content : "");
 }
 
 /* ── Markdown → DOM renderer ────────────────────────────────────────── */
@@ -4425,6 +4482,26 @@ function renderChatPanel() {
     el("option", { value: "no_think" }, t("chat.thinking_off")),
   ]);
   thinkingMode.value = chat.params.thinking;
+  const cachePrompt = el("input", {
+    type: "checkbox",
+    id: "chat-cache-prompt",
+    checked: chat.params.cachePrompt ? "checked" : null,
+    onchange: (e) => { chat.params.cachePrompt = !!e.target.checked; },
+  });
+  const keepThinking = el("input", {
+    type: "checkbox",
+    id: "chat-keep-thinking",
+    checked: chat.params.keepThinking ? "checked" : null,
+    onchange: (e) => { chat.params.keepThinking = !!e.target.checked; },
+  });
+  const slotSelect = el("select", {
+    id: "chat-slot",
+    onchange: (e) => { chat.params.slot = parseInt(e.target.value, 10); },
+  }, [
+    el("option", { value: "-1" }, t("chat.slot_auto")),
+    ...state.slots.map((s) => el("option", { value: String(s.id) }, "slot " + s.id)),
+  ]);
+  slotSelect.value = String(chat.params.slot);
   const tempRange = paramSlider("chat-p-temp", "chat.temperature",
                                  chat.params.temperature, 0, 2, 0.05,
                                  (v) => chat.params.temperature = v);
@@ -4442,6 +4519,9 @@ function renderChatPanel() {
   const side = el("div", { class: "chat-side", id: "chat-side", hidden: !chat.open }, [
     el("label", null, [t("chat.system_prompt"), sysTa]),
     el("label", null, [t("chat.thinking_mode"), thinkingMode]),
+    el("label", null, [t("chat.slot"), slotSelect]),
+    el("label", null, [cachePrompt, " " + t("chat.cache_prompt")]),
+    el("label", null, [keepThinking, " " + t("chat.keep_thinking")]),
     tempRange, topPRange, maxTok, fanout,
     clearBtn,
   ]);
@@ -4621,11 +4701,15 @@ async function sendChat() {
     temperature: chat.params.temperature,
     top_p: chat.params.top_p,
     max_tokens: chat.params.max_tokens | 0,
+    cache_prompt: !!chat.params.cachePrompt,
   };
+  if ((chat.params.slot | 0) >= 0) {
+    payload.id_slot = chat.params.slot | 0;
+  }
   if (chat.systemPrompt && chat.systemPrompt.trim()) {
     payload.messages.push({ role: "system", content: chat.systemPrompt.trim() });
   }
-  for (const m of chat.messages) payload.messages.push({ role: m.role, content: m.content });
+  for (const m of chat.messages) payload.messages.push({ role: m.role, content: chatHistoryContent(m) });
   applyThinkingMode(payload, chat.params.thinking);
 
   const ctrl = new AbortController();
@@ -4642,7 +4726,11 @@ async function sendChat() {
     /* collapse the user-facing assistant history into the first successful response */
     const first = results.find((r) => r.status === "fulfilled" && r.value);
     if (first) {
-      chat.messages.push({ role: "assistant", content: first.value.content });
+      chat.messages.push({
+        role: "assistant",
+        content: first.value.content,
+        reasoning: first.value.reasoning || "",
+      });
       trimChatHistory();
     }
     setChatStats("");
