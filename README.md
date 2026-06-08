@@ -1,5 +1,7 @@
 # llama.nodrama
 
+**Read this in:** [🇺🇸 English](README.md) | [🇰🇷 한국어](docs/readme/README.ko-KR.md) | [🇯🇵 日本語](docs/readme/README.ja-JP.md) | [🇨🇳 简体中文](docs/readme/README.zh-CN.md) | [🇪🇸 Español](docs/readme/README.es-ES.md)
+
 `llama.nodrama` is a small Go dashboard for operating `llama.cpp` servers. It
 exists because running `llama.cpp` with multiple slots should not feel like
 guesswork. The goal is simple: point it at your llama, get a clear visual
@@ -99,6 +101,11 @@ exists, the version label highlights and links directly to that release.
 Runtime logs use explicit levels (`INFO`, `WARN`, `ERROR`). Set
 `LLAMA_NODRAMA_DEBUG=1` to include detailed endpoint probe logs.
 
+## Privacy
+
+`llama.nodrama` runs locally and does not collect, sell, or transmit user data
+to Hangry Labs. See [PRIVACY.md](PRIVACY.md) for the full privacy statement.
+
 ## Releases
 
 CI runs Go formatting, vet, tests, and cross-platform builds on pushes and pull
@@ -134,11 +141,11 @@ pushes are for validation only; public installs should use tagged releases.
 Normally you should not compile release binaries locally; push the tag and let
 the release workflow build and attach them to the GitHub Release.
 
-The release workflow also attaches `HangryLabs.LlamaNodrama.winget.yaml`, a
-Winget singleton manifest for the Windows amd64 and arm64 portable zips. To
-submit it to Winget, copy that manifest into the `microsoft/winget-pkgs`
-manifest path, validate it with `winget validate`, test it with
-`winget install --manifest`, and open the PR to the Winget community repository.
+The release workflow also attaches `HangryLabs.LlamaNodrama.winget.zip`, a
+Winget manifest bundle for the Windows amd64 and arm64 portable zips. To submit
+it to Winget, extract that bundle into the `microsoft/winget-pkgs` manifest
+path, validate it with `winget validate`, test it with `winget install
+--manifest`, and open the PR to the Winget community repository.
 
 Windows release binaries include an application icon, manifest, and file
 properties generated from `nodrama/VERSION` by `go-winres`. The PNG icon source

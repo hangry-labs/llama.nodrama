@@ -134,6 +134,7 @@ jobs:
           Publisher: Hangry Labs
           PublisherUrl: https://github.com/hangry-labs
           PublisherSupportUrl: https://github.com/hangry-labs/llama.nodrama/issues
+          PrivacyUrl: https://github.com/hangry-labs/llama.nodrama/blob/master/PRIVACY.md
           Author: Hangry Labs
           PackageName: llama.nodrama
           PackageUrl: https://github.com/hangry-labs/llama.nodrama
@@ -148,6 +149,50 @@ jobs:
             - dashboard
             - monitor
           ManifestType: defaultLocale
+          ManifestVersion: 1.10.0
+          EOF
+          cat > "${winget_dir}/HangryLabs.LlamaNodrama.locale.ko-KR.yaml" <<EOF
+          # yaml-language-server: \$schema=https://aka.ms/winget-manifest.locale.1.10.0.schema.json
+          PackageIdentifier: HangryLabs.LlamaNodrama
+          PackageVersion: ${winget_version}
+          PackageLocale: ko-KR
+          Publisher: Hangry Labs
+          PackageName: llama.nodrama
+          ShortDescription: llama.cpp 서버 슬롯, 처리량, 캐시 재사용, 요청 흐름을 시각적으로 모니터링하는 대시보드.
+          ManifestType: locale
+          ManifestVersion: 1.10.0
+          EOF
+          cat > "${winget_dir}/HangryLabs.LlamaNodrama.locale.ja-JP.yaml" <<EOF
+          # yaml-language-server: \$schema=https://aka.ms/winget-manifest.locale.1.10.0.schema.json
+          PackageIdentifier: HangryLabs.LlamaNodrama
+          PackageVersion: ${winget_version}
+          PackageLocale: ja-JP
+          Publisher: Hangry Labs
+          PackageName: llama.nodrama
+          ShortDescription: llama.cpp サーバーのスロット、スループット、キャッシュ再利用、リクエストの流れを可視化するダッシュボード。
+          ManifestType: locale
+          ManifestVersion: 1.10.0
+          EOF
+          cat > "${winget_dir}/HangryLabs.LlamaNodrama.locale.zh-CN.yaml" <<EOF
+          # yaml-language-server: \$schema=https://aka.ms/winget-manifest.locale.1.10.0.schema.json
+          PackageIdentifier: HangryLabs.LlamaNodrama
+          PackageVersion: ${winget_version}
+          PackageLocale: zh-CN
+          Publisher: Hangry Labs
+          PackageName: llama.nodrama
+          ShortDescription: 用于可视化监控 llama.cpp 服务器槽位、吞吐量、缓存复用和请求流程的仪表盘。
+          ManifestType: locale
+          ManifestVersion: 1.10.0
+          EOF
+          cat > "${winget_dir}/HangryLabs.LlamaNodrama.locale.es-ES.yaml" <<EOF
+          # yaml-language-server: \$schema=https://aka.ms/winget-manifest.locale.1.10.0.schema.json
+          PackageIdentifier: HangryLabs.LlamaNodrama
+          PackageVersion: ${winget_version}
+          PackageLocale: es-ES
+          Publisher: Hangry Labs
+          PackageName: llama.nodrama
+          ShortDescription: Panel visual para supervisar slots, rendimiento, caché y solicitudes de llama.cpp.
+          ManifestType: locale
           ManifestVersion: 1.10.0
           EOF
           (cd dist && zip -qr HangryLabs.LlamaNodrama.winget.zip winget)
