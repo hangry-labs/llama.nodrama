@@ -83,6 +83,43 @@ func TestRecordMetricHistoryTracksPeakFacts(t *testing.T) {
 	}
 }
 
+func TestActiveContextUsagePrefersCacheLimitAndCountsActiveSlots(t *testing.T) {
+	usage := activeContextUsage([]llamacpp.Slot{
+		{ID: 0, IsProcessing: true, ContextTokens: 262144, ContextEstimateTokens: 100000},
+		{ID: 1, IsProcessing: false, ContextTokens: 262144, ContextEstimateTokens: 90000},
+		{ID: 2, IsProcessing: true, ContextTokens: 262144, ContextEstimateTokens: 50000},
+	}, llamacpp.PropsSummary{}, []llamacpp.LogEvent{{
+		CacheLimitTokens: 358400,
+	}})
+
+	if usage.UsedTokens != 150000 {
+		t.Fatalf("used tokens = %d", usage.UsedTokens)
+	}
+	if usage.CapacityTokens != 358400 {
+		t.Fatalf("capacity = %d", usage.CapacityTokens)
+	}
+	if usage.Source != "shared cache limit" {
+		t.Fatalf("source = %q", usage.Source)
+	}
+	if math.Abs(usage.Ratio-(150000.0/358400.0)) > 0.000001 {
+		t.Fatalf("ratio = %v", usage.Ratio)
+	}
+}
+
+func TestActiveContextUsageFallsBackToSlotCapacity(t *testing.T) {
+	usage := activeContextUsage([]llamacpp.Slot{
+		{ID: 0, IsProcessing: true, ContextTokens: 100, ContextEstimateTokens: 40},
+		{ID: 1, IsProcessing: true, ContextTokens: 100, ContextEstimateTokens: 50},
+	}, llamacpp.PropsSummary{}, nil)
+
+	if usage.UsedTokens != 90 || usage.CapacityTokens != 200 {
+		t.Fatalf("usage = %#v", usage)
+	}
+	if usage.Source != "slot capacity fallback" {
+		t.Fatalf("source = %q", usage.Source)
+	}
+}
+
 func TestDashboardUpdateSettingsAppliesRuntimeConfig(t *testing.T) {
 	dashboard := NewDashboard(nil, Config{
 		Server:       DefaultServer,

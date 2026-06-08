@@ -591,18 +591,37 @@ function slotContextEstimateTokens(slot) {
   return Math.max(prompt, processed, cache) + slotDecodedTokens(slot);
 }
 
-function aggregateContextUsage() {
-  let used = 0;
-  let capacity = 0;
-  for (const slot of state.slots || []) {
-    const cap = slotContextTokens(slot);
-    if (cap > 0) capacity += cap;
-    used += Math.max(0, slotContextEstimateTokens(slot));
+function promptCacheUsedTokensEstimate(cacheState) {
+  if (!cacheState || !cacheState.cacheUsedMiB || !cacheState.cacheLimitMiB) return 0;
+  const tokenLimit = cacheState.cacheEstTokens || cacheState.cacheLimitTokens || 0;
+  if (tokenLimit <= 0) return 0;
+  return Math.round(Math.max(0, Math.min(1, cacheState.cacheUsedMiB / cacheState.cacheLimitMiB)) * tokenLimit);
+}
+
+function latestPromptCacheState() {
+  const events = Array.isArray(state.events) ? state.events : [];
+  for (let i = events.length - 1; i >= 0; i--) {
+    const event = events[i];
+    if (event && event.cacheLimitTokens) return event;
   }
+  const lines = logState && Array.isArray(logState.lines) ? logState.lines : [];
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const parsed = parseCacheStateLine(lines[i]);
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
+function parseCacheStateLine(line) {
+  const m = String(line || "").match(/cache state:\s*(\d+)\s+prompts,\s*([0-9]+(?:\.[0-9]+)?)\s+MiB\s*\(limits:\s*([0-9]+(?:\.[0-9]+)?)\s+MiB,\s*(\d+)\s+tokens,\s*(\d+)\s+est\)/);
+  if (!m) return null;
   return {
-    used,
-    capacity,
-    ratio: capacity > 0 ? used / capacity : 0,
+    cachePrompts: parseInt(m[1], 10),
+    cacheUsedMiB: parseFloat(m[2]),
+    cacheLimitMiB: parseFloat(m[3]),
+    cacheLimitTokens: parseInt(m[4], 10),
+    cacheEstTokens: parseInt(m[5], 10),
+    source: "log tail",
   };
 }
 
@@ -1072,6 +1091,12 @@ const CONFIG_OPTION_HELP = {
   "--host": "Address llama-server binds to.",
   "--port": "Port llama-server listens on.",
   "--sleep-idle-seconds": "Idle time before llama.cpp unloads the model. Sleeping frees resources but the next request pays reload latency.",
+  "prompt_cache_limit_tokens": "Shared prompt/KV cache token limit observed from llama.cpp log lines like 'srv update: - cache state ... limits: ... tokens'. This is the real shared cache ceiling when shared cache is enabled.",
+  "prompt_cache_used_tokens_est": "Estimated shared prompt/KV cache occupancy in tokens. llama.cpp logs memory used and token capacity, so llama.nodrama estimates used tokens from used_mib / limit_mib * est_tokens.",
+  "prompt_cache_limit_mib": "Shared prompt/KV cache memory limit observed from llama.cpp cache-state logs.",
+  "prompt_cache_used_mib": "Current prompt/KV cache memory use observed from the latest llama.cpp cache-state log.",
+  "prompt_cache_prompts": "Number of prompts currently tracked in llama.cpp's prompt cache according to the latest cache-state log.",
+  "prompt_cache_est_tokens": "llama.cpp's estimated prompt-cache token capacity from the latest cache-state log.",
   "model_path": "Model file currently reported by /props.",
   "model_alias": "Model alias currently reported by /props.",
   "total_slots": "Number of slots reported by llama.cpp.",
@@ -1103,21 +1128,30 @@ function configOptionCard(option) {
   const label = option.label;
   const help = option.help || configHelpFor(label);
   const title = option.source ? (help + " Source: " + option.source) : help;
-  return el("div", { class: "option-card", title }, [
+  const open = () => showModal({
+    title: label,
+    bodyNode: el("div", null, [
+      el("div", null, help),
+      option.source ? el("div", { class: "sub", style: "margin-top: 8px;" }, "Source: " + option.source) : null,
+    ]),
+    okLabel: t("common.close"),
+    onOk: () => {},
+  });
+  return el("div", {
+    class: "option-card",
+    title,
+    role: "button",
+    tabindex: "0",
+    onclick: open,
+    onkeydown: (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        open();
+      }
+    },
+  }, [
     el("div", { class: "option-head" }, [
       el("span", null, label),
-      el("button", {
-        class: "info-btn",
-        type: "button",
-        title: help,
-        "aria-label": label + ": " + help,
-        onclick: () => showModal({
-          title: label,
-          bodyNode: el("div", null, help),
-          okLabel: t("common.close"),
-          onOk: () => {},
-        }),
-      }, "?"),
     ]),
     el("div", { class: "option-value" }, formatConfigValue(option.value)),
     option.source ? el("div", { class: "option-source" }, option.source) : null,
@@ -1176,6 +1210,15 @@ function effectiveConfigOptions(props, meta) {
   add("chat_template", props.chat_template ? props.chat_template.split("\n").slice(0, 3).join(" / ").slice(0, 220) : "", "/props");
   add("build_info", props.build_info, "/props");
   if (props.is_sleeping !== undefined) add("is_sleeping", props.is_sleeping, "/props");
+  const cacheState = latestPromptCacheState();
+  if (cacheState) {
+    add("prompt_cache_limit_tokens", cacheState.cacheLimitTokens, "llama.cpp logs");
+    add("prompt_cache_used_tokens_est", promptCacheUsedTokensEstimate(cacheState), "llama.cpp logs");
+    add("prompt_cache_est_tokens", cacheState.cacheEstTokens, "llama.cpp logs");
+    add("prompt_cache_limit_mib", cacheState.cacheLimitMiB, "llama.cpp logs");
+    add("prompt_cache_used_mib", cacheState.cacheUsedMiB, "llama.cpp logs");
+    add("prompt_cache_prompts", cacheState.cachePrompts, "llama.cpp logs");
+  }
   const defaults = props.default_generation_settings || {};
   for (const key of Object.keys(defaults).sort()) {
     add("default." + key, defaults[key], "/props default_generation_settings");
@@ -1556,8 +1599,9 @@ const logState = {
   lastModified: null,
   lines: [],
   follow: true,
-  hideIdle: false,
+  hideIdle: true,
   filter: "",
+  cacheSignature: "",
 };
 
 async function detectLog() {
@@ -1711,15 +1755,28 @@ function applyLogPayload(payload) {
       for (let i = 0; i < removed && view.firstChild; i++) view.removeChild(view.firstChild);
     }
     renderLogLines(false);
+    refreshConfigForCacheState();
     return;
   }
 
   if (selectionInsideLogView()) {
     logState.lines = lines;
+    refreshConfigForCacheState();
     return;
   }
   logState.lines = lines;
   renderLogLines(true);
+  refreshConfigForCacheState();
+}
+
+function refreshConfigForCacheState() {
+  const cacheState = latestPromptCacheState();
+  const signature = cacheState
+    ? [cacheState.cachePrompts, cacheState.cacheUsedMiB, cacheState.cacheLimitMiB, cacheState.cacheLimitTokens, cacheState.cacheEstTokens].join(":")
+    : "";
+  if (signature === logState.cacheSignature) return;
+  logState.cacheSignature = signature;
+  renderServerConfigCard();
 }
 
 function ensureLogSection() {
@@ -1742,6 +1799,7 @@ function ensureLogSection() {
       ]),
       el("label", null, [
         el("input", { type: "checkbox", id: "log-hide-idle",
+                      checked: logState.hideIdle ? "checked" : null,
                       onchange: () => { logState.hideIdle = $("#log-hide-idle").checked; refreshLogVisibility(); }}),
         " " + t("log.hide_idle"),
       ]),
@@ -1918,8 +1976,11 @@ const METRIC_CARDS = [
     metric: "llamacpp:n_busy_slots_per_decode",  unit: "",      min: 0,
     help: "llama.cpp's average number of slots included in decode batches. It helps show batching efficiency/parallelism: near 1 means mostly single-slot decode; higher values mean decode calls often batch work from several slots. It is not the exact current busy-slot count." },
   { id: "context_used", titleKey: "metrics.context_used",
-    metric: "nodrama:context_used_tokens", unit: "tok", min: 0, contextUsed: true, percent: true,
-    help: "Aggregate live slot context estimate. llama.nodrama sums each visible slot's prompt/cache/generated-token estimate and compares it with the sum of visible slot context capacities. This is a practical context-occupancy estimate, not exact KV memory usage." },
+    metric: "nodrama:context_active_tokens", unit: "tok", min: 0, contextUsed: true,
+    capacityMetric: "nodrama:context_active_capacity_tokens",
+    ratioMetric: "nodrama:context_active_ratio",
+    warnRatio: 0.80, badRatio: 0.90, peakNote: true,
+    help: "Active slot context estimate. llama.nodrama sums context currently used by active slots and compares it with the server context capacity from cache-state startup/log data when available, otherwise visible slot capacity. Cached idle prompts are not counted as active slot context." },
   { id: "n_tokens_max",  titleKey: "metrics.n_tokens_max",
     metric: "llamacpp:n_tokens_max",             unit: "tok",   min: 0,
     peakNote: true,
@@ -1952,6 +2013,15 @@ function fmtNumber(n, opts) {
   if (n >= 100) return n.toFixed(0);
   if (n >= 10)  return n.toFixed(1);
   return n.toFixed(2);
+}
+
+function fmtTokensCompact(n) {
+  if (n === undefined || n === null || !isFinite(n)) return "—";
+  const value = Math.max(0, Math.round(n));
+  if (value >= 1e9) return Math.round(value / 1e9) + "G";
+  if (value >= 1e6) return Math.round(value / 1e6) + "M";
+  if (value >= 1e3) return Math.round(value / 1e3) + "k";
+  return String(value);
 }
 
 function fmtDuration(seconds) {
@@ -2004,7 +2074,7 @@ function ensureMetricCards() {
         el("div", { class: "value", id: "metric-" + c.id + "-value" }, "—"),
         el("div", { class: "unit" }, c.unit || ""),
       ]),
-      c.percent
+      (c.percent || c.contextUsed)
         ? el("div", { class: "pct-bar", id: "metric-" + c.id + "-bar" },
             el("span", { style: "width: 0%" }))
         : null,
@@ -2042,35 +2112,41 @@ function renderMetrics(parsed, metricHistory, metricFacts) {
   const historyByMetric = metricHistory || {};
   const factsByMetric = metricFacts || {};
   for (const c of METRIC_CARDS) {
-    const context = c.contextUsed ? aggregateContextUsage() : null;
-    const v = context ? context.ratio : parsed[c.metric];
+    const v = parsed[c.metric];
+    const ratio = c.ratioMetric ? (parsed[c.ratioMetric] || 0) : v;
+    const capacity = c.capacityMetric ? (parsed[c.capacityMetric] || 0) : 0;
     const points = normalizeHistoryPoints(historyByMetric[c.metric]);
 
     const card = $("#metric-" + c.id);
     card.classList.remove("warn", "bad", "disabled");
+    if (c.warnRatio !== undefined && ratio >= c.warnRatio) card.classList.add("warn");
+    if (c.badRatio  !== undefined && ratio >= c.badRatio)  { card.classList.remove("warn"); card.classList.add("bad"); }
     if (c.warnAt !== undefined && v >= c.warnAt) card.classList.add("warn");
     if (c.badAt  !== undefined && v >= c.badAt)  { card.classList.remove("warn"); card.classList.add("bad"); }
 
-    $("#metric-" + c.id + "-value").textContent = context
-      ? (context.capacity > 0 ? (fmtNumber(context.used) + " / " + fmtNumber(context.capacity)) : "—")
+    $("#metric-" + c.id + "-value").textContent = c.contextUsed
+      ? (capacity > 0 ? (fmtTokensCompact(v) + " / " + fmtTokensCompact(capacity)) : "—")
       : (c.duration ? fmtDuration(v) : fmtNumber(v, { percent: c.percent }));
 
     const note = $("#metric-" + c.id + "-note");
     if (note) {
       const fact = factsByMetric[c.metric];
-      note.textContent = context && context.capacity > 0
-        ? (fmtNumber(context.ratio, { percent: true }) + "%")
+      note.textContent = c.contextUsed && capacity > 0
+        ? (fmtNumber(ratio, { percent: true }) + "% · " +
+           (fact && fact.peakAt ? "peak " + fmtTokensCompact(fact.peakValue) + " at " + fmtTime(fact.peakAt) : "peak —"))
         : c.peakNote && fact && fact.peakAt
         ? ("peak " + fmtNumber(fact.peakValue) + " at " + fmtTime(fact.peakAt))
         : "";
     }
 
-    if (c.percent) {
+    if (c.percent || c.contextUsed) {
       const bar = $("#metric-" + c.id + "-bar");
       const span = bar.querySelector("span");
-      const pct = Math.max(0, Math.min(100, (v || 0) * 100));
+      const pct = Math.max(0, Math.min(100, (ratio || 0) * 100));
       span.style.width = pct.toFixed(1) + "%";
       bar.classList.remove("warn", "bad");
+      if (c.warnRatio !== undefined && ratio >= c.warnRatio) bar.classList.add("warn");
+      if (c.badRatio  !== undefined && ratio >= c.badRatio)  { bar.classList.remove("warn"); bar.classList.add("bad"); }
       if (c.warnAt !== undefined && v >= c.warnAt) bar.classList.add("warn");
       if (c.badAt  !== undefined && v >= c.badAt)  { bar.classList.remove("warn"); bar.classList.add("bad"); }
     }

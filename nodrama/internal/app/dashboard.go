@@ -59,6 +59,13 @@ type MetricFact struct {
 	PeakAt    *time.Time `json:"peakAt,omitempty"`
 }
 
+type ContextUsage struct {
+	UsedTokens     int     `json:"usedTokens"`
+	CapacityTokens int     `json:"capacityTokens"`
+	Ratio          float64 `json:"ratio"`
+	Source         string  `json:"source,omitempty"`
+}
+
 type SlotHistoryPoint struct {
 	T                      int64   `json:"t"`
 	ID                     int     `json:"id"`
@@ -154,6 +161,10 @@ type Overview struct {
 	PromptTokensTotal      float64 `json:"promptTokensTotal"`
 	GeneratedTokensTotal   float64 `json:"generatedTokensTotal"`
 	ContextTokens          int     `json:"contextTokens"`
+	ContextUsedTokens      int     `json:"contextUsedTokens"`
+	ContextCapacityTokens  int     `json:"contextCapacityTokens"`
+	ContextUsedRatio       float64 `json:"contextUsedRatio"`
+	ContextCapacitySource  string  `json:"contextCapacitySource,omitempty"`
 	ModelAlias             string  `json:"modelAlias"`
 }
 
@@ -539,6 +550,55 @@ func (m *Dashboard) copyMetricFacts() map[string]MetricFact {
 	return out
 }
 
+func activeContextUsage(slots []llamacpp.Slot, props llamacpp.PropsSummary, events []llamacpp.LogEvent) ContextUsage {
+	used := 0
+	slotCapacity := 0
+	for _, slot := range slots {
+		if slot.ContextTokens > 0 {
+			slotCapacity += slot.ContextTokens
+		}
+		if slot.IsProcessing && slot.ContextEstimateTokens > 0 {
+			used += slot.ContextEstimateTokens
+		}
+	}
+
+	capacity := 0
+	source := ""
+	if event := latestCacheStateEvent(events); event != nil && event.CacheLimitTokens > 0 {
+		capacity = event.CacheLimitTokens
+		source = "shared cache limit"
+	} else if slotCapacity > 0 {
+		capacity = slotCapacity
+		source = "slot capacity fallback"
+	} else if props.ContextTokens > 0 && props.TotalSlots > 0 {
+		capacity = props.ContextTokens * props.TotalSlots
+		source = "props context fallback"
+	} else if props.ContextTokens > 0 {
+		capacity = props.ContextTokens
+		source = "props context fallback"
+	}
+
+	ratio := 0.0
+	if capacity > 0 {
+		ratio = float64(used) / float64(capacity)
+	}
+	return ContextUsage{
+		UsedTokens:     used,
+		CapacityTokens: capacity,
+		Ratio:          ratio,
+		Source:         source,
+	}
+}
+
+func latestCacheStateEvent(events []llamacpp.LogEvent) *llamacpp.LogEvent {
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].CacheLimitTokens > 0 {
+			return &events[i]
+		}
+	}
+	return nil
+}
+
 func trimHistoryPoints(points []HistoryPoint, cutoff int64) []HistoryPoint {
 	i := 0
 	for i < len(points) && points[i].T < cutoff {
@@ -882,9 +942,23 @@ func (m *Dashboard) poll(parent context.Context) {
 	} else if metricsProbe.OK {
 		metrics.PromptTokensLivePerSec, metrics.GenerationTokensLivePerSec = m.deriveLiveRates(metricsAt, metrics.PromptTokensTotal, metrics.GeneratedTokensTotal)
 	}
+
+	snapshotAt := time.Now()
+	events := previous.Events
+	if cfg.LogPath != "" {
+		parsedEvents, err := m.pollLogEvents(cfg.LogPath, snapshotAt)
+		if err != nil {
+			warnings = append(warnings, "Configured llama.cpp log could not be read: "+err.Error())
+		}
+		events = parsedEvents
+	}
+	contextUsage := activeContextUsage(slots, props, events)
 	rawMetrics["nodrama:prompt_tokens_rate"] = metrics.PromptTokensLivePerSec
 	rawMetrics["nodrama:tokens_predicted_rate"] = metrics.GenerationTokensLivePerSec
-	history := m.recordMetricHistory(time.Now(), rawMetrics)
+	rawMetrics["nodrama:context_active_tokens"] = float64(contextUsage.UsedTokens)
+	rawMetrics["nodrama:context_active_capacity_tokens"] = float64(contextUsage.CapacityTokens)
+	rawMetrics["nodrama:context_active_ratio"] = contextUsage.Ratio
+	history := m.recordMetricHistory(snapshotAt, rawMetrics)
 	metricFacts := m.copyMetricFacts()
 
 	models := previous.Models
@@ -988,15 +1062,6 @@ func (m *Dashboard) poll(parent context.Context) {
 	if modelAlias == "" && len(models) > 0 {
 		modelAlias = models[0].ID
 	}
-	snapshotAt := time.Now()
-	events := previous.Events
-	if cfg.LogPath != "" {
-		parsedEvents, err := m.pollLogEvents(cfg.LogPath, snapshotAt)
-		if err != nil {
-			warnings = append(warnings, "Configured llama.cpp log could not be read: "+err.Error())
-		}
-		events = parsedEvents
-	}
 	history = m.recordSlotHistory(snapshotAt, slots, modelAlias)
 	propsOK := false
 	if probe, ok := endpoints["props"]; ok {
@@ -1014,6 +1079,10 @@ func (m *Dashboard) poll(parent context.Context) {
 		PromptTokensTotal:      metrics.PromptTokensTotal,
 		GeneratedTokensTotal:   metrics.GeneratedTokensTotal,
 		ContextTokens:          props.ContextTokens,
+		ContextUsedTokens:      contextUsage.UsedTokens,
+		ContextCapacityTokens:  contextUsage.CapacityTokens,
+		ContextUsedRatio:       contextUsage.Ratio,
+		ContextCapacitySource:  contextUsage.Source,
 		ModelAlias:             modelAlias,
 	}
 

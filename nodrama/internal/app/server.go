@@ -71,6 +71,12 @@ func Run(ctx context.Context, cfg Config, info BuildInfo) error {
 	mux.HandleFunc("GET /api/snapshot", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, dashboard.Snapshot())
 	})
+	mux.HandleFunc("GET /shortInfo", func(w http.ResponseWriter, r *http.Request) {
+		writeText(w, dashboard.ShortInfo())
+	})
+	mux.HandleFunc("GET /api/shortInfo", func(w http.ResponseWriter, r *http.Request) {
+		writeText(w, dashboard.ShortInfo())
+	})
 	mux.HandleFunc("GET /api/events", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, dashboard.Snapshot().Events)
 	})
@@ -253,6 +259,12 @@ func writeJSON(w http.ResponseWriter, value any) {
 	if err := json.NewEncoder(w).Encode(value); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+func writeText(w http.ResponseWriter, value string) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write([]byte(value))
 }
 
 func withHeaders(next http.Handler) http.Handler {

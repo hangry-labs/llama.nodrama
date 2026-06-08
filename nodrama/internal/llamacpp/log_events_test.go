@@ -62,6 +62,31 @@ func TestParseCacheLogLine(t *testing.T) {
 	}
 }
 
+func TestParseCacheStateLogLine(t *testing.T) {
+	event, ok := ParseLogLine("124.55.424.001 I srv update: - cache state: 13 prompts, 7022.706 MiB (limits: 8192.000 MiB, 358400 tokens, 358400 est)", time.Unix(1_700_000_000, 0))
+	if !ok {
+		t.Fatal("cache state line was not parsed")
+	}
+	if event.Kind != "cache" {
+		t.Fatalf("kind = %q", event.Kind)
+	}
+	if event.CachePrompts != 13 {
+		t.Fatalf("cache prompts = %d", event.CachePrompts)
+	}
+	if event.CacheUsedMiB != 7022.706 {
+		t.Fatalf("cache used MiB = %v", event.CacheUsedMiB)
+	}
+	if event.CacheLimitMiB != 8192.000 {
+		t.Fatalf("cache limit MiB = %v", event.CacheLimitMiB)
+	}
+	if event.CacheLimitTokens != 358400 {
+		t.Fatalf("cache limit tokens = %d", event.CacheLimitTokens)
+	}
+	if event.CacheEstTokens != 358400 {
+		t.Fatalf("cache est tokens = %d", event.CacheEstTokens)
+	}
+}
+
 func TestParseRestoredCheckpointTokens(t *testing.T) {
 	event, ok := ParseLogLine("1699.36.288.943 W slot update_slots: id  1 | task 3079110 | restored context checkpoint (pos_min = 6, pos_max = 6, n_tokens = 7, n_past = 7, size = 62.813 MiB)", time.Unix(1_700_000_000, 0))
 	if !ok {

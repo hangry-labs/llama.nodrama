@@ -69,7 +69,25 @@ func (m *Dashboard) readNewLogLines(logPath string) ([]string, error) {
 		m.logInitialized = true
 		m.logOffset = size
 		m.logPartial = ""
-		return nil, nil
+		start := int64(0)
+		if size > maxLogReadBytes {
+			start = size - maxLogReadBytes
+		}
+		if _, err := file.Seek(start, io.SeekStart); err != nil {
+			return nil, err
+		}
+		data, err := io.ReadAll(file)
+		if err != nil {
+			return nil, err
+		}
+		lines := splitEventLogLines(string(data))
+		cacheStateLines := make([]string, 0, 1)
+		for _, line := range lines {
+			if strings.Contains(line, "cache state:") {
+				cacheStateLines = append(cacheStateLines, line)
+			}
+		}
+		return cacheStateLines, nil
 	}
 	if size == m.logOffset {
 		return nil, nil
@@ -106,6 +124,11 @@ func (m *Dashboard) readNewLogLines(logPath string) ([]string, error) {
 		m.logPartial = ""
 	}
 
+	return splitEventLogLines(text), nil
+}
+
+func splitEventLogLines(text string) []string {
+	text = strings.ReplaceAll(text, "\r\n", "\n")
 	rawLines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
 	lines := make([]string, 0, len(rawLines))
 	for _, line := range rawLines {
@@ -113,7 +136,7 @@ func (m *Dashboard) readNewLogLines(logPath string) ([]string, error) {
 			lines = append(lines, trimmed)
 		}
 	}
-	return lines, nil
+	return lines
 }
 
 func (m *Dashboard) copyLogEvents() []llamacpp.LogEvent {
