@@ -776,6 +776,7 @@ const I18N = {
 
     "log.title":                "Server log (tail)",
     "log.follow":               "Follow tail",
+    "log.hide_idle":            "Hide idle lines",
     "log.search":               "Filter…",
     "log.empty":                "(no lines yet)",
     "log.setup_help_title":     "Log tail setup",
@@ -1005,6 +1006,7 @@ const I18N = {
     "config.effective_note":   "llama-server는 단일 모델 모드에서 CLI 인수를 노출하지 않습니다. 완전한 실행 옵션 가시화가 필요하면 라우터 모드를 사용하세요 (-m 없이 실행).",
     "log.title":            "서버 로그 (tail)",
     "log.follow":           "Tail 따라가기",
+    "log.hide_idle":        "idle 줄 숨기기",
     "log.search":           "필터…",
     "log.empty":            "(아직 줄이 없습니다)",
     "log.setup_help_title": "로그 tail 설정 안내",
@@ -1220,6 +1222,7 @@ const I18N = {
     "config.effective_note":   "llama-server は単一モデルモードで CLI 引数を公開しません。完全な起動オプション可視化が必要であれば、ルーターモード (-m なし) を使用してください。",
     "log.title":            "サーバーログ (tail)",
     "log.follow":           "末尾を追従",
+    "log.hide_idle":        "idle 行を隠す",
     "log.search":           "フィルタ…",
     "log.empty":            "(まだログ行はありません)",
     "log.setup_help_title": "ログ tail の設定",
@@ -1435,6 +1438,7 @@ const I18N = {
     "config.effective_note":   "llama-server 在单模型模式下不暴露 CLI 参数。如需完整启动选项可见性,请使用路由模式 (启动时不指定 -m)。",
     "log.title":            "服务器日志 (tail)",
     "log.follow":           "跟踪末尾",
+    "log.hide_idle":        "隐藏 idle 行",
     "log.search":           "过滤…",
     "log.empty":            "(尚无日志行)",
     "log.setup_help_title": "日志 tail 设置",
@@ -1650,6 +1654,7 @@ const I18N = {
     "config.effective_note":   "llama-server no expone los argumentos CLI en modo de modelo único. Para una visibilidad completa, usa el modo router (inicia llama-server sin -m).",
     "log.title":            "Log del servidor (tail)",
     "log.follow":           "Seguir el final",
+    "log.hide_idle":        "Ocultar líneas idle",
     "log.search":           "Filtrar…",
     "log.empty":            "(aún no hay líneas)",
     "log.setup_help_title": "Configuración del tail de logs",
@@ -2431,6 +2436,7 @@ function applySnapshot(snapshot, opts) {
       renderBootSummary();
     }
     renderGuidance();
+    updateChatTokenSlider();
   }
 }
 
@@ -3172,6 +3178,7 @@ const logState = {
   lastModified: null,
   lines: [],
   follow: true,
+  hideIdle: false,
   filter: "",
 };
 
@@ -3243,18 +3250,58 @@ function renderLogLines(replace) {
   const view = $("#log-view");
   if (!view) return;
   if (replace) view.innerHTML = "";
-  const filter = logState.filter.toLowerCase();
   const start = replace ? 0 : view.childNodes.length;
   for (let i = start; i < logState.lines.length; i++) {
     const line = logState.lines[i];
     const ln = el("span", { class: "ln" });
     ln.appendChild(ansiToFragment(line));
-    if (filter && line.toLowerCase().indexOf(filter) === -1) {
+    if (!shouldShowLogLine(line)) {
       ln.classList.add("hidden");
     }
     view.appendChild(ln);
   }
   if (logState.follow) view.scrollTop = view.scrollHeight;
+}
+
+function shouldShowLogLine(line) {
+  const lower = String(line || "").toLowerCase();
+  const filter = logState.filter.toLowerCase();
+  if (logState.hideIdle && lower.includes("update_slots: all slots are idle")) return false;
+  return !filter || lower.indexOf(filter) !== -1;
+}
+
+function refreshLogVisibility() {
+  const view = $("#log-view");
+  if (!view) return;
+  for (let i = 0; i < logState.lines.length && i < view.childNodes.length; i++) {
+    view.childNodes[i].classList.toggle("hidden", !shouldShowLogLine(logState.lines[i]));
+  }
+}
+
+function selectionInsideLogView() {
+  const view = $("#log-view");
+  const sel = window.getSelection && window.getSelection();
+  if (!view || !sel || sel.rangeCount === 0 || sel.isCollapsed) return false;
+  for (let i = 0; i < sel.rangeCount; i++) {
+    const range = sel.getRangeAt(i);
+    if (view.contains(range.startContainer) || view.contains(range.endContainer)) return true;
+  }
+  return false;
+}
+
+function logTailOverlap(oldLines, newLines) {
+  const max = Math.min(oldLines.length, newLines.length);
+  for (let n = max; n > 0; n--) {
+    let ok = true;
+    for (let i = 0; i < n; i++) {
+      if (oldLines[oldLines.length - n + i] !== newLines[i]) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) return n;
+  }
+  return 0;
 }
 
 function applyLogPayload(payload) {
@@ -3271,7 +3318,29 @@ function applyLogPayload(payload) {
   if (truncated && lines.length > 1) lines.shift();
   /* trailing empty line from "...\n" */
   while (lines.length && lines[lines.length - 1] === "") lines.pop();
-  logState.lines = lines.slice(-LOG_MAX_LINES);
+  lines = lines.slice(-LOG_MAX_LINES);
+
+  const oldLines = logState.lines;
+  const overlap = logTailOverlap(oldLines, lines);
+  if (oldLines.length && overlap > 0) {
+    const added = lines.slice(overlap);
+    const merged = oldLines.concat(added);
+    const view = $("#log-view");
+    const removed = Math.max(0, merged.length - LOG_MAX_LINES);
+    const selected = selectionInsideLogView();
+    logState.lines = selected ? merged : merged.slice(-LOG_MAX_LINES);
+    if (view && removed > 0 && !selected) {
+      for (let i = 0; i < removed && view.firstChild; i++) view.removeChild(view.firstChild);
+    }
+    renderLogLines(false);
+    return;
+  }
+
+  if (selectionInsideLogView()) {
+    logState.lines = lines;
+    return;
+  }
+  logState.lines = lines;
   renderLogLines(true);
 }
 
@@ -3293,8 +3362,13 @@ function ensureLogSection() {
                       onchange: () => { logState.follow = $("#log-follow").checked; }}),
         " " + t("log.follow"),
       ]),
+      el("label", null, [
+        el("input", { type: "checkbox", id: "log-hide-idle",
+                      onchange: () => { logState.hideIdle = $("#log-hide-idle").checked; refreshLogVisibility(); }}),
+        " " + t("log.hide_idle"),
+      ]),
       el("input", { type: "search", placeholder: t("log.search"),
-                    oninput: (e) => { logState.filter = e.target.value; renderLogLines(true); }}),
+                    oninput: (e) => { logState.filter = e.target.value; refreshLogVisibility(); }}),
       el("span", { class: "sub", id: "log-status" }, ""),
     ]),
     el("div", { class: "log-view", id: "log-view",
@@ -4008,6 +4082,28 @@ function trimChatHistory() {
   }
 }
 
+function chatMaxTokenLimit() {
+  const props = state.props || {};
+  const defaults = props.default_generation_settings || {};
+  const contextLimit = num(props.n_ctx, 0);
+  const defaultPredict = num(defaults.n_predict !== undefined ? defaults.n_predict : defaults.max_tokens, 0);
+  const limit = Math.max(4096, contextLimit, defaultPredict, chat.params.max_tokens || 0);
+  return Math.min(Math.max(limit, 4096), 1048576);
+}
+
+function updateChatTokenSlider() {
+  const range = $("#chat-p-max");
+  const value = $("#chat-p-max-v");
+  if (!range || !value) return;
+  const max = chatMaxTokenLimit();
+  if (String(max) !== range.max) range.max = String(max);
+  if ((chat.params.max_tokens || 0) > max) {
+    chat.params.max_tokens = max;
+    range.value = String(max);
+  }
+  value.textContent = String(Math.round(chat.params.max_tokens || Number(range.value) || 0));
+}
+
 /* ── Markdown → DOM renderer ────────────────────────────────────────── */
 /* Block grammar handled: ATX headings, fenced code, GFM tables, lists
  * (-, *, +, 1.), blockquotes, horizontal rules, paragraphs.
@@ -4336,7 +4432,7 @@ function renderChatPanel() {
                                  chat.params.top_p, 0, 1, 0.01,
                                  (v) => chat.params.top_p = v);
   const maxTok    = paramSlider("chat-p-max", "chat.max_tokens",
-                                 chat.params.max_tokens, 16, 4096, 16,
+                                 chat.params.max_tokens, 16, chatMaxTokenLimit(), 16,
                                  (v) => chat.params.max_tokens = v);
   const fanout    = paramSlider("chat-p-fanout", "chat.fanout",
                                  chat.params.fanout, 1, 8, 1,
@@ -4364,10 +4460,12 @@ function renderChatPanel() {
 }
 
 function paramSlider(id, labelKey, initial, min, max, step, onChange) {
-  const valSpan = el("span", { class: "v", id: id + "-v" }, String(initial));
+  const normalized = Math.max(min, Math.min(max, initial));
+  if (normalized !== initial) onChange(normalized);
+  const valSpan = el("span", { class: "v", id: id + "-v" }, step >= 1 ? String(Math.round(normalized)) : normalized.toFixed(2));
   const range = el("input", {
     type: "range", id: id, min: String(min), max: String(max),
-    step: String(step), value: String(initial),
+    step: String(step), value: String(normalized),
     oninput: (e) => {
       const v = parseFloat(e.target.value);
       onChange(v);
