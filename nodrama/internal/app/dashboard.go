@@ -1050,7 +1050,7 @@ func (m *Dashboard) poll(parent context.Context) {
 		MetricFacts:    metricFacts,
 		Suggestions:    suggestions,
 		Requests:       requests,
-		Queries:        m.updateQueries(snapshotAt, modelAlias, slots, slotsProbe.OK, requests, events),
+		Queries:        m.updateQueries(snapshotAt, modelAlias, slots, slotsProbe.OK, metricsProbe.OK && metrics.RequestsDeferred <= 0, requests, events),
 		Events:         events,
 		Warnings:       warnings,
 		RawMetrics:     rawMetrics,

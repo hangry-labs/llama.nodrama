@@ -13,6 +13,7 @@ import (
 
 const maxLogReadBytes = 1024 * 1024
 const maxRecentQueries = 10
+const staleQueuedRequestAge = 10 * time.Second
 
 func (m *Dashboard) pollLogEvents(logPath string, now time.Time) ([]llamacpp.LogEvent, error) {
 	if logPath == "" {
@@ -119,7 +120,7 @@ func (m *Dashboard) copyLogEvents() []llamacpp.LogEvent {
 	return out
 }
 
-func (m *Dashboard) updateQueries(now time.Time, model string, slots []llamacpp.Slot, slotsKnown bool, requests []RequestSummary, events []llamacpp.LogEvent) []QuerySummary {
+func (m *Dashboard) updateQueries(now time.Time, model string, slots []llamacpp.Slot, slotsKnown bool, queueKnownEmpty bool, requests []RequestSummary, events []llamacpp.LogEvent) []QuerySummary {
 	m.queryMu.Lock()
 	defer m.queryMu.Unlock()
 
@@ -220,6 +221,9 @@ func (m *Dashboard) updateQueries(now time.Time, model string, slots []llamacpp.
 	if slotsKnown {
 		m.closeInactiveTaskQueries(now, activeTask)
 	}
+	if queueKnownEmpty {
+		m.closeOrphanedQueuedRequests(now)
+	}
 
 	return m.pruneAndCopyQueries()
 }
@@ -243,6 +247,20 @@ func (m *Dashboard) closeInactiveTaskQueries(now time.Time, activeTask map[int]b
 		query.EndedAt = timePtr(now)
 		query.DurationMS = now.Sub(query.StartedAt).Milliseconds()
 		query.LastEventAt = timePtr(now)
+		m.queries[id] = query
+	}
+}
+
+func (m *Dashboard) closeOrphanedQueuedRequests(now time.Time) {
+	for id, query := range m.queries {
+		if query.Status != "queued" || len(query.TaskIDs) > 0 || now.Sub(query.StartedAt) < staleQueuedRequestAge {
+			continue
+		}
+		query.Status = "error"
+		query.EndedAt = timePtr(now)
+		query.DurationMS = now.Sub(query.StartedAt).Milliseconds()
+		query.LastEventAt = timePtr(now)
+		query.Error = "request did not reach an active llama.cpp slot"
 		m.queries[id] = query
 	}
 }

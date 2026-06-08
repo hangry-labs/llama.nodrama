@@ -4521,8 +4521,11 @@ async function streamOne(url, payload, signal, target, t0, idx, total) {
         try { json = JSON.parse(data); } catch (_e) { continue; }
         if (json.usage) usage = json.usage;
         const delta = json.choices && json.choices[0] && json.choices[0].delta;
-        if (delta && typeof delta.content === "string") {
-          acc += delta.content;
+        const piece = delta && typeof delta.content === "string"
+          ? delta.content
+          : (delta && typeof delta.reasoning_content === "string" ? delta.reasoning_content : "");
+        if (piece) {
+          acc += piece;
           nTokens++;
           reflow();
         }
