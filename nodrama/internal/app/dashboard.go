@@ -555,12 +555,12 @@ func (m *Dashboard) copyMetricFacts() map[string]MetricFact {
 	return out
 }
 
-func activeContextUsage(slots []llamacpp.Slot, props llamacpp.PropsSummary, events []llamacpp.LogEvent) ContextUsage {
+func activeContextUsage(slots []llamacpp.Slot, props llamacpp.PropsSummary, events []llamacpp.LogEvent, processContextTokens int) ContextUsage {
 	used := 0
 	slotCapacity := 0
 	for _, slot := range slots {
-		if slot.ContextTokens > 0 {
-			slotCapacity += slot.ContextTokens
+		if slot.ContextTokens > slotCapacity {
+			slotCapacity = slot.ContextTokens
 		}
 		if slot.IsProcessing && slot.ContextEstimateTokens > 0 {
 			used += slot.ContextEstimateTokens
@@ -569,18 +569,21 @@ func activeContextUsage(slots []llamacpp.Slot, props llamacpp.PropsSummary, even
 
 	capacity := 0
 	source := ""
-	if event := latestCacheStateEvent(events); event != nil && event.CacheLimitTokens > 0 {
+	if event := latestDeploymentContextEvent(events); event != nil && event.DeploymentCtx > 0 {
+		capacity = event.DeploymentCtx
+		source = "deployment context"
+	} else if processContextTokens > 0 {
+		capacity = processContextTokens
+		source = "process args"
+	} else if event := latestCacheStateEvent(events); event != nil && event.CacheLimitTokens > 0 {
 		capacity = event.CacheLimitTokens
 		source = "shared cache limit"
-	} else if slotCapacity > 0 {
-		capacity = slotCapacity
-		source = "slot capacity fallback"
-	} else if props.ContextTokens > 0 && props.TotalSlots > 0 {
-		capacity = props.ContextTokens * props.TotalSlots
-		source = "props context fallback"
 	} else if props.ContextTokens > 0 {
 		capacity = props.ContextTokens
 		source = "props context fallback"
+	} else if slotCapacity > 0 {
+		capacity = slotCapacity
+		source = "slot capacity fallback"
 	}
 
 	ratio := 0.0
@@ -593,6 +596,15 @@ func activeContextUsage(slots []llamacpp.Slot, props llamacpp.PropsSummary, even
 		Ratio:          ratio,
 		Source:         source,
 	}
+}
+
+func latestDeploymentContextEvent(events []llamacpp.LogEvent) *llamacpp.LogEvent {
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].DeploymentCtx > 0 {
+			return &events[i]
+		}
+	}
+	return nil
 }
 
 func latestCacheStateEvent(events []llamacpp.LogEvent) *llamacpp.LogEvent {
@@ -904,12 +916,14 @@ func (m *Dashboard) poll(parent context.Context) {
 				propsProbe.Error = err.Error()
 				endpoints["props"] = propsProbe
 				lastErrors["props"] = err.Error()
+				props = llamacpp.PropsSummary{}
 			} else {
 				props = parsed
 				delete(lastErrors, "props")
 			}
 		} else {
 			lastErrors["props"] = propsProbe.Error
+			props = llamacpp.PropsSummary{}
 		}
 	}
 
@@ -960,7 +974,14 @@ func (m *Dashboard) poll(parent context.Context) {
 		}
 		events = parsedEvents
 	}
-	contextUsage := activeContextUsage(slots, props, events)
+	processContextTokens := 0
+	if previous.Overview.ContextCapacitySource == "process args" {
+		processContextTokens = previous.Overview.ContextCapacityTokens
+	}
+	if pollSlow || processContextTokens == 0 {
+		processContextTokens = localLlamaServerContextTokens(cfg.Server)
+	}
+	contextUsage := activeContextUsage(slots, props, events, processContextTokens)
 	rawMetrics["nodrama:prompt_tokens_rate"] = metrics.PromptTokensLivePerSec
 	rawMetrics["nodrama:tokens_predicted_rate"] = metrics.GenerationTokensLivePerSec
 	rawMetrics["nodrama:context_active_tokens"] = float64(contextUsage.UsedTokens)
@@ -1103,7 +1124,7 @@ func (m *Dashboard) poll(parent context.Context) {
 	if totalSlots > 0 && busySlots == totalSlots {
 		warnings = append(warnings, "All slots are currently busy.")
 	}
-	suggestions := m.evaluateSuggestions(snapshotAt, mode, overview, props, metrics, slots, history, routerModels, loraAdapters)
+	suggestions := m.evaluateSuggestions(snapshotAt, mode, overview, props, metrics, slots, history, routerModels, loraAdapters, lastErrors, events, cfg.LogPath)
 
 	nextPrevious := map[int]llamacpp.Slot{}
 	for _, slot := range slots {

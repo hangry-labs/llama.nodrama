@@ -87,6 +87,32 @@ func TestParseCacheStateLogLine(t *testing.T) {
 	}
 }
 
+func TestParseDeploymentContextLogLine(t *testing.T) {
+	event, ok := ParseLogLine("0.45.270.896 W llama_context: n_ctx_seq (307200) > n_ctx_train (262144) -- possible training context overflow", time.Unix(1_700_000_000, 0))
+	if !ok {
+		t.Fatal("deployment context line was not parsed")
+	}
+	if event.Kind != "config" {
+		t.Fatalf("kind = %q", event.Kind)
+	}
+	if event.DeploymentCtx != 307200 {
+		t.Fatalf("deployment context = %d", event.DeploymentCtx)
+	}
+}
+
+func TestParseSlotContextLogLine(t *testing.T) {
+	event, ok := ParseLogLine("0.47.931.676 W srv    load_model: the slot context (307200) exceeds the training context of the model (262144) - capping", time.Unix(1_700_000_000, 0))
+	if !ok {
+		t.Fatal("slot context line was not parsed")
+	}
+	if event.Kind != "config" {
+		t.Fatalf("kind = %q", event.Kind)
+	}
+	if event.DeploymentCtx != 307200 {
+		t.Fatalf("deployment context = %d", event.DeploymentCtx)
+	}
+}
+
 func TestParsePromptCacheKeyLogLine(t *testing.T) {
 	event, ok := ParseLogLine("1699.36.265.797 I srv        update:    - prompt 0x5fca730e7cf0:     584 tokens, checkpoints:  1,   131.697 MiB", time.Unix(1_700_000_000, 0))
 	if !ok {

@@ -58,6 +58,32 @@ func TestPollLogEventsTailsFromStartupOffset(t *testing.T) {
 	}
 }
 
+func TestPollLogEventsKeepsInitialDeploymentContext(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "llama.log")
+	if err := os.WriteFile(path, []byte(
+		"124.55.000.000 I slot print_timing: id  2 | task 248761 | n_decoded =   7609, tg =  38.97 t/s\n"+
+			"0.45.270.896 W llama_context: n_ctx_seq (307200) > n_ctx_train (262144) -- possible training context overflow\n"+
+			"124.55.424.001 I srv update: - cache state: 13 prompts, 7022.706 MiB (limits: 8192.000 MiB, 358400 tokens, 358400 est)\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	dashboard := NewDashboard(nil, Config{LogPath: path}, BuildInfo{})
+	events, err := dashboard.pollLogEvents(path, time.Unix(1_700_000_000, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("events = %d: %#v", len(events), events)
+	}
+	if events[0].DeploymentCtx != 307200 {
+		t.Fatalf("deployment context = %#v", events[0])
+	}
+	if events[1].CacheLimitTokens != 358400 {
+		t.Fatalf("cache state = %#v", events[1])
+	}
+}
+
 func TestPollLogEventsAssignsStableBatchOrder(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "llama.log")

@@ -16,6 +16,7 @@ type LogEvent struct {
 	SlotID           int       `json:"slotId,omitempty"`
 	TaskID           int       `json:"taskId,omitempty"`
 	CacheKey         string    `json:"cacheKey,omitempty"`
+	DeploymentCtx    int       `json:"deploymentCtx,omitempty"`
 	PromptTokens     int       `json:"promptTokens,omitempty"`
 	RestoredTokens   int       `json:"restoredTokens,omitempty"`
 	CachePrompts     int       `json:"cachePrompts,omitempty"`
@@ -35,6 +36,8 @@ var (
 	logTimingPattern     = regexp.MustCompile(`slot print_timing:\s*id\s+(\d+)\s*\|\s*task\s+(\d+)\s*\|\s*n_decoded\s*=\s*(\d+),\s*tg\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*t/s`)
 	logPromptEvalPattern = regexp.MustCompile(`slot print_timing:\s*id\s+(\d+)\s*\|\s*task\s+(\d+)\s*\|\s*prompt eval time\s*=.*?/\s*(\d+)\s+tokens`)
 	logPromptKeyPattern  = regexp.MustCompile(`-\s*prompt\s+(0x[0-9A-Fa-f]+):\s*(\d+)\s+tokens`)
+	logCtxSeqPattern     = regexp.MustCompile(`\bn_ctx_seq\s*\(\s*(\d+)\s*\)`)
+	logSlotCtxPattern    = regexp.MustCompile(`\bslot context\s*\(\s*(\d+)\s*\)`)
 	logRestoredPattern   = regexp.MustCompile(`restored context checkpoint .*?\bn_tokens\s*=\s*(\d+)`)
 	logCacheStatePattern = regexp.MustCompile(`cache state:\s*(\d+)\s+prompts,\s*([0-9]+(?:\.[0-9]+)?)\s+MiB\s*\(limits:\s*([0-9]+(?:\.[0-9]+)?)\s+MiB,\s*(\d+)\s+tokens,\s*(\d+)\s+est\)`)
 	logSlotPattern       = regexp.MustCompile(`\bslot\b[^\d]*(\d+)`)
@@ -55,6 +58,12 @@ func ParseLogLine(line string, observedAt time.Time) (LogEvent, bool) {
 		Severity:     severity,
 		Message:      message,
 		Raw:          line,
+	}
+
+	if contextTokens := deploymentContextTokens(message); contextTokens > 0 {
+		event.Kind = "config"
+		event.DeploymentCtx = contextTokens
+		return event, true
 	}
 
 	if matches := logPromptKeyPattern.FindStringSubmatch(message); len(matches) == 3 {
@@ -119,6 +128,16 @@ func cacheState(message string) (int, float64, float64, int, int) {
 		return 0, 0, 0, 0, 0
 	}
 	return mustAtoi(matches[1]), mustParseFloat(matches[2]), mustParseFloat(matches[3]), mustAtoi(matches[4]), mustAtoi(matches[5])
+}
+
+func deploymentContextTokens(message string) int {
+	for _, pattern := range []*regexp.Regexp{logCtxSeqPattern, logSlotCtxPattern} {
+		matches := pattern.FindStringSubmatch(message)
+		if len(matches) >= 2 {
+			return mustAtoi(matches[1])
+		}
+	}
+	return 0
 }
 
 func restoredTokens(message string) int {

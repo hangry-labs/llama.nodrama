@@ -2,6 +2,7 @@ package app
 
 import (
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -83,26 +84,69 @@ func TestRecordMetricHistoryTracksPeakFacts(t *testing.T) {
 	}
 }
 
-func TestActiveContextUsagePrefersCacheLimitAndCountsActiveSlots(t *testing.T) {
+func TestActiveContextUsagePrefersDeploymentContextAndCountsActiveSlots(t *testing.T) {
 	usage := activeContextUsage([]llamacpp.Slot{
 		{ID: 0, IsProcessing: true, ContextTokens: 262144, ContextEstimateTokens: 100000},
 		{ID: 1, IsProcessing: false, ContextTokens: 262144, ContextEstimateTokens: 90000},
 		{ID: 2, IsProcessing: true, ContextTokens: 262144, ContextEstimateTokens: 50000},
-	}, llamacpp.PropsSummary{}, []llamacpp.LogEvent{{
-		CacheLimitTokens: 358400,
-	}})
+	}, llamacpp.PropsSummary{ContextTokens: 262144}, []llamacpp.LogEvent{
+		{CacheLimitTokens: 358400},
+		{DeploymentCtx: 307200},
+	}, 0)
 
 	if usage.UsedTokens != 150000 {
 		t.Fatalf("used tokens = %d", usage.UsedTokens)
 	}
-	if usage.CapacityTokens != 358400 {
+	if usage.CapacityTokens != 307200 {
 		t.Fatalf("capacity = %d", usage.CapacityTokens)
+	}
+	if usage.Source != "deployment context" {
+		t.Fatalf("source = %q", usage.Source)
+	}
+	if math.Abs(usage.Ratio-(150000.0/307200.0)) > 0.000001 {
+		t.Fatalf("ratio = %v", usage.Ratio)
+	}
+}
+
+func TestActiveContextUsageFallsBackToProcessArgs(t *testing.T) {
+	usage := activeContextUsage([]llamacpp.Slot{
+		{ID: 0, IsProcessing: true, ContextTokens: 262144, ContextEstimateTokens: 100000},
+	}, llamacpp.PropsSummary{ContextTokens: 262144}, nil, 307200)
+
+	if usage.UsedTokens != 100000 || usage.CapacityTokens != 307200 {
+		t.Fatalf("usage = %#v", usage)
+	}
+	if usage.Source != "process args" {
+		t.Fatalf("source = %q", usage.Source)
+	}
+}
+
+func TestActiveContextUsageFallsBackToCacheLimit(t *testing.T) {
+	usage := activeContextUsage([]llamacpp.Slot{
+		{ID: 0, IsProcessing: true, ContextTokens: 262144, ContextEstimateTokens: 100000},
+		{ID: 1, IsProcessing: true, ContextTokens: 262144, ContextEstimateTokens: 50000},
+	}, llamacpp.PropsSummary{}, []llamacpp.LogEvent{{
+		CacheLimitTokens: 358400,
+	}}, 0)
+
+	if usage.UsedTokens != 150000 || usage.CapacityTokens != 358400 {
+		t.Fatalf("usage = %#v", usage)
 	}
 	if usage.Source != "shared cache limit" {
 		t.Fatalf("source = %q", usage.Source)
 	}
-	if math.Abs(usage.Ratio-(150000.0/358400.0)) > 0.000001 {
-		t.Fatalf("ratio = %v", usage.Ratio)
+}
+
+func TestActiveContextUsageFallsBackToPropsContext(t *testing.T) {
+	usage := activeContextUsage([]llamacpp.Slot{
+		{ID: 0, IsProcessing: true, ContextTokens: 262144, ContextEstimateTokens: 100000},
+	}, llamacpp.PropsSummary{ContextTokens: 262144}, nil, 0)
+
+	if usage.UsedTokens != 100000 || usage.CapacityTokens != 262144 {
+		t.Fatalf("usage = %#v", usage)
+	}
+	if usage.Source != "props context fallback" {
+		t.Fatalf("source = %q", usage.Source)
 	}
 }
 
@@ -110,9 +154,9 @@ func TestActiveContextUsageFallsBackToSlotCapacity(t *testing.T) {
 	usage := activeContextUsage([]llamacpp.Slot{
 		{ID: 0, IsProcessing: true, ContextTokens: 100, ContextEstimateTokens: 40},
 		{ID: 1, IsProcessing: true, ContextTokens: 100, ContextEstimateTokens: 50},
-	}, llamacpp.PropsSummary{}, nil)
+	}, llamacpp.PropsSummary{}, nil, 0)
 
-	if usage.UsedTokens != 90 || usage.CapacityTokens != 200 {
+	if usage.UsedTokens != 90 || usage.CapacityTokens != 100 {
 		t.Fatalf("usage = %#v", usage)
 	}
 	if usage.Source != "slot capacity fallback" {
@@ -378,6 +422,7 @@ func TestEvaluateSuggestionsFromBackendData(t *testing.T) {
 	now := dashboard.started.Add(guidanceWarmup + time.Second)
 
 	suggestions := dashboard.evaluateSuggestions(now, "single", Overview{
+		Online:             true,
 		TotalSlots:         1,
 		RequestsDeferred:   6,
 		RequestsProcessing: 1,
@@ -385,12 +430,16 @@ func TestEvaluateSuggestionsFromBackendData(t *testing.T) {
 		[]llamacpp.Slot{{ID: 0, State: "generating", IsProcessing: true}},
 		SnapshotHistory{},
 		nil,
-		nil)
+		nil,
+		nil,
+		nil,
+		"")
 	if len(suggestions) != 0 {
 		t.Fatalf("sustained suggestions should not trigger immediately: %#v", suggestions)
 	}
 
 	suggestions = dashboard.evaluateSuggestions(now.Add(31*time.Second), "single", Overview{
+		Online:             true,
 		TotalSlots:         1,
 		RequestsDeferred:   6,
 		RequestsProcessing: 1,
@@ -398,12 +447,43 @@ func TestEvaluateSuggestionsFromBackendData(t *testing.T) {
 		[]llamacpp.Slot{{ID: 0, State: "generating", IsProcessing: true}},
 		SnapshotHistory{},
 		nil,
-		nil)
+		nil,
+		nil,
+		nil,
+		"")
 	if !hasSuggestion(suggestions, "slots_saturated") {
 		t.Fatalf("missing slots_saturated suggestion: %#v", suggestions)
 	}
 	if !hasSuggestion(suggestions, "deferred") {
 		t.Fatalf("missing deferred suggestion: %#v", suggestions)
+	}
+}
+
+func TestEvaluateSuggestionsReportsOfflineWithLogClue(t *testing.T) {
+	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
+	now := time.Unix(1_700_000_000, 0)
+
+	suggestions := dashboard.evaluateSuggestions(now, "single", Overview{Online: false},
+		llamacpp.PropsSummary{}, llamacpp.MetricsSummary{}, nil, SnapshotHistory{}, nil, nil,
+		map[string]string{"health": "connect: connection refused"},
+		[]llamacpp.LogEvent{{
+			Kind:     "error",
+			Severity: "E",
+			Message:  "srv init: failed to allocate KV cache",
+		}},
+		"/tmp/llama-server.log")
+
+	if len(suggestions) != 1 {
+		t.Fatalf("suggestions = %#v", suggestions)
+	}
+	if suggestions[0].ID != "llama_cpp_offline" || suggestions[0].Severity != "bad" {
+		t.Fatalf("offline suggestion = %#v", suggestions[0])
+	}
+	if !strings.Contains(suggestions[0].Explain, "connection refused") {
+		t.Fatalf("missing endpoint error: %q", suggestions[0].Explain)
+	}
+	if !strings.Contains(suggestions[0].Explain, "failed to allocate KV cache") {
+		t.Fatalf("missing log clue: %q", suggestions[0].Explain)
 	}
 }
 

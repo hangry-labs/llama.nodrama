@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bufio"
 	"io"
 	"os"
 	"sort"
@@ -17,6 +18,7 @@ const staleQueuedRequestAge = 10 * time.Second
 const minMeaningfulCacheReuseTokens = 64
 const minMeaningfulCacheReuseRatio = 0.10
 const pendingCacheKeyTTL = 5 * time.Second
+const maxInitialLogStateLines = 512
 
 func (m *Dashboard) pollLogEvents(logPath string, now time.Time) ([]llamacpp.LogEvent, error) {
 	if logPath == "" {
@@ -70,25 +72,7 @@ func (m *Dashboard) readNewLogLines(logPath string) ([]string, error) {
 		m.logInitialized = true
 		m.logOffset = size
 		m.logPartial = ""
-		start := int64(0)
-		if size > maxLogReadBytes {
-			start = size - maxLogReadBytes
-		}
-		if _, err := file.Seek(start, io.SeekStart); err != nil {
-			return nil, err
-		}
-		data, err := io.ReadAll(file)
-		if err != nil {
-			return nil, err
-		}
-		lines := splitEventLogLines(string(data))
-		cacheStateLines := make([]string, 0, 1)
-		for _, line := range lines {
-			if strings.Contains(line, "cache state:") {
-				cacheStateLines = append(cacheStateLines, line)
-			}
-		}
-		return cacheStateLines, nil
+		return readInitialLogStateLines(file)
 	}
 	if size == m.logOffset {
 		return nil, nil
@@ -126,6 +110,35 @@ func (m *Dashboard) readNewLogLines(logPath string) ([]string, error) {
 	}
 
 	return splitEventLogLines(text), nil
+}
+
+func readInitialLogStateLines(file *os.File) ([]string, error) {
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return nil, err
+	}
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
+	lines := make([]string, 0, 16)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if !initialLogStateLine(line) {
+			continue
+		}
+		lines = append(lines, line)
+		if len(lines) > maxInitialLogStateLines {
+			lines = lines[len(lines)-maxInitialLogStateLines:]
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return lines, nil
+}
+
+func initialLogStateLine(line string) bool {
+	return strings.Contains(line, "cache state:") ||
+		strings.Contains(line, "n_ctx_seq") ||
+		strings.Contains(line, "slot context")
 }
 
 func splitEventLogLines(text string) []string {

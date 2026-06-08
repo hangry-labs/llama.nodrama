@@ -11,7 +11,10 @@ import (
 
 const guidanceWarmup = 10 * time.Second
 
-func (m *Dashboard) evaluateSuggestions(now time.Time, mode string, overview Overview, props llamacpp.PropsSummary, metrics llamacpp.MetricsSummary, slots []llamacpp.Slot, history SnapshotHistory, routerModels []map[string]any, loraAdapters []map[string]any) []Suggestion {
+func (m *Dashboard) evaluateSuggestions(now time.Time, mode string, overview Overview, props llamacpp.PropsSummary, metrics llamacpp.MetricsSummary, slots []llamacpp.Slot, history SnapshotHistory, routerModels []map[string]any, loraAdapters []map[string]any, lastErrors map[string]string, events []llamacpp.LogEvent, logPath string) []Suggestion {
+	if offline := serverOfflineSuggestion(overview, lastErrors, events, logPath); offline != nil {
+		return []Suggestion{*offline}
+	}
 	if now.Sub(m.started) < guidanceWarmup {
 		return []Suggestion{}
 	}
@@ -50,6 +53,57 @@ func (m *Dashboard) evaluateSuggestions(now time.Time, mode string, overview Ove
 		return severityRank(out[i].Severity) < severityRank(out[j].Severity)
 	})
 	return out
+}
+
+func serverOfflineSuggestion(overview Overview, lastErrors map[string]string, events []llamacpp.LogEvent, logPath string) *Suggestion {
+	if overview.Online {
+		return nil
+	}
+
+	explain := "No monitored llama.cpp endpoint is reachable, so the server process may be stopped, crashed, restarting, or listening on a different address."
+	if endpoint, reason := mostUsefulEndpointError(lastErrors); reason != "" {
+		explain += fmt.Sprintf(" Last endpoint error (%s): %s.", endpoint, reason)
+	}
+	if event := latestSevereLogEvent(events); event != nil {
+		explain += " Latest severe log line: " + event.Message
+	}
+
+	suggest := "Check whether llama-server is still running and whether llama.nodrama points at the right --server URL."
+	if logPath == "" {
+		suggest += " Start llama.nodrama with --log <path-to-llama-server.log> so shutdown/error lines can be shown here."
+	} else {
+		suggest += " Open the log panel and inspect the newest error/fatal lines around the time it went offline."
+	}
+
+	return suggestionPtr("llama_cpp_offline", "bad",
+		"llama.cpp is offline",
+		explain,
+		suggest,
+		map[string]any{"value": "offline"})
+}
+
+func mostUsefulEndpointError(lastErrors map[string]string) (string, string) {
+	for _, key := range []string{"health", "props", "slots", "metrics"} {
+		if value := lastErrors[key]; value != "" {
+			return key, value
+		}
+	}
+	for key, value := range lastErrors {
+		if value != "" {
+			return key, value
+		}
+	}
+	return "", ""
+}
+
+func latestSevereLogEvent(events []llamacpp.LogEvent) *llamacpp.LogEvent {
+	for i := len(events) - 1; i >= 0; i-- {
+		event := events[i]
+		if event.Kind == "error" || event.Severity == "E" || event.Severity == "F" {
+			return &event
+		}
+	}
+	return nil
 }
 
 func (m *Dashboard) suggestSlotsSaturated(now time.Time, slots []llamacpp.Slot) *Suggestion {
