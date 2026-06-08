@@ -99,7 +99,7 @@ func TestUpdateQueriesCreatesActiveSlotQuery(t *testing.T) {
 		PromptTokens:      10,
 		DecodedTokens:     20,
 		PromptCacheTokens: 8,
-	}}, nil, nil)
+	}}, true, nil, nil)
 
 	if len(queries) != 1 {
 		t.Fatalf("queries = %d", len(queries))
@@ -124,9 +124,65 @@ func TestUpdateQueriesCreatesActiveSlotQuery(t *testing.T) {
 		ID:           2,
 		IsProcessing: false,
 		State:        "idle",
-	}}, nil, nil)
+	}}, true, nil, nil)
 	if queries[0].Status != "complete" {
 		t.Fatalf("completed status = %q", queries[0].Status)
+	}
+}
+
+func TestUpdateQueriesClosesStaleRunningTaskWhenSlotsAreIdle(t *testing.T) {
+	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
+	started := time.Unix(1_700_000_000, 0)
+	now := started.Add(time.Second)
+	dashboard.queries = map[string]QuerySummary{
+		"task_88": {
+			ID:        "task_88",
+			Status:    "running",
+			StartedAt: started,
+			SlotIDs:   []int{1},
+			TaskIDs:   []int{88},
+		},
+	}
+
+	queries := dashboard.updateQueries(now, "model-a", []llamacpp.Slot{{
+		ID:           1,
+		IsProcessing: false,
+		State:        "idle",
+	}}, true, nil, nil)
+
+	if len(queries) != 1 {
+		t.Fatalf("queries = %d", len(queries))
+	}
+	if queries[0].Status != "complete" {
+		t.Fatalf("stale task status = %q", queries[0].Status)
+	}
+	if queries[0].EndedAt == nil {
+		t.Fatal("stale task should get an ended timestamp")
+	}
+}
+
+func TestUpdateQueriesDoesNotLetUnfinishedRequestKeepIdleTaskRunning(t *testing.T) {
+	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
+	now := time.Unix(1_700_000_000, 0)
+	requests := []RequestSummary{{
+		ID:        "req_stale",
+		Route:     "/api/chat/completions",
+		StartedAt: now.Add(-time.Second),
+		SlotIDs:   []int{1},
+		TaskIDs:   []int{88},
+	}}
+
+	queries := dashboard.updateQueries(now, "model-a", []llamacpp.Slot{{
+		ID:           1,
+		IsProcessing: false,
+		State:        "idle",
+	}}, true, requests, nil)
+
+	if len(queries) != 1 {
+		t.Fatalf("queries = %d", len(queries))
+	}
+	if queries[0].Status != "complete" {
+		t.Fatalf("idle task with unfinished request status = %q", queries[0].Status)
 	}
 }
 
@@ -146,7 +202,7 @@ func TestUpdateQueriesMergesRequestAndEvents(t *testing.T) {
 		{id: "evt_2", kind: "cache", slotID: 2, taskID: 248761, cacheAction: "reuse", at: now.Add(time.Second)},
 	}
 
-	queries := dashboard.updateQueries(now, "", nil, requests, testLogEvents(events))
+	queries := dashboard.updateQueries(now, "", nil, false, requests, testLogEvents(events))
 	if len(queries) != 1 {
 		t.Fatalf("queries = %d", len(queries))
 	}
@@ -179,7 +235,7 @@ func TestUpdateQueriesCountsRestoredCheckpointAsReuse(t *testing.T) {
 		TaskID:       88,
 		IsProcessing: true,
 		State:        "prompt-processing",
-	}}, nil, []llamacpp.LogEvent{{
+	}}, true, nil, []llamacpp.LogEvent{{
 		ID:       "evt_restore",
 		At:       now,
 		Kind:     "warning",
@@ -211,7 +267,7 @@ func TestUpdateQueriesIgnoresCacheSaveForQueryReuse(t *testing.T) {
 		TaskID:       88,
 		IsProcessing: true,
 		State:        "generating",
-	}}, nil, []llamacpp.LogEvent{{
+	}}, true, nil, []llamacpp.LogEvent{{
 		ID:          "evt_save",
 		At:          now,
 		Kind:        "cache",
@@ -238,7 +294,7 @@ func TestUpdateQueriesClearsCachedStateOnInvalidation(t *testing.T) {
 	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
 	now := time.Unix(1_700_000_000, 0)
 
-	queries := dashboard.updateQueries(now, "model-a", nil, nil, []llamacpp.LogEvent{{
+	queries := dashboard.updateQueries(now, "model-a", nil, false, nil, []llamacpp.LogEvent{{
 		ID:       "evt_restore",
 		At:       now,
 		Kind:     "warning",
@@ -250,7 +306,7 @@ func TestUpdateQueriesClearsCachedStateOnInvalidation(t *testing.T) {
 		t.Fatalf("restore should mark cached: %#v", queries)
 	}
 
-	queries = dashboard.updateQueries(now.Add(time.Second), "model-a", nil, nil, []llamacpp.LogEvent{{
+	queries = dashboard.updateQueries(now.Add(time.Second), "model-a", nil, false, nil, []llamacpp.LogEvent{{
 		ID:       "evt_invalidate",
 		At:       now.Add(time.Second),
 		Kind:     "warning",
@@ -286,7 +342,7 @@ func TestUpdateQueriesDoesNotSmearConcurrentRequestTasks(t *testing.T) {
 		Usage:      &TokenUsage{PromptTokens: 10, CompletionTokens: 20, TotalTokens: 30},
 	}
 
-	queries := dashboard.updateQueries(ended, "", nil, []RequestSummary{request}, nil)
+	queries := dashboard.updateQueries(ended, "", nil, false, []RequestSummary{request}, nil)
 	if len(queries) != 2 {
 		t.Fatalf("queries = %d", len(queries))
 	}
@@ -320,7 +376,7 @@ func TestUpdateQueriesRunningSlotUsesCurrentIdentity(t *testing.T) {
 		TaskID:       77,
 		IsProcessing: true,
 		State:        "generating",
-	}}, nil, nil)
+	}}, true, nil, nil)
 	if len(queries) != 1 {
 		t.Fatalf("queries = %d", len(queries))
 	}
@@ -345,7 +401,7 @@ func TestUpdateQueriesMarksUnassignedRequestQueued(t *testing.T) {
 		StartedAt: now,
 	}
 
-	queries := dashboard.updateQueries(now, "", nil, []RequestSummary{request}, nil)
+	queries := dashboard.updateQueries(now, "", nil, false, []RequestSummary{request}, nil)
 	if len(queries) != 1 {
 		t.Fatalf("queries = %d", len(queries))
 	}
@@ -363,7 +419,7 @@ func TestUpdateQueriesDoesNotShowInvalidateActionForRunningQuery(t *testing.T) {
 		TaskID:       77,
 		IsProcessing: true,
 		State:        "generating",
-	}}, nil, []llamacpp.LogEvent{{
+	}}, true, nil, []llamacpp.LogEvent{{
 		ID:       "evt_invalidate",
 		At:       now,
 		Kind:     "warning",
@@ -399,7 +455,7 @@ func TestUpdateQueriesRanksRunningThenReuseThenRecent(t *testing.T) {
 			Status:     200,
 			TaskIDs:    []int{i},
 		}}
-		dashboard.updateQueries(ended, "", nil, requests, nil)
+		dashboard.updateQueries(ended, "", nil, false, requests, nil)
 	}
 
 	events := []llamacpp.LogEvent{}
@@ -418,7 +474,7 @@ func TestUpdateQueriesRanksRunningThenReuseThenRecent(t *testing.T) {
 		TaskID:       999,
 		IsProcessing: true,
 		State:        "generating",
-	}}, nil, events)
+	}}, true, nil, events)
 
 	if len(queries) != maxRecentQueries {
 		t.Fatalf("queries = %d", len(queries))
@@ -453,7 +509,7 @@ func TestUpdateQueriesRestoredCheckpointsAreCapped(t *testing.T) {
 		})
 	}
 
-	queries := dashboard.updateQueries(base.Add(time.Minute), "", nil, nil, events)
+	queries := dashboard.updateQueries(base.Add(time.Minute), "", nil, false, nil, events)
 	if len(queries) != maxRecentQueries {
 		t.Fatalf("queries = %d", len(queries))
 	}

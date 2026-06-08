@@ -119,7 +119,7 @@ func (m *Dashboard) copyLogEvents() []llamacpp.LogEvent {
 	return out
 }
 
-func (m *Dashboard) updateQueries(now time.Time, model string, slots []llamacpp.Slot, requests []RequestSummary, events []llamacpp.LogEvent) []QuerySummary {
+func (m *Dashboard) updateQueries(now time.Time, model string, slots []llamacpp.Slot, slotsKnown bool, requests []RequestSummary, events []llamacpp.LogEvent) []QuerySummary {
 	m.queryMu.Lock()
 	defer m.queryMu.Unlock()
 
@@ -140,11 +140,13 @@ func (m *Dashboard) updateQueries(now time.Time, model string, slots []llamacpp.
 	previousSlotQuery := m.slotQuery
 	m.slotQuery = map[int]string{}
 	activeQuery := map[string]bool{}
+	activeTask := map[int]bool{}
 
 	for _, slot := range slots {
 		if !slot.IsProcessing || slot.TaskID <= 0 {
 			continue
 		}
+		activeTask[slot.TaskID] = true
 		id := taskQueryID(slot.TaskID)
 		query := m.ensureQuery(id, now)
 		query.Status = "running"
@@ -215,8 +217,34 @@ func (m *Dashboard) updateQueries(now time.Time, model string, slots []llamacpp.
 		}
 		m.applyEventToQuery(event, now)
 	}
+	if slotsKnown {
+		m.closeInactiveTaskQueries(now, activeTask)
+	}
 
 	return m.pruneAndCopyQueries()
+}
+
+func (m *Dashboard) closeInactiveTaskQueries(now time.Time, activeTask map[int]bool) {
+	for id, query := range m.queries {
+		if (query.Status != "running" && query.Status != "queued") || len(query.TaskIDs) == 0 {
+			continue
+		}
+		stillActive := false
+		for _, taskID := range query.TaskIDs {
+			if activeTask[taskID] {
+				stillActive = true
+				break
+			}
+		}
+		if stillActive {
+			continue
+		}
+		query.Status = "complete"
+		query.EndedAt = timePtr(now)
+		query.DurationMS = now.Sub(query.StartedAt).Milliseconds()
+		query.LastEventAt = timePtr(now)
+		m.queries[id] = query
+	}
 }
 
 func (m *Dashboard) ensureQuery(id string, startedAt time.Time) QuerySummary {
@@ -390,6 +418,12 @@ func mergeRequestIntoQuery(query *QuerySummary, request RequestSummary) {
 	if request.StartedAt.Before(query.StartedAt) || query.StartedAt.IsZero() {
 		query.StartedAt = request.StartedAt
 	}
+	if taskID := taskIDFromQueryID(query.ID); taskID > 0 {
+		query.TaskIDs = appendUniqueInt(query.TaskIDs, taskID)
+	} else {
+		query.SlotIDs = appendUniqueInts(query.SlotIDs, request.SlotIDs)
+		query.TaskIDs = appendUniqueInts(query.TaskIDs, request.TaskIDs)
+	}
 	if request.EndedAt != nil {
 		query.EndedAt = cloneTimePtr(request.EndedAt)
 		query.DurationMS = request.DurationMS
@@ -399,12 +433,6 @@ func mergeRequestIntoQuery(query *QuerySummary, request RequestSummary) {
 		query.Status = "queued"
 	} else {
 		query.Status = "running"
-	}
-	if taskID := taskIDFromQueryID(query.ID); taskID > 0 {
-		query.TaskIDs = appendUniqueInt(query.TaskIDs, taskID)
-	} else {
-		query.SlotIDs = appendUniqueInts(query.SlotIDs, request.SlotIDs)
-		query.TaskIDs = appendUniqueInts(query.TaskIDs, request.TaskIDs)
 	}
 	query.PromptCacheTokens = maxInt(query.PromptCacheTokens, request.PromptCacheTokens)
 	if request.Usage != nil {
