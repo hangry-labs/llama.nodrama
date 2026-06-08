@@ -462,6 +462,10 @@
   .chat-body {
     display: grid; grid-template-columns: 1fr 280px; gap: 0;
     height: min(75vh, 760px); min-height: 420px;
+    width: min(100%, 1500px); margin: 0 auto;
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    box-sizing: border-box;
   }
   .chat-body[hidden] { display: none; }
   .chat-main {
@@ -503,7 +507,7 @@
     flex: 1; min-height: 0; overflow-y: auto; padding: 12px 14px;
     display: flex; flex-direction: column; gap: 14px;
     scroll-behavior: smooth;
-    overscroll-behavior: contain;
+    overscroll-behavior: auto;
   }
   .chat-msg { display: flex; flex-direction: column; gap: 4px; max-width: 100%; }
   .chat-msg .who {
@@ -594,7 +598,10 @@
     color: var(--fg-mute); font-size: 11px; font-family: var(--mono);
   }
   @media (max-width: 720px) {
-    .chat-body { grid-template-columns: 1fr; height: 90vh; max-height: 90vh; }
+    .chat-body {
+      grid-template-columns: 1fr; height: 90vh; max-height: 90vh;
+      max-width: none; border-left: 0; border-right: 0;
+    }
     .chat-side { border-top: 1px solid var(--border); border-right: none; }
     .chat-main { border-right: none; }
   }
@@ -4263,7 +4270,8 @@ function renderChatPanel() {
   ]);
 
   const msgs = el("div", { class: "chat-msgs", id: "chat-msgs", role: "log",
-                            "aria-live": "polite" });
+                            "aria-live": "polite",
+                            onwheel: handleChatWheel });
   if (chat.params && state.params.prompt) {
     /* honor ?prompt= by prefilling input — no auto-send to avoid surprises */
   }
@@ -4442,6 +4450,19 @@ function scrollChatIfNearBottom() {
   const msgs = $("#chat-msgs");
   if (msgs && (msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight) < 80) {
     msgs.scrollTop = msgs.scrollHeight;
+  }
+}
+
+function handleChatWheel(e) {
+  const node = e.currentTarget;
+  if (!node) return;
+  const atTop = node.scrollTop <= 0;
+  const atBottom = Math.ceil(node.scrollTop + node.clientHeight) >= node.scrollHeight;
+  const wantsUp = e.deltaY < 0;
+  const wantsDown = e.deltaY > 0;
+  if ((wantsUp && atTop) || (wantsDown && atBottom)) {
+    e.preventDefault();
+    window.scrollBy({ top: e.deltaY, left: 0, behavior: "auto" });
   }
 }
 
