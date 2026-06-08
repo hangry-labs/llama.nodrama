@@ -461,7 +461,7 @@
   .chat-head .grow { flex: 1; }
   .chat-body {
     display: grid; grid-template-columns: 1fr 280px; gap: 0;
-    min-height: 360px; max-height: 75vh;
+    height: min(75vh, 760px); min-height: 420px;
   }
   .chat-body[hidden] { display: none; }
   .chat-main {
@@ -494,10 +494,16 @@
     border-radius: 6px; padding: 6px 8px; resize: vertical;
     min-height: 60px;
   }
+  .chat-side select {
+    font: inherit; color: inherit;
+    background: var(--bg-3); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 8px;
+  }
   .chat-msgs {
-    flex: 1; overflow-y: auto; padding: 12px 14px;
+    flex: 1; min-height: 0; overflow-y: auto; padding: 12px 14px;
     display: flex; flex-direction: column; gap: 14px;
     scroll-behavior: smooth;
+    overscroll-behavior: contain;
   }
   .chat-msg { display: flex; flex-direction: column; gap: 4px; max-width: 100%; }
   .chat-msg .who {
@@ -506,12 +512,17 @@
   }
   .chat-msg.user .who { color: var(--accent-2); }
   .chat-msg.assistant .who { color: var(--good); }
+  .chat-msg.thinking .who { color: var(--warn); }
   .chat-msg .body {
     background: var(--bg-2); border: 1px solid var(--border);
     border-radius: 8px; padding: 8px 12px;
     word-wrap: break-word; overflow-wrap: break-word;
   }
   .chat-msg.user .body { background: #14202e; border-color: #2a425d; }
+  .chat-msg.thinking .body {
+    background: #211d12; border-color: #4d3f18; color: var(--fg-dim);
+    font-size: 12.5px;
+  }
   .chat-msg .stats {
     font-family: var(--mono); font-size: 11px; color: var(--fg-mute);
   }
@@ -583,7 +594,7 @@
     color: var(--fg-mute); font-size: 11px; font-family: var(--mono);
   }
   @media (max-width: 720px) {
-    .chat-body { grid-template-columns: 1fr; max-height: 90vh; }
+    .chat-body { grid-template-columns: 1fr; height: 90vh; max-height: 90vh; }
     .chat-side { border-top: 1px solid var(--border); border-right: none; }
     .chat-main { border-right: none; }
   }
@@ -847,6 +858,11 @@ const I18N = {
     "chat.clear":              "Clear conversation",
     "chat.system_prompt":      "System prompt",
     "chat.system_placeholder": "Optional. Sets the assistant's behavior.",
+    "chat.thinking":           "Thinking",
+    "chat.thinking_mode":      "Thinking mode",
+    "chat.thinking_auto":      "Auto",
+    "chat.thinking_on":        "Think",
+    "chat.thinking_off":       "No think",
     "chat.temperature":        "Temperature",
     "chat.top_p":              "Top-p",
     "chat.max_tokens":         "Max tokens",
@@ -1056,6 +1072,11 @@ const I18N = {
     "chat.clear":              "대화 비우기",
     "chat.system_prompt":      "시스템 프롬프트",
     "chat.system_placeholder": "선택. 어시스턴트의 동작을 지정합니다.",
+    "chat.thinking":           "생각",
+    "chat.thinking_mode":      "생각 모드",
+    "chat.thinking_auto":      "자동",
+    "chat.thinking_on":        "생각",
+    "chat.thinking_off":       "생각 안 함",
     "chat.temperature":        "Temperature",
     "chat.top_p":              "Top-p",
     "chat.max_tokens":         "최대 토큰",
@@ -1266,6 +1287,11 @@ const I18N = {
     "chat.clear":              "会話をクリア",
     "chat.system_prompt":      "システムプロンプト",
     "chat.system_placeholder": "任意。アシスタントの動作を指定します。",
+    "chat.thinking":           "思考",
+    "chat.thinking_mode":      "思考モード",
+    "chat.thinking_auto":      "自動",
+    "chat.thinking_on":        "Think",
+    "chat.thinking_off":       "No think",
     "chat.temperature":        "Temperature",
     "chat.top_p":              "Top-p",
     "chat.max_tokens":         "最大トークン",
@@ -1476,6 +1502,11 @@ const I18N = {
     "chat.clear":              "清空对话",
     "chat.system_prompt":      "系统提示词",
     "chat.system_placeholder": "可选。设定助手的行为。",
+    "chat.thinking":           "思考",
+    "chat.thinking_mode":      "思考模式",
+    "chat.thinking_auto":      "自动",
+    "chat.thinking_on":        "思考",
+    "chat.thinking_off":       "不思考",
     "chat.temperature":        "Temperature",
     "chat.top_p":              "Top-p",
     "chat.max_tokens":         "最大 token 数",
@@ -1686,6 +1717,11 @@ const I18N = {
     "chat.clear":              "Borrar conversación",
     "chat.system_prompt":      "Prompt del sistema",
     "chat.system_placeholder": "Opcional. Define el comportamiento del asistente.",
+    "chat.thinking":           "Razonamiento",
+    "chat.thinking_mode":      "Modo de razonamiento",
+    "chat.thinking_auto":      "Auto",
+    "chat.thinking_on":        "Pensar",
+    "chat.thinking_off":       "No pensar",
     "chat.temperature":        "Temperatura",
     "chat.top_p":              "Top-p",
     "chat.max_tokens":         "Tokens máximos",
@@ -3948,7 +3984,7 @@ const chat = {
   messages: [],          /* {role, content, stats?} */
   systemPrompt: "",
   inflight: null,        /* AbortController */
-  params: { temperature: 0.7, top_p: 0.95, max_tokens: 512, fanout: 1 },
+  params: { temperature: 0.7, top_p: 0.95, max_tokens: 512, fanout: 1, thinking: "auto" },
 };
 
 /* Keep the most recent turns. A turn is one user + one assistant message,
@@ -4272,6 +4308,15 @@ function renderChatPanel() {
                                   placeholder: t("chat.system_placeholder"),
                                   rows: "3",
                                   oninput: (e) => { chat.systemPrompt = e.target.value; } });
+  const thinkingMode = el("select", {
+    id: "chat-thinking-mode",
+    onchange: (e) => { chat.params.thinking = e.target.value; },
+  }, [
+    el("option", { value: "auto" }, t("chat.thinking_auto")),
+    el("option", { value: "think" }, t("chat.thinking_on")),
+    el("option", { value: "no_think" }, t("chat.thinking_off")),
+  ]);
+  thinkingMode.value = chat.params.thinking;
   const tempRange = paramSlider("chat-p-temp", "chat.temperature",
                                  chat.params.temperature, 0, 2, 0.05,
                                  (v) => chat.params.temperature = v);
@@ -4288,6 +4333,7 @@ function renderChatPanel() {
 
   const side = el("div", { class: "chat-side", id: "chat-side", hidden: !chat.open }, [
     el("label", null, [t("chat.system_prompt"), sysTa]),
+    el("label", null, [t("chat.thinking_mode"), thinkingMode]),
     tempRange, topPRange, maxTok, fanout,
     clearBtn,
   ]);
@@ -4363,12 +4409,48 @@ function appendChatMessage(role, content, opts) {
   const body = el("div", { class: "body" });
   body.appendChild(renderMarkdown(content || ""));
   const stats = el("div", { class: "stats" }, opts && opts.stats ? opts.stats : "");
+  const label = role === "user" ? t("chat.you") : (role === "thinking" ? t("chat.thinking") : t("chat.assistant"));
   const node = el("div", { class: "chat-msg " + role },
-                  [el("span", { class: "who" }, role === "user" ? t("chat.you") : t("chat.assistant")),
+                  [el("span", { class: "who" }, label),
                    body, stats]);
   msgs.appendChild(node);
   msgs.scrollTop = msgs.scrollHeight;
   return { body, stats, node };
+}
+
+function appendAssistantTarget(opts) {
+  const thinking = appendChatMessage("thinking", "", { stats: "" });
+  if (thinking && thinking.node) thinking.node.hidden = true;
+  const assistant = appendChatMessage("assistant", "", opts);
+  if (!assistant) return null;
+  return {
+    body: assistant.body,
+    stats: assistant.stats,
+    node: assistant.node,
+    thinkingBody: thinking ? thinking.body : null,
+    thinkingNode: thinking ? thinking.node : null,
+  };
+}
+
+function updateMarkdownBody(body, content) {
+  if (!body) return;
+  while (body.firstChild) body.removeChild(body.firstChild);
+  body.appendChild(renderMarkdown(content || ""));
+}
+
+function scrollChatIfNearBottom() {
+  const msgs = $("#chat-msgs");
+  if (msgs && (msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight) < 80) {
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+}
+
+function applyThinkingMode(payload, mode) {
+  if (mode === "think") {
+    payload.chat_template_kwargs = { enable_thinking: true };
+  } else if (mode === "no_think") {
+    payload.chat_template_kwargs = { enable_thinking: false };
+  }
 }
 
 function setChatStats(s) {
@@ -4401,7 +4483,7 @@ async function sendChat() {
   const n = Math.max(1, Math.min(8, chat.params.fanout | 0));
   const targets = [];
   for (let k = 0; k < n; k++) {
-    targets.push(appendChatMessage("assistant", "",
+    targets.push(appendAssistantTarget(
       { stats: n > 1 ? "#" + (k + 1) + "/" + n + " — …" : "…" }));
   }
 
@@ -4421,6 +4503,7 @@ async function sendChat() {
     payload.messages.push({ role: "system", content: chat.systemPrompt.trim() });
   }
   for (const m of chat.messages) payload.messages.push({ role: m.role, content: m.content });
+  applyThinkingMode(payload, chat.params.thinking);
 
   const ctrl = new AbortController();
   chat.inflight = ctrl;
@@ -4481,28 +4564,36 @@ async function streamOne(url, payload, signal, target, t0, idx, total) {
   const dec = new TextDecoder();
   let buf = "";
   let acc = "";
+  let thinkingAcc = "";
   let usage = null;
   let nTokens = 0;
 
-  let pendingReflow = false;
-  const doReflow = () => {
-    pendingReflow = false;
+  let pendingAnswerReflow = false;
+  let pendingThinkingReflow = false;
+  const doAnswerReflow = () => {
+    pendingAnswerReflow = false;
     /* full re-render — content is small, and the renderer builds DOM
      * directly so this is safe and cheaper than diffing partial deltas. */
-    while (target.body.firstChild) target.body.removeChild(target.body.firstChild);
-    target.body.appendChild(renderMarkdown(acc));
-    /* keep scroll at bottom only when user hasn't scrolled up */
-    const msgs = $("#chat-msgs");
-    if (msgs && (msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight) < 80) {
-      msgs.scrollTop = msgs.scrollHeight;
-    }
+    updateMarkdownBody(target.body, acc);
+    scrollChatIfNearBottom();
+  };
+  const doThinkingReflow = () => {
+    pendingThinkingReflow = false;
+    if (target.thinkingNode) target.thinkingNode.hidden = !thinkingAcc;
+    updateMarkdownBody(target.thinkingBody, thinkingAcc);
+    scrollChatIfNearBottom();
   };
   /* throttle to ~60ms — re-rendering whole markdown every token is O(n²);
    * 60ms feels live without burning the main thread on long responses. */
-  const reflow = () => {
-    if (pendingReflow) return;
-    pendingReflow = true;
-    setTimeout(doReflow, 60);
+  const reflowAnswer = () => {
+    if (pendingAnswerReflow) return;
+    pendingAnswerReflow = true;
+    setTimeout(doAnswerReflow, 60);
+  };
+  const reflowThinking = () => {
+    if (pendingThinkingReflow) return;
+    pendingThinkingReflow = true;
+    setTimeout(doThinkingReflow, 60);
   };
 
   try {
@@ -4521,13 +4612,17 @@ async function streamOne(url, payload, signal, target, t0, idx, total) {
         try { json = JSON.parse(data); } catch (_e) { continue; }
         if (json.usage) usage = json.usage;
         const delta = json.choices && json.choices[0] && json.choices[0].delta;
-        const piece = delta && typeof delta.content === "string"
-          ? delta.content
-          : (delta && typeof delta.reasoning_content === "string" ? delta.reasoning_content : "");
-        if (piece) {
-          acc += piece;
+        const answerPiece = delta && typeof delta.content === "string" ? delta.content : "";
+        const thinkingPiece = delta && typeof delta.reasoning_content === "string" ? delta.reasoning_content : "";
+        if (thinkingPiece) {
+          thinkingAcc += thinkingPiece;
           nTokens++;
-          reflow();
+          reflowThinking();
+        }
+        if (answerPiece) {
+          acc += answerPiece;
+          nTokens++;
+          reflowAnswer();
         }
         const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
         const rate = nTokens > 0 ? (nTokens / Math.max(0.001, (Date.now() - t0) / 1000)).toFixed(1) : "0.0";
@@ -4538,7 +4633,7 @@ async function streamOne(url, payload, signal, target, t0, idx, total) {
     }
   } catch (e) {
     if (e && e.name === "AbortError") {
-      target.stats.textContent = t("chat.cancelled") + " · " + acc.length + " " + t("chat.chars");
+      target.stats.textContent = t("chat.cancelled") + " · " + (acc.length + thinkingAcc.length) + " " + t("chat.chars");
       return null;
     }
     target.stats.textContent = t("chat.error") + ": " + e.message;
@@ -4546,7 +4641,8 @@ async function streamOne(url, payload, signal, target, t0, idx, total) {
   }
 
   /* flush any throttled reflow so the message body is final when we return */
-  doReflow();
+  doThinkingReflow();
+  doAnswerReflow();
 
   /* Final stats from server usage if provided */
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
@@ -4560,7 +4656,7 @@ async function streamOne(url, payload, signal, target, t0, idx, total) {
   if (total > 1) stats = "#" + (idx + 1) + "/" + total + " — " + stats;
   target.stats.textContent = stats;
 
-  return { content: acc };
+  return { content: acc || thinkingAcc, reasoning: thinkingAcc };
 }
 
 function stopChat() {
