@@ -602,6 +602,97 @@ func TestUpdateQueriesRanksRunningThenReuseThenRecent(t *testing.T) {
 	}
 }
 
+func TestUpdateQueriesGroupsTaskIDsByCacheContinuation(t *testing.T) {
+	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
+	base := time.Unix(1_700_000_000, 0)
+
+	events := []llamacpp.LogEvent{
+		{
+			ID:           "evt_prompt_1",
+			At:           base,
+			Kind:         "cache",
+			CacheAction:  "observe",
+			CacheKey:     "0xabc",
+			PromptTokens: 1000,
+		},
+		{
+			ID:     "evt_launch_1",
+			At:     base.Add(time.Millisecond),
+			Kind:   "launch",
+			SlotID: 1,
+			TaskID: 101,
+		},
+		{
+			ID:             "evt_restore_1",
+			At:             base.Add(2 * time.Millisecond),
+			Kind:           "warning",
+			Severity:       "W",
+			SlotID:         1,
+			TaskID:         101,
+			Message:        "slot update_slots: id  1 | task 101 | restored context checkpoint (n_tokens = 500)",
+			RestoredTokens: 500,
+		},
+		{
+			ID:           "evt_eval_1",
+			At:           base.Add(3 * time.Millisecond),
+			Kind:         "prompt_eval",
+			SlotID:       1,
+			TaskID:       101,
+			PromptTokens: 1000,
+		},
+		{
+			ID:           "evt_prompt_2",
+			At:           base.Add(time.Second),
+			Kind:         "cache",
+			CacheAction:  "observe",
+			CacheKey:     "0xabc",
+			PromptTokens: 1500,
+		},
+		{
+			ID:     "evt_launch_2",
+			At:     base.Add(time.Second + time.Millisecond),
+			Kind:   "launch",
+			SlotID: 2,
+			TaskID: 202,
+		},
+		{
+			ID:             "evt_restore_2",
+			At:             base.Add(time.Second + 2*time.Millisecond),
+			Kind:           "warning",
+			Severity:       "W",
+			SlotID:         2,
+			TaskID:         202,
+			Message:        "slot update_slots: id  2 | task 202 | restored context checkpoint (n_tokens = 1200)",
+			RestoredTokens: 1200,
+		},
+		{
+			ID:           "evt_eval_2",
+			At:           base.Add(time.Second + 3*time.Millisecond),
+			Kind:         "prompt_eval",
+			SlotID:       2,
+			TaskID:       202,
+			PromptTokens: 1500,
+		},
+	}
+
+	queries := dashboard.updateQueries(base.Add(2*time.Second), "", nil, true, true, nil, events)
+	if len(queries) != 1 {
+		t.Fatalf("queries = %d: %#v", len(queries), queries)
+	}
+	if queries[0].ID != "cache_0xabc" {
+		t.Fatalf("query id = %q", queries[0].ID)
+	}
+	if queries[0].CacheKey != "0xabc" {
+		t.Fatalf("cache key = %q", queries[0].CacheKey)
+	}
+	if len(queries[0].TaskIDs) != 2 || queries[0].TaskIDs[0] != 101 || queries[0].TaskIDs[1] != 202 {
+		t.Fatalf("task ids = %#v", queries[0].TaskIDs)
+	}
+	if queries[0].CacheReuseCount != 2 {
+		t.Fatalf("cache reuse count = %d", queries[0].CacheReuseCount)
+	}
+}
+
 func TestUpdateQueriesRestoredCheckpointsAreCapped(t *testing.T) {
 	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
 	base := time.Unix(1_700_000_000, 0)

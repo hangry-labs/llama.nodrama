@@ -15,6 +15,7 @@ type LogEvent struct {
 	Severity         string    `json:"severity,omitempty"`
 	SlotID           int       `json:"slotId,omitempty"`
 	TaskID           int       `json:"taskId,omitempty"`
+	CacheKey         string    `json:"cacheKey,omitempty"`
 	PromptTokens     int       `json:"promptTokens,omitempty"`
 	RestoredTokens   int       `json:"restoredTokens,omitempty"`
 	CachePrompts     int       `json:"cachePrompts,omitempty"`
@@ -30,8 +31,10 @@ type LogEvent struct {
 }
 
 var (
+	logLaunchPattern     = regexp.MustCompile(`slot launch_slot_:\s*id\s+(\d+)\s*\|\s*task\s+(\d+)\s*\|`)
 	logTimingPattern     = regexp.MustCompile(`slot print_timing:\s*id\s+(\d+)\s*\|\s*task\s+(\d+)\s*\|\s*n_decoded\s*=\s*(\d+),\s*tg\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*t/s`)
 	logPromptEvalPattern = regexp.MustCompile(`slot print_timing:\s*id\s+(\d+)\s*\|\s*task\s+(\d+)\s*\|\s*prompt eval time\s*=.*?/\s*(\d+)\s+tokens`)
+	logPromptKeyPattern  = regexp.MustCompile(`-\s*prompt\s+(0x[0-9A-Fa-f]+):\s*(\d+)\s+tokens`)
 	logRestoredPattern   = regexp.MustCompile(`restored context checkpoint .*?\bn_tokens\s*=\s*(\d+)`)
 	logCacheStatePattern = regexp.MustCompile(`cache state:\s*(\d+)\s+prompts,\s*([0-9]+(?:\.[0-9]+)?)\s+MiB\s*\(limits:\s*([0-9]+(?:\.[0-9]+)?)\s+MiB,\s*(\d+)\s+tokens,\s*(\d+)\s+est\)`)
 	logSlotPattern       = regexp.MustCompile(`\bslot\b[^\d]*(\d+)`)
@@ -52,6 +55,21 @@ func ParseLogLine(line string, observedAt time.Time) (LogEvent, bool) {
 		Severity:     severity,
 		Message:      message,
 		Raw:          line,
+	}
+
+	if matches := logPromptKeyPattern.FindStringSubmatch(message); len(matches) == 3 {
+		event.Kind = "cache"
+		event.CacheAction = "observe"
+		event.CacheKey = matches[1]
+		event.PromptTokens = mustAtoi(matches[2])
+		return event, true
+	}
+
+	if matches := logLaunchPattern.FindStringSubmatch(message); len(matches) == 3 {
+		event.Kind = "launch"
+		event.SlotID = mustAtoi(matches[1])
+		event.TaskID = mustAtoi(matches[2])
+		return event, true
 	}
 
 	if matches := logTimingPattern.FindStringSubmatch(message); len(matches) == 5 {

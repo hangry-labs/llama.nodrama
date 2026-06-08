@@ -130,6 +130,7 @@ type QuerySummary struct {
 	DurationMS          int64      `json:"durationMs,omitempty"`
 	SlotIDs             []int      `json:"slotIds,omitempty"`
 	TaskIDs             []int      `json:"taskIds,omitempty"`
+	CacheKey            string     `json:"cacheKey,omitempty"`
 	PromptTokens        int        `json:"promptTokens,omitempty"`
 	CompletionTokens    int        `json:"completionTokens,omitempty"`
 	TotalTokens         int        `json:"totalTokens,omitempty"`
@@ -201,7 +202,10 @@ type Dashboard struct {
 	queries         map[string]QuerySummary
 	slotQuery       map[int]string
 	lastSlotQuery   map[int]string
+	taskQuery       map[int]string
 	seenQueryEvents map[string]bool
+	pendingCacheKey string
+	pendingCacheAt  time.Time
 
 	updateMu        sync.Mutex
 	updateInfo      UpdateInfo
@@ -254,6 +258,7 @@ func NewDashboard(client *llamacpp.Client, cfg Config, build BuildInfo) *Dashboa
 		queries:         map[string]QuerySummary{},
 		slotQuery:       map[int]string{},
 		lastSlotQuery:   map[int]string{},
+		taskQuery:       map[int]string{},
 		seenQueryEvents: map[string]bool{},
 		sustainedSince:  map[string]time.Time{},
 		snapshot: Snapshot{
@@ -708,7 +713,10 @@ func (m *Dashboard) ResetHistory() {
 	m.queries = map[string]QuerySummary{}
 	m.slotQuery = map[int]string{}
 	m.lastSlotQuery = map[int]string{}
+	m.taskQuery = map[int]string{}
 	m.seenQueryEvents = map[string]bool{}
+	m.pendingCacheKey = ""
+	m.pendingCacheAt = time.Time{}
 	m.queryMu.Unlock()
 }
 

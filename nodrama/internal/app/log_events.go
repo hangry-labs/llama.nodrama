@@ -16,6 +16,7 @@ const maxRecentQueries = 10
 const staleQueuedRequestAge = 10 * time.Second
 const minMeaningfulCacheReuseTokens = 64
 const minMeaningfulCacheReuseRatio = 0.10
+const pendingCacheKeyTTL = 5 * time.Second
 
 func (m *Dashboard) pollLogEvents(logPath string, now time.Time) ([]llamacpp.LogEvent, error) {
 	if logPath == "" {
@@ -158,6 +159,9 @@ func (m *Dashboard) updateQueries(now time.Time, model string, slots []llamacpp.
 	if m.lastSlotQuery == nil {
 		m.lastSlotQuery = map[int]string{}
 	}
+	if m.taskQuery == nil {
+		m.taskQuery = map[int]string{}
+	}
 	if m.seenQueryEvents == nil {
 		m.seenQueryEvents = map[string]bool{}
 	}
@@ -168,12 +172,22 @@ func (m *Dashboard) updateQueries(now time.Time, model string, slots []llamacpp.
 	activeQuery := map[string]bool{}
 	activeTask := map[int]bool{}
 
+	for _, event := range events {
+		if event.ID != "" && m.seenQueryEvents[event.ID] {
+			continue
+		}
+		if event.ID != "" {
+			m.seenQueryEvents[event.ID] = true
+		}
+		m.applyEventToQuery(event, now)
+	}
+
 	for _, slot := range slots {
 		if !slot.IsProcessing || slot.TaskID <= 0 {
 			continue
 		}
 		activeTask[slot.TaskID] = true
-		id := taskQueryID(slot.TaskID)
+		id := m.queryIDForTask(slot.TaskID)
 		query := m.ensureQuery(id, now)
 		query.Status = "running"
 		query.Route = "llama.cpp"
@@ -220,7 +234,7 @@ func (m *Dashboard) updateQueries(now time.Time, model string, slots []llamacpp.
 	}
 
 	for _, request := range requests {
-		ids := queryIDsForRequest(request)
+		ids := m.queryIDsForRequest(request)
 		if len(request.TaskIDs) > 0 {
 			delete(m.queries, request.ID)
 		}
@@ -235,15 +249,6 @@ func (m *Dashboard) updateQueries(now time.Time, model string, slots []llamacpp.
 		}
 	}
 
-	for _, event := range events {
-		if event.ID != "" && m.seenQueryEvents[event.ID] {
-			continue
-		}
-		if event.ID != "" {
-			m.seenQueryEvents[event.ID] = true
-		}
-		m.applyEventToQuery(event, now)
-	}
 	if slotsKnown {
 		m.closeInactiveTaskQueries(now, activeTask)
 	}
@@ -305,8 +310,41 @@ func (m *Dashboard) ensureQuery(id string, startedAt time.Time) QuerySummary {
 
 func (m *Dashboard) applyEventToQuery(event llamacpp.LogEvent, fallbackTime time.Time) {
 	queryID := ""
+	eventAt := event.At
+	if eventAt.IsZero() {
+		eventAt = fallbackTime
+	}
+
+	if event.Kind == "cache" && event.CacheKey != "" && event.TaskID == 0 {
+		m.pendingCacheKey = event.CacheKey
+		m.pendingCacheAt = eventAt
+		return
+	}
+
+	if event.Kind == "launch" && event.TaskID > 0 {
+		queryID = m.queryIDForLaunch(event.TaskID, eventAt)
+		query := m.ensureQuery(queryID, eventAt)
+		query.Status = "running"
+		query.Route = "llama.cpp"
+		if event.CacheKey != "" {
+			query.CacheKey = event.CacheKey
+		} else if key := cacheKeyFromQueryID(queryID); key != "" {
+			query.CacheKey = key
+		}
+		if event.SlotID > 0 {
+			query.SlotIDs = appendUniqueInt(query.SlotIDs, event.SlotID)
+			m.slotQuery[event.SlotID] = queryID
+			m.lastSlotQuery[event.SlotID] = queryID
+		}
+		query.TaskIDs = appendUniqueInt(query.TaskIDs, event.TaskID)
+		query.EndedAt = nil
+		query.LastEventAt = timePtr(eventAt)
+		m.queries[query.ID] = query
+		return
+	}
+
 	if event.TaskID > 0 {
-		queryID = taskQueryID(event.TaskID)
+		queryID = m.queryIDForTask(event.TaskID)
 	} else if event.SlotID > 0 {
 		if id, ok := m.slotQuery[event.SlotID]; ok {
 			queryID = id
@@ -318,11 +356,12 @@ func (m *Dashboard) applyEventToQuery(event llamacpp.LogEvent, fallbackTime time
 		return
 	}
 
-	eventAt := event.At
-	if eventAt.IsZero() {
-		eventAt = fallbackTime
-	}
 	query := m.ensureQuery(queryID, eventAt)
+	if event.CacheKey != "" {
+		query.CacheKey = event.CacheKey
+	} else if key := cacheKeyFromQueryID(queryID); key != "" {
+		query.CacheKey = key
+	}
 	if event.SlotID > 0 {
 		query.SlotIDs = appendUniqueInt(query.SlotIDs, event.SlotID)
 	}
@@ -455,6 +494,11 @@ func (m *Dashboard) pruneAndCopyQueries() []QuerySummary {
 			delete(m.queries, id)
 		}
 	}
+	for taskID, id := range m.taskQuery {
+		if !keepIDs[id] {
+			delete(m.taskQuery, taskID)
+		}
+	}
 	for slotID, id := range m.lastSlotQuery {
 		if !keepIDs[id] {
 			delete(m.lastSlotQuery, slotID)
@@ -475,20 +519,53 @@ func requestsByTask(requests []RequestSummary) map[int]RequestSummary {
 	return out
 }
 
-func queryIDsForRequest(request RequestSummary) []string {
+func (m *Dashboard) queryIDsForRequest(request RequestSummary) []string {
 	if len(request.TaskIDs) == 0 {
 		return []string{request.ID}
 	}
 	ids := make([]string, 0, len(request.TaskIDs))
 	for _, taskID := range request.TaskIDs {
 		if taskID > 0 {
-			ids = append(ids, taskQueryID(taskID))
+			ids = append(ids, m.queryIDForTask(taskID))
 		}
 	}
 	if len(ids) == 0 {
 		return []string{request.ID}
 	}
 	return ids
+}
+
+func (m *Dashboard) queryIDForTask(taskID int) string {
+	if taskID <= 0 {
+		return ""
+	}
+	if id, ok := m.taskQuery[taskID]; ok && id != "" {
+		return id
+	}
+	id := taskQueryID(taskID)
+	m.taskQuery[taskID] = id
+	return id
+}
+
+func (m *Dashboard) queryIDForLaunch(taskID int, eventAt time.Time) string {
+	if taskID <= 0 {
+		return ""
+	}
+	if m.pendingCacheKey != "" && !m.pendingCacheAt.IsZero() {
+		age := eventAt.Sub(m.pendingCacheAt)
+		if age >= 0 && age <= pendingCacheKeyTTL {
+			id := cacheQueryID(m.pendingCacheKey)
+			m.taskQuery[taskID] = id
+			m.pendingCacheKey = ""
+			m.pendingCacheAt = time.Time{}
+			return id
+		}
+		if age > pendingCacheKeyTTL {
+			m.pendingCacheKey = ""
+			m.pendingCacheAt = time.Time{}
+		}
+	}
+	return m.queryIDForTask(taskID)
 }
 
 func mergeRequestIntoQuery(query *QuerySummary, request RequestSummary) {
@@ -542,6 +619,21 @@ func requestStatus(request RequestSummary) string {
 
 func taskQueryID(taskID int) string {
 	return "task_" + strconv.Itoa(taskID)
+}
+
+func cacheQueryID(cacheKey string) string {
+	if cacheKey == "" {
+		return ""
+	}
+	return "cache_" + cacheKey
+}
+
+func cacheKeyFromQueryID(id string) string {
+	raw, ok := strings.CutPrefix(id, "cache_")
+	if !ok {
+		return ""
+	}
+	return raw
 }
 
 func taskIDFromQueryID(id string) int {

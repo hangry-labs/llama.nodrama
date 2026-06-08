@@ -87,6 +87,35 @@ func TestParseCacheStateLogLine(t *testing.T) {
 	}
 }
 
+func TestParsePromptCacheKeyLogLine(t *testing.T) {
+	event, ok := ParseLogLine("1699.36.265.797 I srv        update:    - prompt 0x5fca730e7cf0:     584 tokens, checkpoints:  1,   131.697 MiB", time.Unix(1_700_000_000, 0))
+	if !ok {
+		t.Fatal("prompt cache key line was not parsed")
+	}
+	if event.Kind != "cache" || event.CacheAction != "observe" {
+		t.Fatalf("kind/action = %q/%q", event.Kind, event.CacheAction)
+	}
+	if event.CacheKey != "0x5fca730e7cf0" {
+		t.Fatalf("cache key = %q", event.CacheKey)
+	}
+	if event.PromptTokens != 584 {
+		t.Fatalf("prompt tokens = %d", event.PromptTokens)
+	}
+}
+
+func TestParseLaunchLogLine(t *testing.T) {
+	event, ok := ParseLogLine("1699.36.265.954 I slot launch_slot_: id  1 | task 3079110 | processing task, is_child = 0", time.Unix(1_700_000_000, 0))
+	if !ok {
+		t.Fatal("launch line was not parsed")
+	}
+	if event.Kind != "launch" {
+		t.Fatalf("kind = %q", event.Kind)
+	}
+	if event.SlotID != 1 || event.TaskID != 3079110 {
+		t.Fatalf("slot/task = %d/%d", event.SlotID, event.TaskID)
+	}
+}
+
 func TestParseRestoredCheckpointTokens(t *testing.T) {
 	event, ok := ParseLogLine("1699.36.288.943 W slot update_slots: id  1 | task 3079110 | restored context checkpoint (pos_min = 6, pos_max = 6, n_tokens = 7, n_past = 7, size = 62.813 MiB)", time.Unix(1_700_000_000, 0))
 	if !ok {
