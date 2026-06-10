@@ -1763,10 +1763,20 @@ function renderLogLines(replace) {
 }
 
 function shouldShowLogLine(line) {
-  const lower = String(line || "").toLowerCase();
+  const text = String(line || "");
+  const lower = text.toLowerCase();
   const filter = logState.filter.toLowerCase();
-  if (logState.hideIdle && lower.includes("update_slots: all slots are idle")) return false;
+  if (logState.hideIdle && isIdleLogLine(text, lower)) return false;
   return !filter || lower.indexOf(filter) !== -1;
+}
+
+function isIdleLogLine(line, lower) {
+  if (lower.includes("update_slots: all slots are idle")) return true;
+  if (lower.includes("llama.cpp slot snapshot")) return true;
+  const trimmed = line.trim();
+  if (/^slot=\d+\s+state=unknown\b.*\bn_past=-\//i.test(trimmed)) return true;
+  if (/^busy_slots=\d+\/\d+$/i.test(trimmed)) return true;
+  return false;
 }
 
 function refreshLogVisibility() {
