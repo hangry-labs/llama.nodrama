@@ -290,6 +290,52 @@ func TestDeriveSlotLiveRatesIgnoresTaskChangesAndResets(t *testing.T) {
 	}
 }
 
+func TestDeriveSlotLiveRatesPrefersPerSlotLogTiming(t *testing.T) {
+	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
+	base := time.Unix(1_700_000_000, 0)
+
+	dashboard.historyMu.Lock()
+	dashboard.applySlotTimingEventLocked(llamacpp.LogEvent{
+		Kind:            "timing",
+		HasSlotID:       true,
+		SlotID:          1,
+		TaskID:          10,
+		TokensPerSecond: 41.5,
+		At:              base,
+	})
+	dashboard.applySlotTimingEventLocked(llamacpp.LogEvent{
+		Kind:            "timing",
+		HasSlotID:       true,
+		SlotID:          2,
+		TaskID:          20,
+		TokensPerSecond: 38.25,
+		At:              base,
+	})
+	dashboard.historyMu.Unlock()
+
+	_, generationRate, hasRate := dashboard.deriveSlotLiveRates(base.Add(time.Second), []llamacpp.Slot{
+		{ID: 1, TaskID: 10, IsProcessing: true, DecodedTokens: 100},
+		{ID: 2, TaskID: 20, IsProcessing: true, DecodedTokens: 100},
+	})
+	if !hasRate {
+		t.Fatal("expected log-derived slot rate")
+	}
+	if generationRate != 79.75 {
+		t.Fatalf("generation rate = %v", generationRate)
+	}
+
+	history := dashboard.recordSlotHistory(base.Add(time.Second), []llamacpp.Slot{
+		{ID: 1, TaskID: 10, IsProcessing: true},
+		{ID: 2, TaskID: 20, IsProcessing: true},
+	}, "model-a")
+	if got := history.Slots["1"][0].GenerationTokensPerSec; got != 41.5 {
+		t.Fatalf("slot 1 generation rate = %v", got)
+	}
+	if got := history.Slots["2"][0].GenerationTokensPerSec; got != 38.25 {
+		t.Fatalf("slot 2 generation rate = %v", got)
+	}
+}
+
 func TestDeriveSlotLiveRatesIgnoresFinalIdleDump(t *testing.T) {
 	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
 	base := time.Unix(1_700_000_000, 0)

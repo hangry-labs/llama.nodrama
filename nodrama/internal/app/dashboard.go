@@ -219,6 +219,7 @@ type Dashboard struct {
 	rateHistory    []metricRateSample
 	slotRateLast   map[int]slotRateSample
 	slotLiveRates  map[int]slotLiveRate
+	slotLogRates   map[int]slotLogRate
 	metricHistory  map[string][]HistoryPoint
 	metricRecent   map[string][]HistoryPoint
 	metricLong     map[string][]HistoryPoint
@@ -273,6 +274,12 @@ type slotLiveRate struct {
 	generationTokensPerSec float64
 }
 
+type slotLogRate struct {
+	taskID                 int
+	at                     time.Time
+	generationTokensPerSec float64
+}
+
 type cpuUsageSample struct {
 	at        time.Time
 	usageUsec uint64
@@ -281,6 +288,7 @@ type cpuUsageSample struct {
 
 const (
 	liveRateWindow       = 5 * time.Second
+	slotLogRateFreshness = 7 * time.Second
 	metricHistoryWindow  = time.Minute
 	metricRecentWindow   = 5 * time.Minute
 	metricLongWindow     = 24 * time.Hour
@@ -303,6 +311,7 @@ func NewDashboard(client *llamacpp.Client, cfg Config, build BuildInfo) *Dashboa
 		previousSlot:    map[int]llamacpp.Slot{},
 		slotRateLast:    map[int]slotRateSample{},
 		slotLiveRates:   map[int]slotLiveRate{},
+		slotLogRates:    map[int]slotLogRate{},
 		metricHistory:   map[string][]HistoryPoint{},
 		metricRecent:    map[string][]HistoryPoint{},
 		metricLong:      map[string][]HistoryPoint{},
@@ -500,6 +509,9 @@ func (m *Dashboard) deriveSlotLiveRates(now time.Time, slots []llamacpp.Slot) (f
 	if m.slotLiveRates == nil {
 		m.slotLiveRates = map[int]slotLiveRate{}
 	}
+	if m.slotLogRates == nil {
+		m.slotLogRates = map[int]slotLogRate{}
+	}
 
 	seen := map[int]bool{}
 	promptRate := 0.0
@@ -517,11 +529,23 @@ func (m *Dashboard) deriveSlotLiveRates(now time.Time, slots []llamacpp.Slot) (f
 		}
 		previous, ok := m.slotRateLast[slot.ID]
 		m.slotRateLast[slot.ID] = current
-		if !ok || !slot.IsProcessing || !previous.isProcessing {
+		if !slot.IsProcessing {
 			m.slotLiveRates[slot.ID] = liveRate
 			continue
 		}
-		if slot.TaskID == 0 || previous.taskID == 0 || slot.TaskID != previous.taskID {
+
+		if logRate, ok := m.freshSlotLogRateLocked(now, slot); ok {
+			liveRate.generationTokensPerSec = logRate
+			generationRate += logRate
+			hasRate = true
+		}
+
+		if !ok || !previous.isProcessing {
+			m.slotLiveRates[slot.ID] = liveRate
+			continue
+		}
+		sameTask := slot.TaskID > 0 && previous.taskID > 0 && slot.TaskID == previous.taskID
+		if !sameTask {
 			m.slotLiveRates[slot.ID] = liveRate
 			continue
 		}
@@ -536,11 +560,13 @@ func (m *Dashboard) deriveSlotLiveRates(now time.Time, slots []llamacpp.Slot) (f
 			promptRate += liveRate.promptTokensPerSec
 			hasRate = true
 		}
-		decodedDelta := slot.DecodedTokens - previous.decodedTokens
-		if decodedDelta > 0 {
-			liveRate.generationTokensPerSec = float64(decodedDelta) / elapsed
-			generationRate += liveRate.generationTokensPerSec
-			hasRate = true
+		if liveRate.generationTokensPerSec == 0 {
+			decodedDelta := slot.DecodedTokens - previous.decodedTokens
+			if decodedDelta > 0 {
+				liveRate.generationTokensPerSec = float64(decodedDelta) / elapsed
+				generationRate += liveRate.generationTokensPerSec
+				hasRate = true
+			}
 		}
 		m.slotLiveRates[slot.ID] = liveRate
 	}
@@ -550,7 +576,26 @@ func (m *Dashboard) deriveSlotLiveRates(now time.Time, slots []llamacpp.Slot) (f
 			delete(m.slotLiveRates, slotID)
 		}
 	}
+	for slotID, rate := range m.slotLogRates {
+		if !seen[slotID] || now.Sub(rate.at) > slotLogRateFreshness*2 {
+			delete(m.slotLogRates, slotID)
+		}
+	}
 	return promptRate, generationRate, hasRate
+}
+
+func (m *Dashboard) freshSlotLogRateLocked(now time.Time, slot llamacpp.Slot) (float64, bool) {
+	rate, ok := m.slotLogRates[slot.ID]
+	if !ok || rate.generationTokensPerSec <= 0 {
+		return 0, false
+	}
+	if rate.at.IsZero() || now.Sub(rate.at) > slotLogRateFreshness {
+		return 0, false
+	}
+	if slot.TaskID > 0 && rate.taskID > 0 && slot.TaskID != rate.taskID {
+		return 0, false
+	}
+	return rate.generationTokensPerSec, true
 }
 
 func (m *Dashboard) recordMetricHistory(now time.Time, metrics map[string]float64) SnapshotHistory {

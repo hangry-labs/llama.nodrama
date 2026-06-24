@@ -12,27 +12,22 @@ function renderPromptCache(cache) {
         el("span", { class: "sub", id: "cache-summary" }, t("cache.empty")),
       ]),
       el("div", { class: "cache-bar", id: "cache-bar" }),
-      el("div", { class: "cache-legend", id: "cache-legend" }),
     ]));
   }
 
   const summary = $("#cache-summary");
   const bar = $("#cache-bar");
-  const legend = $("#cache-legend");
-  if (!summary || !bar || !legend) return;
+  if (!summary || !bar) return;
   clearCacheSlotHighlight();
   bar.innerHTML = "";
-  legend.innerHTML = "";
 
   if (!cache || !cache.available) {
     summary.textContent = t("cache.empty");
     bar.hidden = true;
-    legend.hidden = true;
     return;
   }
 
   bar.hidden = false;
-  legend.hidden = false;
 
   const used = Number(cache.usedMiB || 0);
   const limit = Number(cache.limitMiB || 0);
@@ -53,7 +48,6 @@ function renderPromptCache(cache) {
   const segments = promptCacheSegments(cache, denom);
   if (!segments.length) {
     bar.hidden = true;
-    legend.hidden = true;
     summary.textContent = t("cache.empty");
     return;
   }
@@ -76,14 +70,6 @@ function renderPromptCache(cache) {
       node.addEventListener("blur", clearCacheSlotHighlight);
     }
     bar.appendChild(node);
-  }
-
-  for (const segment of segments.filter((s) => s.kind !== "unused")) {
-    legend.appendChild(el("div", { class: "cache-legend-item" }, [
-      el("span", { class: "cache-swatch " + segment.kind }),
-      el("span", { class: "cache-name" }, segment.name),
-      el("span", { class: "cache-size" }, segment.detail),
-    ]));
   }
 }
 

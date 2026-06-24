@@ -48,9 +48,24 @@ func (m *Dashboard) pollLogEvents(logPath string, now time.Time) ([]llamacpp.Log
 		if len(m.logEvents) > maxLogEventHistory {
 			m.logEvents = m.logEvents[len(m.logEvents)-maxLogEventHistory:]
 		}
+		m.applySlotTimingEventLocked(event)
 		m.applyPromptCacheEventLocked(event)
 	}
 	return m.copyLogEvents(), nil
+}
+
+func (m *Dashboard) applySlotTimingEventLocked(event llamacpp.LogEvent) {
+	if event.Kind != "timing" || !event.HasSlotID || event.TaskID <= 0 || event.TokensPerSecond <= 0 {
+		return
+	}
+	if m.slotLogRates == nil {
+		m.slotLogRates = map[int]slotLogRate{}
+	}
+	m.slotLogRates[event.SlotID] = slotLogRate{
+		taskID:                 event.TaskID,
+		at:                     event.At,
+		generationTokensPerSec: event.TokensPerSecond,
+	}
 }
 
 func (m *Dashboard) readNewLogLines(logPath string) ([]string, error) {

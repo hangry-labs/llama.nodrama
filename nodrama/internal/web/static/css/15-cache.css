@@ -45,34 +45,3 @@
     );
     color: var(--fg-mute);
   }
-  .cache-legend {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 6px 12px;
-  }
-  .cache-legend-item {
-    display: grid;
-    grid-template-columns: 10px minmax(0, auto) minmax(0, 1fr);
-    gap: 6px;
-    align-items: center;
-    min-width: 0;
-    font-size: 12px;
-  }
-  .cache-swatch {
-    width: 10px; height: 10px; border-radius: 3px;
-    background: var(--accent);
-  }
-  .cache-swatch.other { background: #8957e5; }
-  .cache-swatch.untracked { background: var(--warn); }
-  .cache-name {
-    font-family: var(--mono);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .cache-size {
-    color: var(--fg-dim);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
