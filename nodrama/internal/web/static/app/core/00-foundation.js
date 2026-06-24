@@ -85,6 +85,7 @@ const state = {
   metricFacts: {},
   slots: [],
   queries: [],
+  promptCache: null,
   events: [],
   snapshot: null,
   history: emptyHistory(),

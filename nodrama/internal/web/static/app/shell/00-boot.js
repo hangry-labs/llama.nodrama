@@ -48,6 +48,8 @@ function ensureRootScaffold() {
   root.innerHTML = "";
   root.appendChild(el("div", { id: "metrics-section", class: "full",
                                style: "display: contents;" }));
+  root.appendChild(el("div", { id: "cache-section", class: "full",
+                               style: "display: contents;" }));
   root.appendChild(el("div", { id: "slots-section", class: "full",
                                style: "display: contents;" }));
   root.appendChild(el("div", { id: "queries-section", class: "full",

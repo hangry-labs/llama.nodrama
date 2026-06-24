@@ -79,6 +79,14 @@ I18N.en = {
     "metrics.help.prompt_seconds_total": "Cumulative wall time spent processing prompts since server start.",
     "metrics.help.predicted_seconds_total": "Cumulative wall time spent generating output tokens since server start.",
 
+    "cache.title":          "Prompt cache",
+    "cache.empty":          "No prompt cache data yet",
+    "cache.summary":        "{used} used · {count} entries",
+    "cache.others":         "Others",
+    "cache.untracked":      "Untracked",
+    "cache.unused":         "Unused",
+    "cache.unknown_entry":  "cache entry",
+
     "slots.title":              "Slots",
     "slots.idle":               "idle",
     "slots.active":             "active",

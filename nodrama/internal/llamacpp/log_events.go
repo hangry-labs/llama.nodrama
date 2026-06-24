@@ -24,6 +24,8 @@ type LogEvent struct {
 	CacheLimitMiB    float64   `json:"cacheLimitMiB,omitempty"`
 	CacheLimitTokens int       `json:"cacheLimitTokens,omitempty"`
 	CacheEstTokens   int       `json:"cacheEstTokens,omitempty"`
+	CacheCheckpoints int       `json:"cacheCheckpoints,omitempty"`
+	CacheSizeMiB     float64   `json:"cacheSizeMiB,omitempty"`
 	DecodedTokens    int       `json:"decodedTokens,omitempty"`
 	TokensPerSecond  float64   `json:"tokensPerSecond,omitempty"`
 	CacheAction      string    `json:"cacheAction,omitempty"`
@@ -35,7 +37,7 @@ var (
 	logLaunchPattern     = regexp.MustCompile(`slot launch_slot_:\s*id\s+(\d+)\s*\|\s*task\s+(\d+)\s*\|`)
 	logTimingPattern     = regexp.MustCompile(`slot print_timing:\s*id\s+(\d+)\s*\|\s*task\s+(\d+)\s*\|\s*n_decoded\s*=\s*(\d+),\s*tg\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*t/s`)
 	logPromptEvalPattern = regexp.MustCompile(`slot print_timing:\s*id\s+(\d+)\s*\|\s*task\s+(\d+)\s*\|\s*prompt eval time\s*=.*?/\s*(\d+)\s+tokens`)
-	logPromptKeyPattern  = regexp.MustCompile(`-\s*prompt\s+(0x[0-9A-Fa-f]+):\s*(\d+)\s+tokens`)
+	logPromptKeyPattern  = regexp.MustCompile(`-\s*prompt\s+(0x[0-9A-Fa-f]+):\s*(\d+)\s+tokens(?:,\s*checkpoints:\s*(\d+),\s*([0-9]+(?:\.[0-9]+)?)\s+MiB)?`)
 	logCtxSeqPattern     = regexp.MustCompile(`\bn_ctx_seq\s*\(\s*(\d+)\s*\)`)
 	logSlotCtxPattern    = regexp.MustCompile(`\bslot context\s*\(\s*(\d+)\s*\)`)
 	logRestoredPattern   = regexp.MustCompile(`restored context checkpoint .*?\bn_tokens\s*=\s*(\d+)`)
@@ -66,11 +68,15 @@ func ParseLogLine(line string, observedAt time.Time) (LogEvent, bool) {
 		return event, true
 	}
 
-	if matches := logPromptKeyPattern.FindStringSubmatch(message); len(matches) == 3 {
+	if matches := logPromptKeyPattern.FindStringSubmatch(message); len(matches) >= 3 {
 		event.Kind = "cache"
 		event.CacheAction = "observe"
 		event.CacheKey = matches[1]
 		event.PromptTokens = mustAtoi(matches[2])
+		if len(matches) >= 5 {
+			event.CacheCheckpoints = mustAtoi(matches[3])
+			event.CacheSizeMiB = mustParseFloat(matches[4])
+		}
 		return event, true
 	}
 

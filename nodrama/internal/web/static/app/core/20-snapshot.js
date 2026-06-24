@@ -133,6 +133,7 @@ function applySnapshot(snapshot, opts) {
   state.metricFacts = (snapshot && snapshot.metricFacts) || {};
   state.slots = Array.isArray(snapshot && snapshot.slots) ? snapshot.slots : [];
   state.queries = Array.isArray(snapshot && snapshot.queries) ? snapshot.queries : [];
+  state.promptCache = (snapshot && snapshot.promptCache) || null;
   state.events = Array.isArray(snapshot && snapshot.events) ? snapshot.events : [];
   state.history = (snapshot && snapshot.history) || emptyHistory();
   state.suggestions = Array.isArray(snapshot && snapshot.suggestions) ? snapshot.suggestions : null;
@@ -162,6 +163,7 @@ function applySnapshot(snapshot, opts) {
 
   if (o.render !== false) {
     renderMetrics(state.metrics, state.history.metrics, state.metricFacts);
+    renderPromptCache(state.promptCache);
     renderSlots(state.slots);
     renderQueries(state.queries);
     const supportSignature = JSON.stringify({

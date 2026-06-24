@@ -103,6 +103,7 @@ function makeSlotNode(s) {
       el("span", { class: "badge", "data-role": "state" }, t("slots.idle")),
       el("span", { class: "grow" }),
       el("span", { class: "badge rate", "data-role": "pp-rate", title: "prompt processing tok/s" }, "pp —"),
+      el("span", { class: "badge rate", "data-role": "tg-rate", title: "generation tok/s" }, "tg —"),
     ]),
     el("div", { class: "progress", "data-role": "progress" }, [
       el("div", { class: "pct-bar" }, el("span", { style: "width: 0%" })),
@@ -138,10 +139,16 @@ function updateSlotNode(node, s) {
   const historyPoints = state.history && state.history.slots && state.history.slots[String(s.id)];
   const latestHistory = latestSlotHistoryPoint(historyPoints);
   const promptRate = latestHistory ? Number(latestHistory.promptTokensPerSec || 0) : 0;
+  const generationRate = latestHistory ? Number(latestHistory.generationTokensPerSec || 0) : 0;
   const ppRate = node.querySelector('[data-role="pp-rate"]');
   if (ppRate) {
     ppRate.hidden = !isActive;
     ppRate.textContent = isActive && promptRate > 0 ? ("pp " + fmtNumber(promptRate) + " tok/s") : "pp —";
+  }
+  const tgRate = node.querySelector('[data-role="tg-rate"]');
+  if (tgRate) {
+    tgRate.hidden = !isActive;
+    tgRate.textContent = isActive && generationRate > 0 ? ("tg " + fmtNumber(generationRate) + " tok/s") : "tg —";
   }
 
   const progress = node.querySelector('[data-role="progress"]');

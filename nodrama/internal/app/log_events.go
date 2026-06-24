@@ -48,6 +48,7 @@ func (m *Dashboard) pollLogEvents(logPath string, now time.Time) ([]llamacpp.Log
 		if len(m.logEvents) > maxLogEventHistory {
 			m.logEvents = m.logEvents[len(m.logEvents)-maxLogEventHistory:]
 		}
+		m.applyPromptCacheEventLocked(event)
 	}
 	return m.copyLogEvents(), nil
 }
@@ -137,6 +138,7 @@ func readInitialLogStateLines(file *os.File) ([]string, error) {
 
 func initialLogStateLine(line string) bool {
 	return strings.Contains(line, "cache state:") ||
+		strings.Contains(line, "- prompt 0x") ||
 		strings.Contains(line, "n_ctx_seq") ||
 		strings.Contains(line, "slot context")
 }

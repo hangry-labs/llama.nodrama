@@ -10,6 +10,7 @@ The dashboard intentionally uses plain browser scripts and CSS files loaded by
 - `app/shell/`: boot sequence, root scaffold, model/config panels, modals, actions, and guidance.
 - `app/history/`: history normalization and sparkline rendering.
 - `app/metrics/`: metric catalog, formatting, and metric-card rendering.
+- `app/cache/`: shared prompt-cache overview rendering.
 - `app/chat/`: chat state, markdown rendering, UI rendering, and streaming transport.
 - `app/99-start.js`: final boot trigger. Keep this last.
 

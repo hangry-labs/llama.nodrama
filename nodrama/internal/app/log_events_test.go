@@ -84,6 +84,45 @@ func TestPollLogEventsKeepsInitialDeploymentContext(t *testing.T) {
 	}
 }
 
+func TestPollLogEventsBuildsPromptCacheSummary(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "llama.log")
+	var body string
+	body += "124.55.424.001 I srv update: - cache state: 12 prompts, 1200.000 MiB (limits: 2000.000 MiB, 100000 tokens, 100000 est)\n"
+	for i := 1; i <= 12; i++ {
+		body += "124.55.424.002 I srv update: - prompt 0x" + strconv.FormatInt(int64(i), 16) +
+			": " + strconv.Itoa(i*100) + " tokens, checkpoints: " + strconv.Itoa(i) +
+			", " + strconv.FormatFloat(float64(i*10), 'f', 3, 64) + " MiB\n"
+	}
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	dashboard := NewDashboard(nil, Config{LogPath: path}, BuildInfo{})
+	if _, err := dashboard.pollLogEvents(path, time.Unix(1_700_000_000, 0)); err != nil {
+		t.Fatal(err)
+	}
+	cache := dashboard.copyPromptCache()
+	if cache == nil || !cache.Available {
+		t.Fatalf("cache summary missing: %#v", cache)
+	}
+	if cache.PromptCount != 12 || cache.ObservedEntries != 12 || !cache.Complete {
+		t.Fatalf("cache counts = %#v", cache)
+	}
+	if len(cache.TopEntries) != maxPromptCacheTopEntries {
+		t.Fatalf("top entries = %d", len(cache.TopEntries))
+	}
+	if cache.TopEntries[0].Key != "0xc" || cache.TopEntries[0].MiB != 120 {
+		t.Fatalf("top entry = %#v", cache.TopEntries[0])
+	}
+	if cache.Other == nil || cache.Other.Count != 2 || cache.Other.MiB != 30 {
+		t.Fatalf("other = %#v", cache.Other)
+	}
+	if cache.UnusedMiB != 800 {
+		t.Fatalf("unused MiB = %v", cache.UnusedMiB)
+	}
+}
+
 func TestPollLogEventsAssignsStableBatchOrder(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "llama.log")

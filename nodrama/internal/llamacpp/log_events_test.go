@@ -127,6 +127,12 @@ func TestParsePromptCacheKeyLogLine(t *testing.T) {
 	if event.PromptTokens != 584 {
 		t.Fatalf("prompt tokens = %d", event.PromptTokens)
 	}
+	if event.CacheCheckpoints != 1 {
+		t.Fatalf("checkpoints = %d", event.CacheCheckpoints)
+	}
+	if event.CacheSizeMiB != 131.697 {
+		t.Fatalf("cache size MiB = %v", event.CacheSizeMiB)
+	}
 }
 
 func TestParseLaunchLogLine(t *testing.T) {

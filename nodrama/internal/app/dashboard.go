@@ -35,6 +35,7 @@ type Snapshot struct {
 	GPU            gpu.Snapshot              `json:"gpu"`
 	History        SnapshotHistory           `json:"history"`
 	MetricFacts    map[string]MetricFact     `json:"metricFacts,omitempty"`
+	PromptCache    *PromptCacheSummary       `json:"promptCache,omitempty"`
 	Suggestions    []Suggestion              `json:"suggestions"`
 	Requests       []RequestSummary          `json:"requests,omitempty"`
 	Queries        []QuerySummary            `json:"queries,omitempty"`
@@ -154,6 +155,33 @@ type QuerySummary struct {
 	cacheRestoreEventsCounted int
 }
 
+type PromptCacheSummary struct {
+	Available          bool               `json:"available"`
+	UpdatedAt          *time.Time         `json:"updatedAt,omitempty"`
+	PromptCount        int                `json:"promptCount,omitempty"`
+	ObservedEntries    int                `json:"observedEntries,omitempty"`
+	Complete           bool               `json:"complete"`
+	UsedMiB            float64            `json:"usedMiB,omitempty"`
+	LimitMiB           float64            `json:"limitMiB,omitempty"`
+	LimitTokens        int                `json:"limitTokens,omitempty"`
+	EstTokens          int                `json:"estTokens,omitempty"`
+	UsedTokensEstimate int                `json:"usedTokensEstimate,omitempty"`
+	TopEntries         []PromptCacheEntry `json:"topEntries,omitempty"`
+	Other              *PromptCacheEntry  `json:"other,omitempty"`
+	UntrackedMiB       float64            `json:"untrackedMiB,omitempty"`
+	UnusedMiB          float64            `json:"unusedMiB,omitempty"`
+}
+
+type PromptCacheEntry struct {
+	Key            string  `json:"key,omitempty"`
+	Count          int     `json:"count,omitempty"`
+	Tokens         int     `json:"tokens,omitempty"`
+	Checkpoints    int     `json:"checkpoints,omitempty"`
+	MiB            float64 `json:"mib,omitempty"`
+	PercentOfLimit float64 `json:"percentOfLimit,omitempty"`
+	PercentOfUsed  float64 `json:"percentOfUsed,omitempty"`
+}
+
 type Overview struct {
 	Online                 bool    `json:"online"`
 	RequestsProcessing     float64 `json:"requestsProcessing"`
@@ -200,6 +228,8 @@ type Dashboard struct {
 	logPartial     string
 	logEventSeq    uint64
 	logEvents      []llamacpp.LogEvent
+	promptCache    PromptCacheSummary
+	promptCacheMap map[string]PromptCacheEntry
 
 	requestSeq uint64
 	requestMu  sync.Mutex
@@ -275,6 +305,7 @@ func NewDashboard(client *llamacpp.Client, cfg Config, build BuildInfo) *Dashboa
 		metricLong:      map[string][]HistoryPoint{},
 		metricFacts:     map[string]MetricFact{},
 		slotHistory:     map[int][]SlotHistoryPoint{},
+		promptCacheMap:  map[string]PromptCacheEntry{},
 		queries:         map[string]QuerySummary{},
 		slotQuery:       map[int]string{},
 		lastSlotQuery:   map[int]string{},
@@ -909,12 +940,14 @@ func (m *Dashboard) ResetHistory() {
 	m.logOffset = 0
 	m.logInitialized = false
 	m.logPartial = ""
+	m.resetPromptCacheLocked()
 	empty := m.copyHistoryLocked()
 	m.historyMu.Unlock()
 
 	m.mu.Lock()
 	m.snapshot.History = empty
 	m.snapshot.MetricFacts = nil
+	m.snapshot.PromptCache = nil
 	m.snapshot.Events = nil
 	m.snapshot.Queries = nil
 	m.mu.Unlock()
@@ -1172,6 +1205,7 @@ func (m *Dashboard) poll(parent context.Context) {
 		}
 		events = parsedEvents
 	}
+	promptCache := m.copyPromptCache()
 	processContextTokens := 0
 	if previous.Overview.ContextCapacitySource == "process args" {
 		processContextTokens = previous.Overview.ContextCapacityTokens
@@ -1352,6 +1386,7 @@ func (m *Dashboard) poll(parent context.Context) {
 		GPU:            gpuSnapshot,
 		History:        history,
 		MetricFacts:    metricFacts,
+		PromptCache:    promptCache,
 		Suggestions:    suggestions,
 		Requests:       requests,
 		Queries:        m.updateQueries(snapshotAt, modelAlias, slots, slotsProbe.OK, metricsProbe.OK && metrics.RequestsDeferred <= 0, requests, events),
