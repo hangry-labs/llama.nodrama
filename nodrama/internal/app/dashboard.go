@@ -13,6 +13,7 @@ import (
 
 	"llama.nodrama/nodrama/internal/gpu"
 	"llama.nodrama/nodrama/internal/llamacpp"
+	"llama.nodrama/nodrama/internal/system"
 )
 
 type Snapshot struct {
@@ -191,6 +192,8 @@ type Dashboard struct {
 	metricRecent   map[string][]HistoryPoint
 	metricLong     map[string][]HistoryPoint
 	metricFacts    map[string]MetricFact
+	cpuLast        cpuUsageSample
+	cpuLastOK      bool
 	slotHistory    map[int][]SlotHistoryPoint
 	logOffset      int64
 	logInitialized bool
@@ -235,6 +238,12 @@ type slotRateSample struct {
 type slotLiveRate struct {
 	promptTokensPerSec     float64
 	generationTokensPerSec float64
+}
+
+type cpuUsageSample struct {
+	at        time.Time
+	usageUsec uint64
+	cpus      float64
 }
 
 const (
@@ -631,6 +640,31 @@ func (m *Dashboard) copyMetricFacts() map[string]MetricFact {
 	return out
 }
 
+func (m *Dashboard) recordContainerCPUPercent(now time.Time) (float64, bool) {
+	stats, err := system.ReadContainerCPUStats()
+	if err != nil || stats.CPUs <= 0 {
+		m.cpuLastOK = false
+		return 0, false
+	}
+	current := cpuUsageSample{at: now, usageUsec: stats.UsageUsec, cpus: stats.CPUs}
+	if !m.cpuLastOK {
+		m.cpuLast = current
+		m.cpuLastOK = true
+		return 0, false
+	}
+	previous := m.cpuLast
+	m.cpuLast = current
+	elapsedUsec := now.Sub(previous.at).Seconds() * 1_000_000
+	if elapsedUsec <= 0 || stats.UsageUsec < previous.usageUsec {
+		return 0, false
+	}
+	percent := (float64(stats.UsageUsec-previous.usageUsec) / (elapsedUsec * stats.CPUs)) * 100
+	if math.IsNaN(percent) || math.IsInf(percent, 0) || percent < 0 {
+		return 0, false
+	}
+	return percent, true
+}
+
 func peakHistoryPoint(points []HistoryPoint) (HistoryPoint, bool) {
 	if len(points) == 0 {
 		return HistoryPoint{}, false
@@ -866,6 +900,8 @@ func (m *Dashboard) ResetHistory() {
 	m.metricRecent = map[string][]HistoryPoint{}
 	m.metricLong = map[string][]HistoryPoint{}
 	m.metricFacts = map[string]MetricFact{}
+	m.cpuLast = cpuUsageSample{}
+	m.cpuLastOK = false
 	m.slotHistory = map[int][]SlotHistoryPoint{}
 	m.slotLiveRates = map[int]slotLiveRate{}
 	m.logEvents = nil
@@ -1149,6 +1185,9 @@ func (m *Dashboard) poll(parent context.Context) {
 	rawMetrics["nodrama:context_active_tokens"] = float64(contextUsage.UsedTokens)
 	rawMetrics["nodrama:context_active_capacity_tokens"] = float64(contextUsage.CapacityTokens)
 	rawMetrics["nodrama:context_active_ratio"] = contextUsage.Ratio
+	if cpuPercent, ok := m.recordContainerCPUPercent(snapshotAt); ok {
+		rawMetrics["nodrama:container_cpu_percent"] = cpuPercent
+	}
 	history := m.recordMetricHistory(snapshotAt, rawMetrics)
 	metricFacts := m.copyMetricFacts()
 

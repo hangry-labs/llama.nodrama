@@ -2032,9 +2032,8 @@ function sparkline(data, opts) {
     markerLine.setAttribute("hidden", "hidden");
     svg.appendChild(markerLine);
 
-    const marker = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    const marker = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
     marker.setAttribute("class", "spark-marker");
-    marker.setAttribute("r", opts.pointRadius || 2.6);
     marker.setAttribute("hidden", "hidden");
     svg.appendChild(marker);
 
@@ -2054,11 +2053,16 @@ function sparkline(data, opts) {
       if (!p) return;
       const x = sx(p.t).toFixed(1);
       const y = sy(p.v).toFixed(1);
+      const radiusPx = opts.pointPixelRadius || 4;
+      const rx = (radiusPx * W / rect.width).toFixed(2);
+      const ry = (radiusPx * H / rect.height).toFixed(2);
       markerLine.setAttribute("x1", x);
       markerLine.setAttribute("x2", x);
       markerLine.removeAttribute("hidden");
       marker.setAttribute("cx", x);
       marker.setAttribute("cy", y);
+      marker.setAttribute("rx", rx);
+      marker.setAttribute("ry", ry);
       marker.removeAttribute("hidden");
       showSparkTooltip(formatTime(p.t) + " · " + formatValue(p.v), e.clientX, e.clientY);
     });
@@ -2145,6 +2149,10 @@ const METRIC_CARDS = [
     ratioMetric: "nodrama:context_active_ratio",
     warnRatio: 0.80, badRatio: 0.90, peakNote: true,
     helpKey: "metrics.help.context_used" },
+  { id: "container_cpu", titleKey: "metrics.container_cpu",
+    metric: "nodrama:container_cpu_percent", unit: "%", min: 0,
+    warnAt: 80, badAt: 95, peakNote: true,
+    helpKey: "metrics.help.container_cpu" },
   { id: "n_tokens_max",  titleKey: "metrics.n_tokens_max",
     metric: "llamacpp:n_tokens_max",             unit: "tok",   min: 0,
     peakNote: true,
@@ -2342,7 +2350,7 @@ function openMetricHistory(card) {
       height: 160,
       interactive: true,
       interactiveLimit: 2000,
-      pointRadius: 1.6,
+      pointPixelRadius: 4,
       formatValue: (v) => formatMetricValue(card, v),
     }));
     body.appendChild(chart);
