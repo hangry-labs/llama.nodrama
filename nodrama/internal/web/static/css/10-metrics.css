@@ -1,0 +1,98 @@
+  /* metrics */
+  .metric-card .row {
+    display: flex; align-items: baseline; gap: 8px;
+    flex-wrap: wrap;
+  }
+  .metric-card[role="button"] { cursor: pointer; }
+  .metric-card[role="button"]:hover { border-color: #3b5f88; }
+  .metric-card[role="button"]:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .metric-card .metric-title {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px;
+  }
+  .metric-card .metric-title h2 { min-width: 0; }
+  .metric-card .metric-title .info-btn {
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--fg-dim);
+    flex: 0 0 auto;
+    font-size: 11px;
+    height: 20px;
+    line-height: 18px;
+    padding: 0;
+    text-align: center;
+    width: 20px;
+  }
+  .metric-card .metric-title .info-btn:hover,
+  .metric-card .metric-title .info-btn:focus-visible {
+    border-color: var(--accent);
+    color: var(--accent-2);
+  }
+  .metric-card .unit { color: var(--fg-mute); font-size: 13px; font-family: var(--mono); }
+  .metric-card .metric-note {
+    color: var(--fg-mute);
+    font-size: 11px;
+    line-height: 1.35;
+    min-height: 14px;
+  }
+  .metric-card svg { width: 100%; height: 36px; display: block; }
+  .spark-area  { fill: #58a6ff22; }
+  .spark-line  { fill: none; stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+  .spark-grid  { stroke: var(--border); stroke-width: 1; vector-effect: non-scaling-stroke; }
+  .spark-marker {
+    fill: var(--accent-2);
+    stroke: var(--bg);
+    stroke-width: 1;
+    pointer-events: none;
+    vector-effect: non-scaling-stroke;
+  }
+  .spark-marker-line {
+    stroke: var(--accent-2);
+    stroke-width: 1;
+    opacity: 0.6;
+    pointer-events: none;
+    vector-effect: non-scaling-stroke;
+  }
+  .spark-tooltip {
+    position: fixed;
+    z-index: 200;
+    pointer-events: none;
+    background: #05080dcc;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--fg);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 4px 7px;
+    box-shadow: 0 8px 22px #000a;
+    max-width: 250px;
+    white-space: nowrap;
+  }
+  .metric-card.warn .value  { color: var(--warn); }
+  .metric-card.bad  .value  { color: var(--bad); }
+  .metric-card.warn .spark-line { stroke: var(--warn); }
+  .metric-card.warn .spark-area { fill: #d2992233; }
+  .metric-card.bad  .spark-line { stroke: var(--bad); }
+  .metric-card.bad  .spark-area { fill: #f8514933; }
+  .metric-card.disabled .value { color: var(--fg-mute); }
+  #metric-context_used .value {
+    font-size: clamp(18px, 2vw, 25px);
+    letter-spacing: -0.04em;
+    white-space: nowrap;
+  }
+  .slot .spark { margin: 8px 0 10px; }
+  .slot .spark svg { width: 100%; height: 36px; display: block; }
+  .slot .spark-area { fill: #58a6ff22; }
+  .slot .spark-line { fill: none; stroke: var(--accent); stroke-width: 1.5; }
+  .slot .spark-grid { stroke: var(--border); stroke-width: 1; }
+  .pct-bar {
+    height: 6px; background: var(--bg-3);
+    border-radius: 3px; overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .pct-bar > span { display: block; height: 100%; background: var(--accent); transition: width 0.2s; }
+  .pct-bar.warn > span { background: var(--warn); }
+  .pct-bar.bad  > span { background: var(--bad); }

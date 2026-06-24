@@ -1,0 +1,55 @@
+  /* modal */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: #000a;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; padding: 20px;
+  }
+  .modal {
+    background: var(--bg-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px 18px; min-width: 280px;
+    max-width: 480px; box-shadow: 0 10px 40px #000c;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .modal.wide { width: min(980px, calc(100vw - 40px)); max-width: none; }
+  .modal h3 { margin: 0; font-size: 14px; }
+  .modal .body { color: var(--fg-dim); font-size: 13px; line-height: 1.5; }
+  .modal .body code { color: var(--fg); }
+  .modal .actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .modal .actions button.primary { background: #1f4a7a; border-color: #2f6db1; color: #cfe3ff; }
+  .modal .warn { color: var(--warn); font-size: 12px; }
+  .modal .error { color: var(--bad); font-size: 12px; }
+  .metric-history-modal { display: grid; gap: 10px; min-width: 0; }
+  .metric-history-summary {
+    display: flex; flex-wrap: wrap; gap: 8px 14px;
+    color: var(--fg-dim); font-family: var(--mono); font-size: 12px;
+  }
+  .metric-history-chart {
+    background: #0a0d12;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+  }
+  .metric-history-chart svg { width: 100%; height: 260px; display: block; }
+  .metric-history-chart .spark-line { stroke-width: 1.15; }
+  .metric-history-chart .spark-grid { opacity: 0.65; }
+  .metric-history-chart .spark-area { fill: #58a6ff14; }
+  .settings-form {
+    display: grid; gap: 10px;
+  }
+  .settings-form label {
+    display: grid; gap: 4px;
+    color: var(--fg-mute); font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .settings-form input {
+    width: 100%;
+    color: var(--fg);
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .settings-form .readonly {
+    display: grid; grid-template-columns: max-content 1fr;
+    gap: 4px 10px; font-family: var(--mono); font-size: 12px;
+    color: var(--fg-dim);
+  }
+  .settings-form .readonly .k { color: var(--fg-mute); }

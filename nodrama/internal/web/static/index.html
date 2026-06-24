@@ -7,7 +7,13 @@
 <title>llama.nodrama</title>
 <link rel="icon" type="image/png" href="/static/favicon.png">
 <link rel="shortcut icon" type="image/png" href="/favicon.ico">
-<link rel="stylesheet" href="/static/styles.css">
+<link rel="stylesheet" href="/static/css/00-base-layout.css">
+<link rel="stylesheet" href="/static/css/10-metrics.css">
+<link rel="stylesheet" href="/static/css/20-slots-queries.css">
+<link rel="stylesheet" href="/static/css/30-models-config.css">
+<link rel="stylesheet" href="/static/css/40-modals-settings.css">
+<link rel="stylesheet" href="/static/css/50-logs-guidance-footer.css">
+<link rel="stylesheet" href="/static/css/60-chat.css">
 </head>
 <body>
 
@@ -39,12 +45,21 @@
   <span data-i18n="footer.attribution">llama.nodrama dashboard</span>
 </footer>
 
-<script src="/static/i18n.js"></script>
+<script src="/static/i18n/00-core.js"></script>
+<script src="/static/i18n/en.js"></script>
+<script src="/static/i18n/ko.js"></script>
+<script src="/static/i18n/ja.js"></script>
+<script src="/static/i18n/zh-CN.js"></script>
+<script src="/static/i18n/es.js"></script>
 <script src="/static/app/00-core.js"></script>
 <script src="/static/app/10-shell-models.js"></script>
 <script src="/static/app/20-logs.js"></script>
 <script src="/static/app/30-history-metrics.js"></script>
 <script src="/static/app/40-slots-queries.js"></script>
-<script src="/static/app/50-chat.js"></script>
+<script src="/static/app/chat/00-state.js"></script>
+<script src="/static/app/chat/10-markdown.js"></script>
+<script src="/static/app/chat/20-render.js"></script>
+<script src="/static/app/chat/30-stream.js"></script>
+<script src="/static/app/99-start.js"></script>
 </body>
 </html>
