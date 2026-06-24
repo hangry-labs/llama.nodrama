@@ -196,7 +196,7 @@ function updateSlotNode(node, s) {
     }
   }
 
-  /* slot KV actions placeholder — Phase 5 wires the POST handlers. */
+  /* Slot KV actions call the shell action module. */
   const actions = node.querySelector('[data-role="actions"]');
   if (actions && actions.dataset.built !== "1") {
     actions.dataset.built = "1";
@@ -301,7 +301,7 @@ function renderQueryCard(q) {
   ]);
 }
 
-/* slotAction is defined in Phase 5 (confirm + POST). */
+/* slotAction is defined in the shell action module. */
 
 /* Boot wiring → one backend snapshot poller. */
 function startCorePollers() {
@@ -322,7 +322,7 @@ function startCorePollers() {
 }
 
 /* ──────────────────────────────────────────────────────────────────────
- *  Polish (Phase 9): keyboard shortcuts, last-update ticker.
+ *  Keyboard shortcuts and last-update ticker.
  * ──────────────────────────────────────────────────────────────────── */
 document.addEventListener("keydown", (e) => {
   /* don't steal keys when the user is typing in an input/select/etc. */

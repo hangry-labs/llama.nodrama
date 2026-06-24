@@ -1,7 +1,7 @@
 "use strict";
 
 /* ──────────────────────────────────────────────────────────────────────
- *  Log tail (Phase 6). The browser reads a bounded JSON tail from
+ *  Log tail. The browser reads a bounded JSON tail from
  *  /api/logs/tail. The backend only enables it when launched with --log.
  * ──────────────────────────────────────────────────────────────────── */
 const LOG_TAIL_BYTES = 65536;

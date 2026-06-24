@@ -51,10 +51,26 @@
 <script src="/static/i18n/ja.js"></script>
 <script src="/static/i18n/zh-CN.js"></script>
 <script src="/static/i18n/es.js"></script>
-<script src="/static/app/00-core.js"></script>
-<script src="/static/app/10-shell-models.js"></script>
+<!-- Core order matters: foundation -> network/demo -> snapshot -> polling. -->
+<script src="/static/app/core/00-foundation.js"></script>
+<script src="/static/app/core/10-network-demo.js"></script>
+<script src="/static/app/core/20-snapshot.js"></script>
+<script src="/static/app/core/30-polling.js"></script>
+
+<!-- Shell order matters: boot/scaffold first, user actions before guidance. -->
+<script src="/static/app/shell/00-boot.js"></script>
+<script src="/static/app/shell/10-models.js"></script>
+<script src="/static/app/shell/20-config-options.js"></script>
+<script src="/static/app/shell/30-config-panels.js"></script>
+<script src="/static/app/shell/40-modal-settings.js"></script>
+<script src="/static/app/shell/50-actions.js"></script>
+<script src="/static/app/shell/60-guidance.js"></script>
+
 <script src="/static/app/20-logs.js"></script>
-<script src="/static/app/30-history-metrics.js"></script>
+<script src="/static/app/history/00-points.js"></script>
+<script src="/static/app/history/10-sparkline.js"></script>
+<script src="/static/app/metrics/00-catalog-format.js"></script>
+<script src="/static/app/metrics/10-render.js"></script>
 <script src="/static/app/40-slots-queries.js"></script>
 <script src="/static/app/chat/00-state.js"></script>
 <script src="/static/app/chat/10-markdown.js"></script>

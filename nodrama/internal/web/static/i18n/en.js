@@ -197,7 +197,7 @@ I18N.en = {
     "guidance.severity.bad":    "action",
     "guidance.tooltip_more":    "Tap for details",
 
-    /* guidance rules — Phase 7 fills out title/explain/suggest per id */
+    /* guidance rules */
     "rule.slots_saturated.title":   "Slots saturated",
     "rule.slots_saturated.explain": "Almost every slot is currently processing a request. The server has no headroom; the next request will start queueing.",
     "rule.slots_saturated.suggest": "Raise --parallel from {total} to {suggested} (each extra slot costs about ctx_size tokens of KV memory), or reduce client concurrency.",
