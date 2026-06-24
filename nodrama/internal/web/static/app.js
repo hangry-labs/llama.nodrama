@@ -1402,7 +1402,7 @@ function onModelSelect(id) {
  *  We never call window.confirm so we can show formatted body and avoid
  *  the browser-native dialog blocking the event loop.
  * ──────────────────────────────────────────────────────────────────── */
-function showModal({ title, bodyNode, okLabel, onOk, mutating }) {
+function showModal({ title, bodyNode, okLabel, onOk, mutating, wide }) {
   const back = el("div", { class: "modal-backdrop", role: "dialog", "aria-modal": "true" });
   let onKey;
   const errorNode = el("div", { class: "error", hidden: true }, "");
@@ -1434,7 +1434,7 @@ function showModal({ title, bodyNode, okLabel, onOk, mutating }) {
     ? el("div", { class: "warn" }, "⚠ " + t(state.mode === "router"
         ? "modal.warn_router" : "modal.warn_server"))
     : null;
-  const m = el("div", { class: "modal" }, [
+  const m = el("div", { class: wide ? "modal wide" : "modal" }, [
     el("h3", null, title),
     el("div", { class: "body" }, bodyNode),
     warnNode,
@@ -1977,7 +1977,7 @@ async function resetHistories() {
 /* ──────────────────────────────────────────────────────────────────────
  *  SVG sparkline. No external deps. Returns an <svg> node.
  *  - data: array of {t, v}
- *  - opts: { min, max, height }
+ *  - opts: { min, max, height, interactive, formatValue, formatTime }
  * ──────────────────────────────────────────────────────────────────── */
 function sparkline(data, opts) {
   const W = 200, H = (opts && opts.height) || 36;
@@ -2024,7 +2024,85 @@ function sparkline(data, opts) {
   line.setAttribute("points", points);
   line.setAttribute("class", "spark-line");
   svg.appendChild(line);
+  if (opts && opts.interactive) {
+    const markerLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    markerLine.setAttribute("class", "spark-marker-line");
+    markerLine.setAttribute("y1", pad);
+    markerLine.setAttribute("y2", H - pad);
+    markerLine.setAttribute("hidden", "hidden");
+    svg.appendChild(markerLine);
+
+    const marker = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    marker.setAttribute("class", "spark-marker");
+    marker.setAttribute("r", opts.pointRadius || 2.6);
+    marker.setAttribute("hidden", "hidden");
+    svg.appendChild(marker);
+
+    const formatValue = opts.formatValue || ((v) => fmtNumber(v));
+    const formatTime = opts.formatTime || fmtTime;
+    const hideMarker = () => {
+      marker.setAttribute("hidden", "hidden");
+      markerLine.setAttribute("hidden", "hidden");
+      hideSparkTooltip();
+    };
+    svg.addEventListener("mousemove", (e) => {
+      const rect = svg.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const targetT = t0 + ratio * span;
+      const p = nearestHistoryPoint(data, targetT);
+      if (!p) return;
+      const x = sx(p.t).toFixed(1);
+      const y = sy(p.v).toFixed(1);
+      markerLine.setAttribute("x1", x);
+      markerLine.setAttribute("x2", x);
+      markerLine.removeAttribute("hidden");
+      marker.setAttribute("cx", x);
+      marker.setAttribute("cy", y);
+      marker.removeAttribute("hidden");
+      showSparkTooltip(formatTime(p.t) + " · " + formatValue(p.v), e.clientX, e.clientY);
+    });
+    svg.addEventListener("mouseleave", hideMarker);
+    svg.addEventListener("blur", hideMarker);
+  }
   return svg;
+}
+
+function nearestHistoryPoint(data, targetT) {
+  if (!data || !data.length) return null;
+  let lo = 0, hi = data.length - 1;
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (data[mid].t < targetT) lo = mid + 1;
+    else hi = mid;
+  }
+  const prev = lo > 0 ? data[lo - 1] : null;
+  const cur = data[lo];
+  if (!prev) return cur;
+  if (!cur) return prev;
+  return Math.abs(prev.t - targetT) <= Math.abs(cur.t - targetT) ? prev : cur;
+}
+
+function sparkTooltipNode() {
+  let node = $("#spark-tooltip");
+  if (!node) {
+    node = el("div", { id: "spark-tooltip", class: "spark-tooltip", hidden: true }, "");
+    document.body.appendChild(node);
+  }
+  return node;
+}
+
+function showSparkTooltip(text, x, y) {
+  const node = sparkTooltipNode();
+  node.textContent = text;
+  node.hidden = false;
+  node.style.left = Math.min(window.innerWidth - 260, x + 12) + "px";
+  node.style.top = Math.max(8, y - 34) + "px";
+}
+
+function hideSparkTooltip() {
+  const node = $("#spark-tooltip");
+  if (node) node.hidden = true;
 }
 
 /* ──────────────────────────────────────────────────────────────────────
@@ -2046,20 +2124,20 @@ function sparkline(data, opts) {
  * ──────────────────────────────────────────────────────────────────── */
 const METRIC_CARDS = [
   { id: "predicted_tps", titleKey: "metrics.gen_tps",
-    metric: "nodrama:tokens_predicted_rate", unit: "tok/s", min: 0,
+    metric: "nodrama:tokens_predicted_rate", unit: "tok/s", min: 0, peakNote: true,
     helpKey: "metrics.help.predicted_tps" },
   { id: "prompt_tps",    titleKey: "metrics.prompt_tps",
-    metric: "nodrama:prompt_tokens_rate",    unit: "tok/s", min: 0,
+    metric: "nodrama:prompt_tokens_rate",    unit: "tok/s", min: 0, peakNote: true,
     helpKey: "metrics.help.prompt_tps" },
   { id: "processing",    titleKey: "metrics.processing",
-    metric: "llamacpp:requests_processing",      unit: "",      min: 0,
+    metric: "llamacpp:requests_processing",      unit: "",      min: 0, peakNote: true,
     helpKey: "metrics.help.processing" },
   { id: "deferred",      titleKey: "metrics.deferred",
     metric: "llamacpp:requests_deferred",        unit: "",      min: 0,
-    warnAt: 1, badAt: 5,
+    warnAt: 1, badAt: 5, peakNote: true,
     helpKey: "metrics.help.deferred" },
   { id: "busy_slots",    titleKey: "metrics.busy_slots",
-    metric: "llamacpp:n_busy_slots_per_decode",  unit: "",      min: 0,
+    metric: "llamacpp:n_busy_slots_per_decode",  unit: "",      min: 0, peakNote: true,
     helpKey: "metrics.help.busy_slots" },
   { id: "context_used", titleKey: "metrics.context_used",
     metric: "nodrama:context_active_tokens", unit: "tok", min: 0, contextUsed: true,
@@ -2143,6 +2221,38 @@ function fmtTime(ts) {
   return new Date(tMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
+function fmtDateTime(ts) {
+  const tMs = typeof ts === "number" ? ts : Date.parse(ts);
+  if (!isFinite(tMs)) return "—";
+  return new Date(tMs).toLocaleString([], {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function formatMetricValue(card, value) {
+  if (card.contextUsed || card.unit === "tok") return fmtTokensCompact(value);
+  if (card.duration) return fmtDuration(value);
+  if (card.percent) return fmtNumber(value, { percent: true }) + "%";
+  const formatted = fmtNumber(value);
+  return card.unit ? (formatted + " " + card.unit) : formatted;
+}
+
+function metricPeakNote(card, fact) {
+  if (!fact) return [];
+  const parts = [];
+  if (fact.peak5mAt) {
+    parts.push(formatMetricValue(card, fact.peak5mValue) + " (5m at " + fmtTime(fact.peak5mAt) + ")");
+  }
+  if (fact.peakAt) {
+    parts.push(formatMetricValue(card, fact.peakValue) + " (max at " + fmtTime(fact.peakAt) + ")");
+  }
+  return parts;
+}
+
 function ensureMetricCards() {
   const sec = $("#metrics-section");
   if (sec.dataset.built === "1") return;
@@ -2150,7 +2260,22 @@ function ensureMetricCards() {
   sec.innerHTML = "";
   for (const c of METRIC_CARDS) {
     const help = metricHelp(c);
-    const card = el("div", { class: "card metric-card", id: "metric-" + c.id }, [
+    const card = el("div", {
+      class: "card metric-card",
+      id: "metric-" + c.id,
+      role: "button",
+      tabindex: "0",
+      title: t("metrics.history_hint"),
+      onclick: (e) => {
+        if (e.target && e.target.closest && e.target.closest("button")) return;
+        openMetricHistory(c);
+      },
+      onkeydown: (e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        openMetricHistory(c);
+      },
+    }, [
       el("div", { class: "metric-title" }, [
         el("h2", null, t(c.titleKey)),
         el("button", {
@@ -2182,6 +2307,58 @@ function showMetricHelp(card) {
     bodyNode: el("div", null, metricHelp(card)),
     okLabel: t("common.close"),
   });
+}
+
+function openMetricHistory(card) {
+  const body = el("div", { class: "metric-history-modal" }, t("common.loading"));
+  showModal({
+    title: t(card.titleKey) + " · " + t("metrics.history_window", { hours: 24 }),
+    bodyNode: body,
+    okLabel: t("common.close"),
+    wide: true,
+  });
+
+  fetchJSON("/api/history/metrics?metric=" + encodeURIComponent(card.metric) + "&hours=24&max=2000", {
+    withModel: false,
+    timeout: 12000,
+  }).then((payload) => {
+    const points = normalizeHistoryPoints(payload && payload.points);
+    body.innerHTML = "";
+    if (!points.length) {
+      body.appendChild(el("div", { class: "sub" }, t("metrics.no_data")));
+      return;
+    }
+    const peak = peakHistoryPoint(points);
+    const latest = points[points.length - 1];
+    body.appendChild(el("div", { class: "metric-history-summary" }, [
+      el("span", null, t("metrics.history_points", { count: points.length })),
+      el("span", null, t("metrics.history_latest", { value: formatMetricValue(card, latest.v), time: fmtDateTime(latest.t) })),
+      peak ? el("span", null, t("metrics.history_peak", { value: formatMetricValue(card, peak.v), time: fmtDateTime(peak.t) })) : null,
+    ].filter(Boolean)));
+    const chart = el("div", { class: "metric-history-chart" });
+    chart.appendChild(sparkline(points, {
+      min: card.min !== undefined ? card.min : undefined,
+      max: card.max !== undefined ? card.max : undefined,
+      height: 160,
+      interactive: true,
+      interactiveLimit: 2000,
+      pointRadius: 1.6,
+      formatValue: (v) => formatMetricValue(card, v),
+    }));
+    body.appendChild(chart);
+  }).catch((e) => {
+    body.innerHTML = "";
+    body.appendChild(el("div", { class: "error" }, e && e.message ? e.message : String(e)));
+  });
+}
+
+function peakHistoryPoint(points) {
+  if (!points || !points.length) return null;
+  let peak = points[0];
+  for (const point of points.slice(1)) {
+    if (point.v >= peak.v) peak = point;
+  }
+  return peak;
 }
 
 function renderMetricsDisabled() {
@@ -2221,12 +2398,18 @@ function renderMetrics(parsed, metricHistory, metricFacts) {
     const note = $("#metric-" + c.id + "-note");
     if (note) {
       const fact = factsByMetric[c.metric];
-      note.textContent = c.contextUsed && capacity > 0
-        ? (fmtNumber(ratio, { percent: true }) + "% · " +
-           (fact && fact.peakAt ? "peak " + fmtTokensCompact(fact.peakValue) + " at " + fmtTime(fact.peakAt) : "peak —"))
-        : c.peakNote && fact && fact.peakAt
-        ? ("peak " + fmtNumber(fact.peakValue) + " at " + fmtTime(fact.peakAt))
-        : "";
+      note.innerHTML = "";
+      if (c.contextUsed && capacity > 0) {
+        note.appendChild(el("div", null, fmtNumber(ratio, { percent: true }) + "% used"));
+        const lines = metricPeakNote(c, fact);
+        if (lines.length) {
+          for (const line of lines) note.appendChild(el("div", null, line));
+        } else {
+          note.appendChild(el("div", null, "peak —"));
+        }
+      } else if (c.peakNote) {
+        for (const line of metricPeakNote(c, fact)) note.appendChild(el("div", null, line));
+      }
     }
 
     if (c.percent || c.contextUsed) {
@@ -2246,6 +2429,8 @@ function renderMetrics(parsed, metricHistory, metricFacts) {
     sparkHost.appendChild(sparkline(points, {
       min: c.min !== undefined ? c.min : undefined,
       max: c.max !== undefined ? c.max : undefined,
+      interactive: true,
+      formatValue: (value) => formatMetricValue(c, value),
     }));
   }
   state.metrics = parsed;

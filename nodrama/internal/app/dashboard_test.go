@@ -82,6 +82,31 @@ func TestRecordMetricHistoryTracksPeakFacts(t *testing.T) {
 	if fact.PeakAt == nil || !fact.PeakAt.Equal(base.Add(2*time.Second)) {
 		t.Fatalf("peak at = %v", fact.PeakAt)
 	}
+	if fact.Peak5mValue != 120 {
+		t.Fatalf("5m peak = %v", fact.Peak5mValue)
+	}
+	if fact.Peak5mAt == nil || !fact.Peak5mAt.Equal(base.Add(2*time.Second)) {
+		t.Fatalf("5m peak at = %v", fact.Peak5mAt)
+	}
+}
+
+func TestMetricHistoryUsesLongHistoryAndLimitsPoints(t *testing.T) {
+	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
+	base := time.Unix(1_700_000_000, 0)
+
+	for i := 0; i < 30; i++ {
+		dashboard.recordMetricHistory(base.Add(time.Duration(i)*metricLongInterval), map[string]float64{
+			"metric": float64(i),
+		})
+	}
+
+	points := dashboard.MetricHistory("metric", base.Add(-time.Hour), 5)
+	if len(points) != 5 {
+		t.Fatalf("limited points = %d", len(points))
+	}
+	if points[len(points)-1].V != 29 {
+		t.Fatalf("last point = %#v", points[len(points)-1])
+	}
 }
 
 func TestActiveContextUsagePrefersDeploymentContextAndCountsActiveSlots(t *testing.T) {

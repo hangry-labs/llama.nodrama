@@ -55,8 +55,10 @@ type HistoryPoint struct {
 }
 
 type MetricFact struct {
-	PeakValue float64    `json:"peakValue,omitempty"`
-	PeakAt    *time.Time `json:"peakAt,omitempty"`
+	PeakValue   float64    `json:"peakValue,omitempty"`
+	PeakAt      *time.Time `json:"peakAt,omitempty"`
+	Peak5mValue float64    `json:"peak5mValue,omitempty"`
+	Peak5mAt    *time.Time `json:"peak5mAt,omitempty"`
 }
 
 type ContextUsage struct {
@@ -186,6 +188,8 @@ type Dashboard struct {
 	slotRateLast   map[int]slotRateSample
 	slotLiveRates  map[int]slotLiveRate
 	metricHistory  map[string][]HistoryPoint
+	metricRecent   map[string][]HistoryPoint
+	metricLong     map[string][]HistoryPoint
 	metricFacts    map[string]MetricFact
 	slotHistory    map[int][]SlotHistoryPoint
 	logOffset      int64
@@ -236,8 +240,13 @@ type slotLiveRate struct {
 const (
 	liveRateWindow       = 5 * time.Second
 	metricHistoryWindow  = time.Minute
+	metricRecentWindow   = 5 * time.Minute
+	metricLongWindow     = 24 * time.Hour
+	metricLongInterval   = 5 * time.Second
 	slowPollInterval     = 5 * time.Second
 	maxMetricHistorySize = 600
+	maxMetricRecentSize  = 2000
+	maxMetricLongSize    = 20000
 	maxRequestHistory    = 200
 	maxLogEventHistory   = 500
 )
@@ -253,6 +262,8 @@ func NewDashboard(client *llamacpp.Client, cfg Config, build BuildInfo) *Dashboa
 		slotRateLast:    map[int]slotRateSample{},
 		slotLiveRates:   map[int]slotLiveRate{},
 		metricHistory:   map[string][]HistoryPoint{},
+		metricRecent:    map[string][]HistoryPoint{},
+		metricLong:      map[string][]HistoryPoint{},
 		metricFacts:     map[string]MetricFact{},
 		slotHistory:     map[int][]SlotHistoryPoint{},
 		queries:         map[string]QuerySummary{},
@@ -506,12 +517,20 @@ func (m *Dashboard) recordMetricHistory(now time.Time, metrics map[string]float6
 	if m.metricHistory == nil {
 		m.metricHistory = map[string][]HistoryPoint{}
 	}
+	if m.metricRecent == nil {
+		m.metricRecent = map[string][]HistoryPoint{}
+	}
+	if m.metricLong == nil {
+		m.metricLong = map[string][]HistoryPoint{}
+	}
 	if m.metricFacts == nil {
 		m.metricFacts = map[string]MetricFact{}
 	}
 
 	t := now.UnixMilli()
 	cutoff := now.Add(-metricHistoryWindow).UnixMilli()
+	recentCutoff := now.Add(-metricRecentWindow).UnixMilli()
+	longCutoff := now.Add(-metricLongWindow).UnixMilli()
 	for name, value := range metrics {
 		if math.IsNaN(value) || math.IsInf(value, 0) {
 			continue
@@ -527,6 +546,15 @@ func (m *Dashboard) recordMetricHistory(now time.Time, metrics map[string]float6
 			points = points[len(points)-maxMetricHistorySize:]
 		}
 		m.metricHistory[name] = points
+
+		recent := append(m.metricRecent[name], HistoryPoint{T: t, V: value})
+		recent = trimHistoryPoints(recent, recentCutoff)
+		if len(recent) > maxMetricRecentSize {
+			recent = recent[len(recent)-maxMetricRecentSize:]
+		}
+		m.metricRecent[name] = recent
+
+		m.recordLongMetricHistoryLocked(name, t, value, longCutoff)
 	}
 
 	for name, points := range m.metricHistory {
@@ -537,8 +565,50 @@ func (m *Dashboard) recordMetricHistory(now time.Time, metrics map[string]float6
 		}
 		m.metricHistory[name] = points
 	}
+	for name, points := range m.metricRecent {
+		points = trimHistoryPoints(points, recentCutoff)
+		if len(points) == 0 {
+			delete(m.metricRecent, name)
+			continue
+		}
+		m.metricRecent[name] = points
+	}
+	for name, points := range m.metricLong {
+		points = trimHistoryPoints(points, longCutoff)
+		if len(points) == 0 {
+			delete(m.metricLong, name)
+			continue
+		}
+		if len(points) > maxMetricLongSize {
+			points = points[len(points)-maxMetricLongSize:]
+		}
+		m.metricLong[name] = points
+	}
 
 	return m.copyHistoryLocked()
+}
+
+func (m *Dashboard) recordLongMetricHistoryLocked(name string, t int64, value float64, cutoff int64) {
+	bucket := (t / metricLongInterval.Milliseconds()) * metricLongInterval.Milliseconds()
+	points := trimHistoryPoints(m.metricLong[name], cutoff)
+	if len(points) > 0 {
+		last := &points[len(points)-1]
+		lastBucket := (last.T / metricLongInterval.Milliseconds()) * metricLongInterval.Milliseconds()
+		if lastBucket == bucket {
+			// Keep the highest value within each bucket so short spikes are not flattened away.
+			if value >= last.V {
+				last.T = t
+				last.V = value
+			}
+			m.metricLong[name] = points
+			return
+		}
+	}
+	points = append(points, HistoryPoint{T: t, V: value})
+	if len(points) > maxMetricLongSize {
+		points = points[len(points)-maxMetricLongSize:]
+	}
+	m.metricLong[name] = points
 }
 
 func (m *Dashboard) copyMetricFacts() map[string]MetricFact {
@@ -547,12 +617,31 @@ func (m *Dashboard) copyMetricFacts() map[string]MetricFact {
 
 	out := make(map[string]MetricFact, len(m.metricFacts))
 	for name, fact := range m.metricFacts {
-		out[name] = MetricFact{
+		copied := MetricFact{
 			PeakValue: fact.PeakValue,
 			PeakAt:    cloneTimePtr(fact.PeakAt),
 		}
+		if peak, ok := peakHistoryPoint(m.metricRecent[name]); ok {
+			peakAt := time.UnixMilli(peak.T)
+			copied.Peak5mValue = peak.V
+			copied.Peak5mAt = &peakAt
+		}
+		out[name] = copied
 	}
 	return out
+}
+
+func peakHistoryPoint(points []HistoryPoint) (HistoryPoint, bool) {
+	if len(points) == 0 {
+		return HistoryPoint{}, false
+	}
+	peak := points[0]
+	for _, point := range points[1:] {
+		if point.V >= peak.V {
+			peak = point
+		}
+	}
+	return peak, true
 }
 
 func activeContextUsage(slots []llamacpp.Slot, props llamacpp.PropsSummary, events []llamacpp.LogEvent, processContextTokens int) ContextUsage {
@@ -699,10 +788,83 @@ func (m *Dashboard) copyHistoryLocked() SnapshotHistory {
 	return out
 }
 
+func (m *Dashboard) MetricHistory(metric string, since time.Time, maxPoints int) []HistoryPoint {
+	m.historyMu.Lock()
+	defer m.historyMu.Unlock()
+
+	if maxPoints <= 0 {
+		maxPoints = 2000
+	}
+	if maxPoints > maxMetricLongSize {
+		maxPoints = maxMetricLongSize
+	}
+	cutoff := since.UnixMilli()
+	points := trimHistoryPoints(m.metricLong[metric], cutoff)
+	recent := trimHistoryPoints(m.metricRecent[metric], cutoff)
+	if len(recent) > 0 {
+		recentStart := recent[0].T
+		older := trimHistoryPointsBefore(points, recentStart)
+		if len(recent) >= maxPoints {
+			out := make([]HistoryPoint, len(recent))
+			copy(out, recent)
+			return limitHistoryPoints(out, maxPoints)
+		}
+		older = limitHistoryPoints(older, maxPoints-len(recent))
+		combined := make([]HistoryPoint, 0, len(older)+len(recent))
+		combined = append(combined, older...)
+		combined = append(combined, recent...)
+		points = combined
+	} else if len(points) == 0 {
+		points = trimHistoryPoints(m.metricHistory[metric], cutoff)
+	}
+	out := make([]HistoryPoint, len(points))
+	copy(out, points)
+	return limitHistoryPoints(out, maxPoints)
+}
+
+func trimHistoryPointsBefore(points []HistoryPoint, before int64) []HistoryPoint {
+	i := 0
+	for i < len(points) && points[i].T < before {
+		i++
+	}
+	return points[:i]
+}
+
+func limitHistoryPoints(points []HistoryPoint, maxPoints int) []HistoryPoint {
+	if maxPoints <= 0 || len(points) <= maxPoints {
+		return points
+	}
+	bucketSize := int(math.Ceil(float64(len(points)) / float64(maxPoints)))
+	if bucketSize < 1 {
+		bucketSize = 1
+	}
+	out := make([]HistoryPoint, 0, maxPoints)
+	for start := 0; start < len(points); start += bucketSize {
+		end := start + bucketSize
+		if end > len(points) {
+			end = len(points)
+		}
+		peak := points[start]
+		for _, point := range points[start+1 : end] {
+			if point.V >= peak.V {
+				peak = point
+			}
+		}
+		out = append(out, peak)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].T < out[j].T })
+	if len(out) > maxPoints {
+		out = out[len(out)-maxPoints:]
+	}
+	return out
+}
+
 func (m *Dashboard) ResetHistory() {
 	m.historyMu.Lock()
 	m.rateHistory = nil
 	m.metricHistory = map[string][]HistoryPoint{}
+	m.metricRecent = map[string][]HistoryPoint{}
+	m.metricLong = map[string][]HistoryPoint{}
 	m.metricFacts = map[string]MetricFact{}
 	m.slotHistory = map[int][]SlotHistoryPoint{}
 	m.slotLiveRates = map[int]slotLiveRate{}

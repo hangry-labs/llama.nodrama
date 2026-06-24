@@ -141,6 +141,12 @@
     display: flex; align-items: baseline; gap: 8px;
     flex-wrap: wrap;
   }
+  .metric-card[role="button"] { cursor: pointer; }
+  .metric-card[role="button"]:hover { border-color: #3b5f88; }
+  .metric-card[role="button"]:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
   .metric-card .metric-title {
     display: flex; align-items: center; justify-content: space-between;
     gap: 8px;
@@ -164,11 +170,45 @@
     color: var(--accent-2);
   }
   .metric-card .unit { color: var(--fg-mute); font-size: 13px; font-family: var(--mono); }
-  .metric-card .metric-note { color: var(--fg-mute); font-size: 11px; min-height: 14px; }
+  .metric-card .metric-note {
+    color: var(--fg-mute);
+    font-size: 11px;
+    line-height: 1.35;
+    min-height: 14px;
+  }
   .metric-card svg { width: 100%; height: 36px; display: block; }
-  .metric-card .spark-area  { fill: #58a6ff22; }
-  .metric-card .spark-line  { fill: none; stroke: var(--accent); stroke-width: 1.5; }
-  .metric-card .spark-grid  { stroke: var(--border); stroke-width: 1; }
+  .spark-area  { fill: #58a6ff22; }
+  .spark-line  { fill: none; stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+  .spark-grid  { stroke: var(--border); stroke-width: 1; vector-effect: non-scaling-stroke; }
+  .spark-marker {
+    fill: var(--accent-2);
+    stroke: var(--bg);
+    stroke-width: 1;
+    pointer-events: none;
+    vector-effect: non-scaling-stroke;
+  }
+  .spark-marker-line {
+    stroke: var(--accent-2);
+    stroke-width: 1;
+    opacity: 0.6;
+    pointer-events: none;
+    vector-effect: non-scaling-stroke;
+  }
+  .spark-tooltip {
+    position: fixed;
+    z-index: 200;
+    pointer-events: none;
+    background: #05080dcc;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--fg);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 4px 7px;
+    box-shadow: 0 8px 22px #000a;
+    max-width: 250px;
+    white-space: nowrap;
+  }
   .metric-card.warn .value  { color: var(--warn); }
   .metric-card.bad  .value  { color: var(--bad); }
   .metric-card.warn .spark-line { stroke: var(--warn); }
@@ -363,6 +403,7 @@
     max-width: 480px; box-shadow: 0 10px 40px #000c;
     display: flex; flex-direction: column; gap: 10px;
   }
+  .modal.wide { width: min(980px, calc(100vw - 40px)); max-width: none; }
   .modal h3 { margin: 0; font-size: 14px; }
   .modal .body { color: var(--fg-dim); font-size: 13px; line-height: 1.5; }
   .modal .body code { color: var(--fg); }
@@ -370,6 +411,21 @@
   .modal .actions button.primary { background: #1f4a7a; border-color: #2f6db1; color: #cfe3ff; }
   .modal .warn { color: var(--warn); font-size: 12px; }
   .modal .error { color: var(--bad); font-size: 12px; }
+  .metric-history-modal { display: grid; gap: 10px; min-width: 0; }
+  .metric-history-summary {
+    display: flex; flex-wrap: wrap; gap: 8px 14px;
+    color: var(--fg-dim); font-family: var(--mono); font-size: 12px;
+  }
+  .metric-history-chart {
+    background: #0a0d12;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+  }
+  .metric-history-chart svg { width: 100%; height: 260px; display: block; }
+  .metric-history-chart .spark-line { stroke-width: 1.15; }
+  .metric-history-chart .spark-grid { opacity: 0.65; }
+  .metric-history-chart .spark-area { fill: #58a6ff14; }
   .settings-form {
     display: grid; gap: 10px;
   }

@@ -29,8 +29,8 @@ func (m *Dashboard) ShortInfo() string {
 		emptyDash(overview.ContextCapacitySource),
 	)
 	fmt.Fprintf(&b, "throughput: generation=%.2f tok/s prompt=%.2f tok/s\n", overview.GenerationTokensPerSec, overview.PromptTokensPerSec)
-	if fact, ok := snapshot.MetricFacts["nodrama:context_active_tokens"]; ok && fact.PeakAt != nil {
-		fmt.Fprintf(&b, "context_peak_60s: used=%.0f at=%s\n", fact.PeakValue, fact.PeakAt.Format(time.RFC3339))
+	if fact, ok := snapshot.MetricFacts["nodrama:context_active_tokens"]; ok && fact.Peak5mAt != nil {
+		fmt.Fprintf(&b, "context_peak_5m: used=%.0f at=%s\n", fact.Peak5mValue, fact.Peak5mAt.Format(time.RFC3339))
 	}
 	fmt.Fprintf(&b, "recommendation: %s\n", shortRecommendation(overview, freeSlots))
 	writeQuerySummary(&b, snapshot.Queries)

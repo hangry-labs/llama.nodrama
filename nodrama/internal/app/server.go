@@ -83,6 +83,24 @@ func Run(ctx context.Context, cfg Config, info BuildInfo) error {
 	mux.HandleFunc("GET /api/queries", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, dashboard.Snapshot().Queries)
 	})
+	mux.HandleFunc("GET /api/history/metrics", func(w http.ResponseWriter, r *http.Request) {
+		metric := strings.TrimSpace(r.URL.Query().Get("metric"))
+		if metric == "" {
+			http.Error(w, "missing metric", http.StatusBadRequest)
+			return
+		}
+		hours := clampInt(queryInt(r, "hours", 24), 1, 24)
+		maxPoints := clampInt(queryInt(r, "max", 2000), 100, maxMetricLongSize)
+		since := time.Now().Add(-time.Duration(hours) * time.Hour)
+		points := dashboard.MetricHistory(metric, since, maxPoints)
+		writeJSON(w, map[string]any{
+			"metric":   metric,
+			"hours":    hours,
+			"max":      maxPoints,
+			"points":   points,
+			"pointSec": int(metricLongInterval.Seconds()),
+		})
+	})
 	mux.HandleFunc("GET /api/settings", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, dashboard.Settings())
 	})
