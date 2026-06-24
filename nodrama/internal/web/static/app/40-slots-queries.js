@@ -148,7 +148,7 @@ function updateSlotNode(node, s) {
   const tgRate = node.querySelector('[data-role="tg-rate"]');
   if (tgRate) {
     tgRate.hidden = !isActive;
-    tgRate.textContent = isActive && generationRate > 0 ? ("tg " + fmtNumber(generationRate) + " tok/s") : "tg —";
+    tgRate.textContent = isActive && generationRate > 0 ? ("tg " + fmtNumber(generationRate) + "/s") : "tg —";
   }
 
   const progress = node.querySelector('[data-role="progress"]');

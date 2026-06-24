@@ -30,6 +30,10 @@
   .query-details .k { color: var(--fg-mute); }
   .query-details .v { color: var(--fg-dim); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .slot.active { border-color: #2f6db1; box-shadow: 0 0 0 1px #2f6db166 inset; }
+  .slot.cache-highlight {
+    border-color: #58a6ff;
+    box-shadow: 0 0 0 1px #58a6ff88 inset, 0 0 18px #58a6ff44;
+  }
   .slot-head {
     display: flex; align-items: center; gap: 8px;
     font-family: var(--mono); font-size: 13px;
@@ -42,7 +46,11 @@
     border: 1px solid var(--border);
   }
   .slot-head .badge.active { background: #1d3a5c; color: #9cc3ff; border-color: #2f6db1; }
-  .slot-head .badge.rate { color: var(--accent-2); border-color: #2f4969; }
+  .slot-head .badge.rate {
+    color: var(--accent-2); border-color: #2f4969;
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
   .slot-actions { display: flex; gap: 6px; flex-wrap: wrap; }
   .slot-actions button { font-size: 11px; padding: 2px 8px; }
   .slot .progress {

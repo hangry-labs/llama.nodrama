@@ -20,6 +20,7 @@ function renderPromptCache(cache) {
   const bar = $("#cache-bar");
   const legend = $("#cache-legend");
   if (!summary || !bar || !legend) return;
+  clearCacheSlotHighlight();
   bar.innerHTML = "";
   legend.innerHTML = "";
 
@@ -58,11 +59,22 @@ function renderPromptCache(cache) {
   }
 
   for (const segment of segments) {
-    const node = el("div", {
+    const attrs = {
       class: "cache-segment " + segment.kind,
       title: segment.title,
       style: "width: " + Math.max(0.75, segment.percent * 100).toFixed(2) + "%",
-    }, segment.label);
+    };
+    if (segment.slotId !== undefined) {
+      attrs.tabindex = "0";
+      attrs.data = { slotId: String(segment.slotId) };
+    }
+    const node = el("div", attrs, segment.label);
+    if (segment.slotId !== undefined) {
+      node.addEventListener("mouseenter", () => highlightCacheSlot(segment.slotId));
+      node.addEventListener("mouseleave", clearCacheSlotHighlight);
+      node.addEventListener("focus", () => highlightCacheSlot(segment.slotId));
+      node.addEventListener("blur", clearCacheSlotHighlight);
+    }
     bar.appendChild(node);
   }
 
@@ -115,20 +127,23 @@ function promptCacheSegment(entry, denom, kind) {
   const tokens = Number(entry.tokens || 0);
   const checkpoints = Number(entry.checkpoints || 0);
   const count = Number(entry.count || 0);
-  const name = kind === "other"
-    ? t("cache.others")
-    : shortCacheKey(key);
+  const slotId = entry.lastSlotId;
+  const taskId = entry.lastTaskId;
+  const lastUsedAt = entry.lastUsedAt;
+  const name = cacheSizeTokenLabel(mib, tokens) || (kind === "other" ? t("cache.others") : t("cache.unknown_entry"));
   const detailParts = [];
-  if (mib > 0) detailParts.push(formatCacheMiB(mib));
-  if (tokens > 0) detailParts.push(fmtTokensCompact(tokens) + " tok");
   if (checkpoints > 0) detailParts.push(checkpoints + " ckpt");
   if (count > 0) detailParts.push(count + " entries");
+  if (slotId !== undefined && slotId !== null) detailParts.push("slot " + slotId);
   const detail = detailParts.join(" · ") || "—";
-  const titleParts = [kind === "other" ? t("cache.others") : key];
+  const titleParts = [kind === "other" ? t("cache.others") : ("id: " + key)];
   if (mib > 0) titleParts.push(formatCacheMiB(mib));
   if (tokens > 0) titleParts.push(fmtTokensCompact(tokens) + " tokens");
   if (checkpoints > 0) titleParts.push(checkpoints + " checkpoints");
   if (count > 0) titleParts.push(count + " entries");
+  if (slotId !== undefined && slotId !== null) titleParts.push("last slot: " + slotId);
+  if (taskId !== undefined && taskId !== null) titleParts.push("last task: " + taskId);
+  if (lastUsedAt) titleParts.push("last used: " + fmtDateTime(lastUsedAt));
   return {
     kind,
     name,
@@ -136,6 +151,7 @@ function promptCacheSegment(entry, denom, kind) {
     detail,
     percent: denom > 0 ? mib / denom : 0,
     title: titleParts.join("\n"),
+    slotId: slotId !== undefined && slotId !== null ? Number(slotId) : undefined,
   };
 }
 
@@ -150,14 +166,25 @@ function cacheEntryMiBSum(cache) {
   return total;
 }
 
-function shortCacheKey(key) {
-  const s = String(key || "");
-  if (s.length <= 10) return s;
-  return s.slice(0, 6) + "…" + s.slice(-4);
-}
-
 function formatCacheMiB(mib) {
   const value = Number(mib || 0);
   if (value >= 1024) return fmtNumber(value / 1024) + " GiB";
   return fmtNumber(value) + " MiB";
+}
+
+function cacheSizeTokenLabel(mib, tokens) {
+  const parts = [];
+  if (mib > 0) parts.push(formatCacheMiB(mib));
+  if (tokens > 0) parts.push(fmtTokensCompact(tokens) + " tok");
+  return parts.join(" · ");
+}
+
+function highlightCacheSlot(slotId) {
+  clearCacheSlotHighlight();
+  const slot = document.querySelector('[data-slot="' + slotId + '"]');
+  if (slot) slot.classList.add("cache-highlight");
+}
+
+function clearCacheSlotHighlight() {
+  $$(".slot.cache-highlight").forEach((slot) => slot.classList.remove("cache-highlight"));
 }

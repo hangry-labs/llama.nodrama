@@ -3,6 +3,7 @@ package app
 import (
 	"math"
 	"sort"
+	"time"
 
 	"llama.nodrama/nodrama/internal/llamacpp"
 )
@@ -177,6 +178,82 @@ func (m *Dashboard) copyPromptCacheLocked() *PromptCacheSummary {
 		out.Other = &other
 	}
 	return &out
+}
+
+func annotatePromptCacheUsage(cache *PromptCacheSummary, queries []QuerySummary) *PromptCacheSummary {
+	if cache == nil || len(queries) == 0 {
+		return cache
+	}
+	usage := map[string]promptCacheUsage{}
+	for _, query := range queries {
+		if query.CacheKey == "" {
+			continue
+		}
+		usedAt := queryUsageTime(query)
+		current := usage[query.CacheKey]
+		if !current.at.IsZero() && !usedAt.After(current.at) {
+			continue
+		}
+		current.at = usedAt
+		if len(query.SlotIDs) > 0 {
+			current.slotID = query.SlotIDs[len(query.SlotIDs)-1]
+			current.hasSlot = true
+		}
+		if len(query.TaskIDs) > 0 {
+			current.taskID = query.TaskIDs[len(query.TaskIDs)-1]
+			current.hasTask = true
+		}
+		usage[query.CacheKey] = current
+	}
+	if len(usage) == 0 {
+		return cache
+	}
+	for i := range cache.TopEntries {
+		applyPromptCacheUsage(&cache.TopEntries[i], usage[cache.TopEntries[i].Key])
+	}
+	if cache.Other != nil {
+		applyPromptCacheUsage(cache.Other, usage[cache.Other.Key])
+	}
+	return cache
+}
+
+type promptCacheUsage struct {
+	slotID  int
+	hasSlot bool
+	taskID  int
+	hasTask bool
+	at      time.Time
+}
+
+func queryUsageTime(query QuerySummary) time.Time {
+	switch {
+	case query.LastCacheReuseAt != nil:
+		return *query.LastCacheReuseAt
+	case query.LastCacheEventAt != nil:
+		return *query.LastCacheEventAt
+	case query.LastEventAt != nil:
+		return *query.LastEventAt
+	case query.EndedAt != nil:
+		return *query.EndedAt
+	default:
+		return query.StartedAt
+	}
+}
+
+func applyPromptCacheUsage(entry *PromptCacheEntry, usage promptCacheUsage) {
+	if entry == nil || usage.at.IsZero() {
+		return
+	}
+	if usage.hasSlot {
+		slotID := usage.slotID
+		entry.LastSlotID = &slotID
+	}
+	if usage.hasTask {
+		taskID := usage.taskID
+		entry.LastTaskID = &taskID
+	}
+	at := usage.at
+	entry.LastUsedAt = &at
 }
 
 func (m *Dashboard) resetPromptCacheLocked() {

@@ -46,6 +46,22 @@ func TestParsePromptEvalLogLine(t *testing.T) {
 	}
 }
 
+func TestParseLaunchLogLineKeepsSlotZero(t *testing.T) {
+	event, ok := ParseLogLine("0.01.001.001 I slot launch_slot_: id  0 | task 42 | processing task, is_child = 0", time.Unix(1_700_000_000, 0))
+	if !ok {
+		t.Fatal("launch line was not parsed")
+	}
+	if event.Kind != "launch" {
+		t.Fatalf("kind = %q", event.Kind)
+	}
+	if !event.HasSlotID {
+		t.Fatal("expected slot id to be marked present")
+	}
+	if event.SlotID != 0 || event.TaskID != 42 {
+		t.Fatalf("slot/task = %d/%d", event.SlotID, event.TaskID)
+	}
+}
+
 func TestParseCacheLogLine(t *testing.T) {
 	event, ok := ParseLogLine("124.55.423.849 I slot 2 kv cache reused, task 248761", time.Unix(1_700_000_000, 0))
 	if !ok {

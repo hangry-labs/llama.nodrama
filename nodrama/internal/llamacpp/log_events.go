@@ -14,6 +14,7 @@ type LogEvent struct {
 	Kind             string    `json:"kind"`
 	Severity         string    `json:"severity,omitempty"`
 	SlotID           int       `json:"slotId,omitempty"`
+	HasSlotID        bool      `json:"-"`
 	TaskID           int       `json:"taskId,omitempty"`
 	CacheKey         string    `json:"cacheKey,omitempty"`
 	DeploymentCtx    int       `json:"deploymentCtx,omitempty"`
@@ -83,6 +84,7 @@ func ParseLogLine(line string, observedAt time.Time) (LogEvent, bool) {
 	if matches := logLaunchPattern.FindStringSubmatch(message); len(matches) == 3 {
 		event.Kind = "launch"
 		event.SlotID = mustAtoi(matches[1])
+		event.HasSlotID = true
 		event.TaskID = mustAtoi(matches[2])
 		return event, true
 	}
@@ -90,6 +92,7 @@ func ParseLogLine(line string, observedAt time.Time) (LogEvent, bool) {
 	if matches := logTimingPattern.FindStringSubmatch(message); len(matches) == 5 {
 		event.Kind = "timing"
 		event.SlotID = mustAtoi(matches[1])
+		event.HasSlotID = true
 		event.TaskID = mustAtoi(matches[2])
 		event.DecodedTokens = mustAtoi(matches[3])
 		event.TokensPerSecond = mustParseFloat(matches[4])
@@ -99,6 +102,7 @@ func ParseLogLine(line string, observedAt time.Time) (LogEvent, bool) {
 	if matches := logPromptEvalPattern.FindStringSubmatch(message); len(matches) == 4 {
 		event.Kind = "prompt_eval"
 		event.SlotID = mustAtoi(matches[1])
+		event.HasSlotID = true
 		event.TaskID = mustAtoi(matches[2])
 		event.PromptTokens = mustAtoi(matches[3])
 		return event, true
@@ -107,7 +111,7 @@ func ParseLogLine(line string, observedAt time.Time) (LogEvent, bool) {
 	if strings.Contains(lower, "cache") || strings.Contains(lower, "kv self") || strings.Contains(lower, "kv cache") {
 		event.Kind = "cache"
 		event.CacheAction = classifyCacheAction(lower)
-		event.SlotID = firstRegexInt(logSlotPattern, message)
+		event.SlotID, event.HasSlotID = firstRegexIntOK(logSlotPattern, message)
 		event.TaskID = firstRegexInt(logTaskPattern, message)
 		event.RestoredTokens = restoredTokens(message)
 		event.CachePrompts, event.CacheUsedMiB, event.CacheLimitMiB, event.CacheLimitTokens, event.CacheEstTokens = cacheState(message)
@@ -119,7 +123,7 @@ func ParseLogLine(line string, observedAt time.Time) (LogEvent, bool) {
 		if severity == "E" || severity == "F" {
 			event.Kind = "error"
 		}
-		event.SlotID = firstRegexInt(logSlotPattern, message)
+		event.SlotID, event.HasSlotID = firstRegexIntOK(logSlotPattern, message)
 		event.TaskID = firstRegexInt(logTaskPattern, message)
 		event.RestoredTokens = restoredTokens(message)
 		return event, true
@@ -199,15 +203,23 @@ func classifyCacheAction(lower string) string {
 }
 
 func firstRegexInt(pattern *regexp.Regexp, value string) int {
-	matches := pattern.FindStringSubmatch(value)
-	if len(matches) < 2 {
-		return 0
-	}
-	parsed := mustAtoi(matches[1])
-	if parsed < 0 {
+	parsed, ok := firstRegexIntOK(pattern, value)
+	if !ok {
 		return 0
 	}
 	return parsed
+}
+
+func firstRegexIntOK(pattern *regexp.Regexp, value string) (int, bool) {
+	matches := pattern.FindStringSubmatch(value)
+	if len(matches) < 2 {
+		return 0, false
+	}
+	parsed := mustAtoi(matches[1])
+	if parsed < 0 {
+		return 0, false
+	}
+	return parsed, true
 }
 
 func mustAtoi(value string) int {

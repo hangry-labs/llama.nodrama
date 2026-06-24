@@ -17,11 +17,20 @@
     min-width: 0;
     padding: 0 6px;
     color: #dbeafe;
-    font: 11px/1.2 var(--mono);
+    font: 10.5px/1.2 var(--mono);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     border-right: 1px solid #0d111799;
+  }
+  .cache-segment[data-slot-id] {
+    cursor: help;
+  }
+  .cache-segment[data-slot-id]:hover,
+  .cache-segment[data-slot-id]:focus-visible {
+    filter: brightness(1.15);
+    outline: 1px solid #dbeafe99;
+    outline-offset: -2px;
   }
   .cache-segment.entry { background: linear-gradient(180deg, #2f81f7, #1f5fab); }
   .cache-segment.other { background: linear-gradient(180deg, #8957e5, #6236a8); }

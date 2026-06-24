@@ -346,7 +346,7 @@ func (m *Dashboard) applyEventToQuery(event llamacpp.LogEvent, fallbackTime time
 		} else if key := cacheKeyFromQueryID(queryID); key != "" {
 			query.CacheKey = key
 		}
-		if event.SlotID > 0 {
+		if event.HasSlotID {
 			query.SlotIDs = appendUniqueInt(query.SlotIDs, event.SlotID)
 			m.slotQuery[event.SlotID] = queryID
 			m.lastSlotQuery[event.SlotID] = queryID
@@ -360,7 +360,7 @@ func (m *Dashboard) applyEventToQuery(event llamacpp.LogEvent, fallbackTime time
 
 	if event.TaskID > 0 {
 		queryID = m.queryIDForTask(event.TaskID)
-	} else if event.SlotID > 0 {
+	} else if event.HasSlotID {
 		if id, ok := m.slotQuery[event.SlotID]; ok {
 			queryID = id
 		} else if id, ok := m.lastSlotQuery[event.SlotID]; ok {
@@ -377,7 +377,7 @@ func (m *Dashboard) applyEventToQuery(event llamacpp.LogEvent, fallbackTime time
 	} else if key := cacheKeyFromQueryID(queryID); key != "" {
 		query.CacheKey = key
 	}
-	if event.SlotID > 0 {
+	if event.HasSlotID {
 		query.SlotIDs = appendUniqueInt(query.SlotIDs, event.SlotID)
 	}
 	if event.TaskID > 0 {

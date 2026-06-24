@@ -173,13 +173,16 @@ type PromptCacheSummary struct {
 }
 
 type PromptCacheEntry struct {
-	Key            string  `json:"key,omitempty"`
-	Count          int     `json:"count,omitempty"`
-	Tokens         int     `json:"tokens,omitempty"`
-	Checkpoints    int     `json:"checkpoints,omitempty"`
-	MiB            float64 `json:"mib,omitempty"`
-	PercentOfLimit float64 `json:"percentOfLimit,omitempty"`
-	PercentOfUsed  float64 `json:"percentOfUsed,omitempty"`
+	Key            string     `json:"key,omitempty"`
+	Count          int        `json:"count,omitempty"`
+	Tokens         int        `json:"tokens,omitempty"`
+	Checkpoints    int        `json:"checkpoints,omitempty"`
+	MiB            float64    `json:"mib,omitempty"`
+	LastSlotID     *int       `json:"lastSlotId,omitempty"`
+	LastTaskID     *int       `json:"lastTaskId,omitempty"`
+	LastUsedAt     *time.Time `json:"lastUsedAt,omitempty"`
+	PercentOfLimit float64    `json:"percentOfLimit,omitempty"`
+	PercentOfUsed  float64    `json:"percentOfUsed,omitempty"`
 }
 
 type Overview struct {
@@ -1367,6 +1370,8 @@ func (m *Dashboard) poll(parent context.Context) {
 	}
 
 	requests := m.copyRequests()
+	queries := m.updateQueries(snapshotAt, modelAlias, slots, slotsProbe.OK, metricsProbe.OK && metrics.RequestsDeferred <= 0, requests, events)
+	promptCache = annotatePromptCacheUsage(promptCache, queries)
 	snapshot := Snapshot{
 		App:            "llama.nodrama",
 		Build:          m.build,
@@ -1389,7 +1394,7 @@ func (m *Dashboard) poll(parent context.Context) {
 		PromptCache:    promptCache,
 		Suggestions:    suggestions,
 		Requests:       requests,
-		Queries:        m.updateQueries(snapshotAt, modelAlias, slots, slotsProbe.OK, metricsProbe.OK && metrics.RequestsDeferred <= 0, requests, events),
+		Queries:        queries,
 		Events:         events,
 		Warnings:       warnings,
 		RawMetrics:     rawMetrics,
