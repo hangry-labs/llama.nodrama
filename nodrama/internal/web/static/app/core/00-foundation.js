@@ -174,6 +174,13 @@ function initHeader() {
     settingsButton.setAttribute("aria-label", t("header.settings"));
     settingsButton.addEventListener("click", openSettingsModal);
   }
+  const apiDocsButton = $("#api-docs-button");
+  if (apiDocsButton) {
+    apiDocsButton.title = t("header.apis");
+    apiDocsButton.setAttribute("aria-label", t("header.apis"));
+    apiDocsButton.textContent = t("header.apis");
+    apiDocsButton.addEventListener("click", openApiDocsModal);
+  }
   const sel = $("#lang-select");
   sel.value = state.lang;
   sel.addEventListener("change", () => {

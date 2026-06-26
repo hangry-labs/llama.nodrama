@@ -11,6 +11,7 @@ I18N.en = {
     "header.status.error":      "Error",
     "header.last_update":       "Last update",
     "header.settings":          "Settings",
+    "header.apis":              "APIs",
     "update.available":         "update available",
     "update.latest":            "latest {version}",
     "update.current":           "current {version}",
@@ -36,6 +37,10 @@ I18N.en = {
     "common.collapse":  "Collapse",
     "common.yes":       "yes",
     "common.no":        "no",
+
+    "api_docs.title":    "API endpoints",
+    "api_docs.intro":    "Endpoints served by llama.nodrama. Use them from local scripts, monitors, and agents; mutating endpoints can change server state.",
+    "api_docs.base_url": "Base URL",
 
     "error.fetch_failed":       "Request failed",
     "error.parse_failed":       "Could not parse response",

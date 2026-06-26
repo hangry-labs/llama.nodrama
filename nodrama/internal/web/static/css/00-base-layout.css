@@ -58,6 +58,12 @@
     max-width: 320px; overflow: hidden; text-overflow: ellipsis;
     white-space: nowrap;
   }
+  header.app .api-docs-button {
+    font-size: 12px;
+    padding: 3px 9px;
+    color: var(--accent-2);
+    border-color: #2f4969;
+  }
   .led {
     display: inline-block; width: 7px; height: 7px;
     border-radius: 50%; background: var(--fg-mute); vertical-align: middle;
