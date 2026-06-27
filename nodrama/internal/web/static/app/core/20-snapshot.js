@@ -203,7 +203,7 @@ function setBuildDisplay(build, update) {
   }
   const details = [];
   if (build && build.commit) details.push("commit " + build.commit);
-  if (build && build.date) details.push("built " + build.date);
+  if (buildTime) details.push("built " + buildTime);
   if (available) {
     details.push(t("update.open_release", { version: latestVersion }));
   } else if (latestVersion) {

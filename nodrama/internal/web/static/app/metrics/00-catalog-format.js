@@ -117,19 +117,20 @@ function fmtDuration(seconds) {
 function fmtTime(ts) {
   const tMs = typeof ts === "number" ? ts : Date.parse(ts);
   if (!isFinite(tMs)) return "—";
-  return new Date(tMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const d = new Date(tMs);
+  return pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + ":" + pad2(d.getSeconds());
 }
 
 function fmtDateTime(ts) {
   const tMs = typeof ts === "number" ? ts : Date.parse(ts);
   if (!isFinite(tMs)) return "—";
-  return new Date(tMs).toLocaleString([], {
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  const d = new Date(tMs);
+  return pad2(d.getDate()) + "." + pad2(d.getMonth() + 1) + "." + d.getFullYear() + " " +
+         pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + ":" + pad2(d.getSeconds());
+}
+
+function pad2(value) {
+  return String(value).padStart(2, "0");
 }
 
 function formatMetricValue(card, value) {
