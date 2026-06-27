@@ -110,6 +110,8 @@ I18N["zh-CN"] = {
     "queries.task":             "任务",
     "queries.tokens":           "tokens",
     "queries.cache":            "缓存",
+    "queries.cache_entry":      "条目",
+    "queries.cache_key":        "键",
     "queries.rate":             "速率",
     "queries.duration":         "耗时",
     "models.title":           "模型",

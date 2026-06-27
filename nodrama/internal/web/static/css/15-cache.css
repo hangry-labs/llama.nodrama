@@ -23,11 +23,15 @@
     text-overflow: ellipsis;
     border-right: 1px solid #0d111799;
   }
-  .cache-segment[data-slot-id] {
+  .cache-segment[data-slot-id],
+  .cache-segment[data-cache-key] {
     cursor: help;
   }
   .cache-segment[data-slot-id]:hover,
-  .cache-segment[data-slot-id]:focus-visible {
+  .cache-segment[data-slot-id]:focus-visible,
+  .cache-segment[data-cache-key]:hover,
+  .cache-segment[data-cache-key]:focus-visible,
+  .cache-segment.cache-match-highlight {
     filter: brightness(1.15);
     outline: 1px solid #dbeafe99;
     outline-offset: -2px;

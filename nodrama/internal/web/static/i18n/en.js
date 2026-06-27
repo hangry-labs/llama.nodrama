@@ -119,6 +119,8 @@ I18N.en = {
     "queries.task":             "task",
     "queries.tokens":           "tokens",
     "queries.cache":            "cache",
+    "queries.cache_entry":      "entry",
+    "queries.cache_key":        "key",
     "queries.rate":             "rate",
     "queries.duration":         "duration",
 

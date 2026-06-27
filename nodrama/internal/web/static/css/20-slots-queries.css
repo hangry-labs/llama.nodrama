@@ -24,6 +24,12 @@
   .query-card.queued { border-color: var(--warn); }
   .query-card.uncached.complete { opacity: 0.82; }
   .query-card.error { border-color: var(--bad); }
+  .query-card.cache-linked { border-color: #2f4969; }
+  .query-card[data-cache-key] { cursor: help; }
+  .query-card.cache-match-highlight {
+    border-color: #58a6ff;
+    box-shadow: 0 0 0 1px #58a6ff88 inset, 0 0 18px #58a6ff44;
+  }
   .query-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
   .query-id { font-family: var(--mono); color: var(--fg-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .query-details { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 12px; }

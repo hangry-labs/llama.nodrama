@@ -269,6 +269,7 @@ function renderQueries(queries) {
 
 function renderQueryCard(q) {
   const status = q.status || "complete";
+  const cacheEntry = findPromptCacheEntry(state.promptCache, q.cacheKey);
   const tokens = [
     num(q.promptTokens, 0),
     num(q.completionTokens, 0),
@@ -285,6 +286,12 @@ function renderQueryCard(q) {
     const restored = String(q.cacheRestoredTokens) + (q.promptTokens ? "/" + String(q.promptTokens) : "") + " tok";
     cacheParts.push("restored " + restored);
   }
+  if (cacheEntry) {
+    const entryLabel = promptCacheEntryLabel(cacheEntry);
+    if (entryLabel) cacheParts.push(t("queries.cache_entry") + " " + entryLabel);
+  } else if (q.cacheKey) {
+    cacheParts.push(t("queries.cache_key") + " " + shortCacheKey(q.cacheKey));
+  }
   if (q.promptCacheTokens) cacheParts.push(String(q.promptCacheTokens) + " tok");
   const cache = cacheParts.length ? cacheParts.join(" · ") : "—";
   const rate = q.currentTokensPerSec ? fmtNumber(q.currentTokensPerSec) + " tok/s" : "—";
@@ -292,7 +299,22 @@ function renderQueryCard(q) {
   const isCached = !!q.cacheCached;
   const badgeText = status === "complete" && isCached ? t("queries.status.cached") : t("queries.status." + status);
   const badgeClass = status === "complete" && isCached ? "cached" : status;
-  return el("div", { class: "query-card " + status + (isCached ? " cached" : " uncached"), title: q.id || "" }, [
+  const titleParts = [];
+  if (q.id) titleParts.push(q.id);
+  if (q.cacheKey) titleParts.push("cache: " + q.cacheKey);
+  if (cacheEntry) {
+    titleParts.push("cache entry: " + promptCacheEntryLabel(cacheEntry));
+    if (cacheEntry.checkpoints) titleParts.push("checkpoints: " + cacheEntry.checkpoints);
+  }
+  const attrs = {
+    class: "query-card " + status + (isCached ? " cached" : " uncached") + (cacheEntry ? " cache-linked" : ""),
+    title: titleParts.join("\n"),
+  };
+  if (q.cacheKey) {
+    attrs.data = { cacheKey: q.cacheKey };
+    attrs.tabindex = "0";
+  }
+  const node = el("div", attrs, [
     el("div", { class: "query-head" }, [
       el("span", { class: "query-id" }, q.id || "query"),
       el("span", { class: "badge " + badgeClass }, badgeText),
@@ -306,6 +328,19 @@ function renderQueryCard(q) {
       el("div", { class: "k" }, t("queries.duration")), el("div", { class: "v" }, duration),
     ]),
   ]);
+  if (q.cacheKey) {
+    node.addEventListener("mouseenter", () => highlightPromptCacheKey(q.cacheKey));
+    node.addEventListener("mouseleave", clearPromptCacheKeyHighlight);
+    node.addEventListener("focus", () => highlightPromptCacheKey(q.cacheKey));
+    node.addEventListener("blur", clearPromptCacheKeyHighlight);
+  }
+  return node;
+}
+
+function shortCacheKey(key) {
+  const s = String(key || "");
+  if (s.length <= 10) return s;
+  return s.slice(0, 6) + "…" + s.slice(-4);
 }
 
 /* slotAction is defined in the shell action module. */

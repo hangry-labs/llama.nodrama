@@ -110,6 +110,8 @@ I18N.ko = {
     "queries.task":             "작업",
     "queries.tokens":           "토큰",
     "queries.cache":            "캐시",
+    "queries.cache_entry":      "항목",
+    "queries.cache_key":        "키",
     "queries.rate":             "속도",
     "queries.duration":         "기간",
     "models.title":           "모델",

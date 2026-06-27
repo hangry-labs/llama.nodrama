@@ -110,6 +110,8 @@ I18N.ja = {
     "queries.task":             "タスク",
     "queries.tokens":           "トークン",
     "queries.cache":            "キャッシュ",
+    "queries.cache_entry":      "項目",
+    "queries.cache_key":        "キー",
     "queries.rate":             "速度",
     "queries.duration":         "期間",
     "models.title":           "モデル",

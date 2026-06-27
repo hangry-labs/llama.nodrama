@@ -110,6 +110,8 @@ I18N.es = {
     "queries.task":             "tarea",
     "queries.tokens":           "tokens",
     "queries.cache":            "caché",
+    "queries.cache_entry":      "entrada",
+    "queries.cache_key":        "clave",
     "queries.rate":             "velocidad",
     "queries.duration":         "duración",
     "models.title":           "Modelos",

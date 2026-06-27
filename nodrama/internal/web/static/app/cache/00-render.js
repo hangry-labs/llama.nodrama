@@ -19,6 +19,8 @@ function renderPromptCache(cache) {
   const bar = $("#cache-bar");
   if (!summary || !bar) return;
   clearCacheSlotHighlight();
+  clearPromptCacheKeyHighlight();
+  clearQueryCacheKeyHighlight();
   bar.innerHTML = "";
 
   if (!cache || !cache.available) {
@@ -58,16 +60,18 @@ function renderPromptCache(cache) {
       title: segment.title,
       style: "width: " + Math.max(0.75, segment.percent * 100).toFixed(2) + "%",
     };
-    if (segment.slotId !== undefined) {
+    if (segment.slotId !== undefined || segment.cacheKey) {
       attrs.tabindex = "0";
-      attrs.data = { slotId: String(segment.slotId) };
+      attrs.data = {};
+      if (segment.slotId !== undefined) attrs.data.slotId = String(segment.slotId);
+      if (segment.cacheKey) attrs.data.cacheKey = segment.cacheKey;
     }
     const node = el("div", attrs, segment.label);
-    if (segment.slotId !== undefined) {
-      node.addEventListener("mouseenter", () => highlightCacheSlot(segment.slotId));
-      node.addEventListener("mouseleave", clearCacheSlotHighlight);
-      node.addEventListener("focus", () => highlightCacheSlot(segment.slotId));
-      node.addEventListener("blur", clearCacheSlotHighlight);
+    if (segment.slotId !== undefined || segment.cacheKey) {
+      node.addEventListener("mouseenter", () => highlightPromptCacheSegmentRefs(segment));
+      node.addEventListener("mouseleave", clearPromptCacheSegmentRefs);
+      node.addEventListener("focus", () => highlightPromptCacheSegmentRefs(segment));
+      node.addEventListener("blur", clearPromptCacheSegmentRefs);
     }
     bar.appendChild(node);
   }
@@ -127,6 +131,8 @@ function promptCacheSegment(entry, denom, kind) {
   if (tokens > 0) titleParts.push(fmtTokensCompact(tokens) + " tokens");
   if (checkpoints > 0) titleParts.push(checkpoints + " checkpoints");
   if (count > 0) titleParts.push(count + " entries");
+  const linkedQueries = kind === "entry" ? promptCacheLinkedQueries(key) : [];
+  if (linkedQueries.length) titleParts.push("queries: " + linkedQueries.join(", "));
   if (slotId !== undefined && slotId !== null) titleParts.push("last slot: " + slotId);
   if (taskId !== undefined && taskId !== null) titleParts.push("last task: " + taskId);
   if (lastUsedAt) titleParts.push("last used: " + fmtDateTime(lastUsedAt));
@@ -138,7 +144,27 @@ function promptCacheSegment(entry, denom, kind) {
     percent: denom > 0 ? mib / denom : 0,
     title: titleParts.join("\n"),
     slotId: slotId !== undefined && slotId !== null ? Number(slotId) : undefined,
+    cacheKey: kind === "entry" ? key : "",
   };
+}
+
+function promptCacheLinkedQueries(cacheKey) {
+  if (!cacheKey || !Array.isArray(state.queries)) return [];
+  return state.queries
+    .filter((q) => q && q.cacheKey === cacheKey)
+    .map((q) => q.id || ("task " + ((q.taskIds || [])[0] || "?")))
+    .slice(0, 4);
+}
+
+function findPromptCacheEntry(cache, cacheKey) {
+  if (!cache || !cacheKey) return null;
+  const entries = Array.isArray(cache.topEntries) ? cache.topEntries : [];
+  return entries.find((entry) => entry && entry.key === cacheKey) || null;
+}
+
+function promptCacheEntryLabel(entry) {
+  if (!entry) return "";
+  return cacheSizeTokenLabel(Number(entry.mib || 0), Number(entry.tokens || 0));
 }
 
 function cacheEntryMiBSum(cache) {
@@ -173,4 +199,42 @@ function highlightCacheSlot(slotId) {
 
 function clearCacheSlotHighlight() {
   $$(".slot.cache-highlight").forEach((slot) => slot.classList.remove("cache-highlight"));
+}
+
+function highlightPromptCacheSegmentRefs(segment) {
+  if (segment.slotId !== undefined) highlightCacheSlot(segment.slotId);
+  if (segment.cacheKey) highlightQueryCacheKey(segment.cacheKey);
+}
+
+function clearPromptCacheSegmentRefs() {
+  clearCacheSlotHighlight();
+  clearQueryCacheKeyHighlight();
+}
+
+function highlightPromptCacheKey(cacheKey) {
+  clearPromptCacheKeyHighlight();
+  if (!cacheKey) return;
+  $$('[data-cache-key]').forEach((node) => {
+    if (node.dataset.cacheKey === cacheKey && node.classList.contains("cache-segment")) {
+      node.classList.add("cache-match-highlight");
+    }
+  });
+}
+
+function clearPromptCacheKeyHighlight() {
+  $$(".cache-segment.cache-match-highlight").forEach((node) => node.classList.remove("cache-match-highlight"));
+}
+
+function highlightQueryCacheKey(cacheKey) {
+  clearQueryCacheKeyHighlight();
+  if (!cacheKey) return;
+  $$('[data-cache-key]').forEach((node) => {
+    if (node.dataset.cacheKey === cacheKey && node.classList.contains("query-card")) {
+      node.classList.add("cache-match-highlight");
+    }
+  });
+}
+
+function clearQueryCacheKeyHighlight() {
+  $$(".query-card.cache-match-highlight").forEach((node) => node.classList.remove("cache-match-highlight"));
 }
