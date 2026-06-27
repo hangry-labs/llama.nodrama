@@ -100,6 +100,7 @@ const state = {
   ui: {
     bootDone: false,
     logEnabled: false,
+    relationHover: null,
     supportSignature: "",
   },
 };

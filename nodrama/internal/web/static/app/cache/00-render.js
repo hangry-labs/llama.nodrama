@@ -18,9 +18,7 @@ function renderPromptCache(cache) {
   const summary = $("#cache-summary");
   const bar = $("#cache-bar");
   if (!summary || !bar) return;
-  clearCacheSlotHighlight();
-  clearPromptCacheKeyHighlight();
-  clearQueryCacheKeyHighlight();
+  clearRelationHighlightClasses();
   bar.innerHTML = "";
 
   if (!cache || !cache.available) {
@@ -69,12 +67,13 @@ function renderPromptCache(cache) {
     const node = el("div", attrs, segment.label);
     if (segment.slotId !== undefined || segment.cacheKey) {
       node.addEventListener("mouseenter", () => highlightPromptCacheSegmentRefs(segment));
-      node.addEventListener("mouseleave", clearPromptCacheSegmentRefs);
+      node.addEventListener("mouseleave", clearRelationHighlights);
       node.addEventListener("focus", () => highlightPromptCacheSegmentRefs(segment));
-      node.addEventListener("blur", clearPromptCacheSegmentRefs);
+      node.addEventListener("blur", clearRelationHighlights);
     }
     bar.appendChild(node);
   }
+  restoreRelationHighlights();
 }
 
 function promptCacheSegments(cache, denom) {
@@ -192,7 +191,6 @@ function cacheSizeTokenLabel(mib, tokens) {
 }
 
 function highlightCacheSlot(slotId) {
-  clearCacheSlotHighlight();
   const slot = document.querySelector('[data-slot="' + slotId + '"]');
   if (slot) slot.classList.add("cache-highlight");
 }
@@ -202,22 +200,10 @@ function clearCacheSlotHighlight() {
 }
 
 function highlightPromptCacheSegmentRefs(segment) {
-  if (segment.slotId !== undefined) highlightCacheSlot(segment.slotId);
-  if (segment.cacheKey) highlightQueryCacheKey(segment.cacheKey);
-}
-
-function clearPromptCacheSegmentRefs() {
-  clearCacheSlotHighlight();
-  clearQueryCacheKeyHighlight();
-}
-
-function highlightPromptCacheKey(cacheKey) {
-  clearPromptCacheKeyHighlight();
-  if (!cacheKey) return;
-  $$('[data-cache-key]').forEach((node) => {
-    if (node.dataset.cacheKey === cacheKey && node.classList.contains("cache-segment")) {
-      node.classList.add("cache-match-highlight");
-    }
+  highlightRelations({
+    source: "cache",
+    slotIds: segment.slotId !== undefined ? [segment.slotId] : [],
+    cacheKeys: segment.cacheKey ? [segment.cacheKey] : [],
   });
 }
 
@@ -225,16 +211,161 @@ function clearPromptCacheKeyHighlight() {
   $$(".cache-segment.cache-match-highlight").forEach((node) => node.classList.remove("cache-match-highlight"));
 }
 
-function highlightQueryCacheKey(cacheKey) {
-  clearQueryCacheKeyHighlight();
-  if (!cacheKey) return;
-  $$('[data-cache-key]').forEach((node) => {
-    if (node.dataset.cacheKey === cacheKey && node.classList.contains("query-card")) {
-      node.classList.add("cache-match-highlight");
-    }
-  });
-}
-
 function clearQueryCacheKeyHighlight() {
   $$(".query-card.cache-match-highlight").forEach((node) => node.classList.remove("cache-match-highlight"));
 }
+
+function highlightSlotRelations(slotId) {
+  highlightRelations({ source: "slot", slotIds: [slotId], cacheKeys: [] });
+}
+
+function highlightQueryRelations(slotIds, cacheKey, queryId) {
+  highlightRelations({
+    source: "query",
+    slotIds,
+    cacheKeys: cacheKey ? [cacheKey] : [],
+    queryIds: queryId ? [queryId] : [],
+  });
+}
+
+function highlightRelations(input) {
+  const normalized = normalizeRelationInput(input);
+  if (state && state.ui) state.ui.relationHover = normalized;
+  applyRelationHighlights(normalized);
+}
+
+function applyRelationHighlights(input) {
+  clearRelationHighlightClasses();
+  const slotIds = new Set((input.slotIds || []).map((id) => Number(id)).filter((id) => Number.isFinite(id)));
+  const cacheKeys = new Set((input.cacheKeys || []).filter(Boolean));
+  const queryIds = new Set((input.queryIds || []).filter(Boolean));
+  const source = input.source || "mixed";
+  const matchedQueries = new Set();
+  const matchedCaches = new Set();
+  const highlightedSlotIds = new Set(source === "cache" ? [] : slotIds);
+
+  if (source === "slot") {
+    const queryCacheKeys = new Set();
+    $$(".query-card").forEach((node) => {
+      if (!relationSlotIntersects(node, slotIds)) return;
+      matchedQueries.add(node);
+      if (node.dataset.cacheKey) queryCacheKeys.add(node.dataset.cacheKey);
+    });
+
+    $$(".cache-segment").forEach((node) => {
+      const cacheKey = node.dataset.cacheKey;
+      if (relationSlotIntersects(node, slotIds) || (cacheKey && queryCacheKeys.has(cacheKey))) {
+        matchedCaches.add(node);
+      }
+    });
+  } else if (source === "query") {
+    $$(".query-card").forEach((node) => {
+      const queryId = node.dataset.queryId;
+      const cacheKey = node.dataset.cacheKey;
+      if ((queryId && queryIds.has(queryId)) || (cacheKey && cacheKeys.has(cacheKey))) {
+        matchedQueries.add(node);
+      }
+    });
+
+    $$(".cache-segment").forEach((node) => {
+      const cacheKey = node.dataset.cacheKey;
+      if (cacheKey && cacheKeys.has(cacheKey)) matchedCaches.add(node);
+    });
+  } else if (source === "cache") {
+    $$(".cache-segment").forEach((node) => {
+      if (relationNodeMatches(node, slotIds, cacheKeys)) matchedCaches.add(node);
+    });
+
+    $$(".query-card").forEach((node) => {
+      const cacheKey = node.dataset.cacheKey;
+      if (!cacheKey || !cacheKeys.has(cacheKey)) return;
+      matchedQueries.add(node);
+      for (const slotId of relationSlotIds(node)) {
+        highlightedSlotIds.add(slotId);
+      }
+    });
+
+    for (const slotId of slotIds) {
+      highlightedSlotIds.add(slotId);
+    }
+  } else {
+    $$("[data-cache-key], [data-slot-ids], [data-slot-id]").forEach((node) => {
+      if (!relationNodeMatches(node, slotIds, cacheKeys)) return;
+      if (node.classList.contains("query-card")) matchedQueries.add(node);
+      if (node.classList.contains("cache-segment")) matchedCaches.add(node);
+      for (const slotId of relationSlotIds(node)) highlightedSlotIds.add(slotId);
+    });
+  }
+
+  for (const slotId of highlightedSlotIds) {
+    highlightCacheSlot(slotId);
+  }
+  for (const node of matchedQueries) {
+    node.classList.add("cache-match-highlight");
+  }
+  for (const node of matchedCaches) {
+    node.classList.add("cache-match-highlight");
+  }
+}
+
+function relationSlotIntersects(node, slotIds) {
+  return relationSlotIds(node).some((slotId) => slotIds.has(slotId));
+}
+
+function relationNodeMatches(node, slotIds, cacheKeys) {
+  const cacheKey = node.dataset.cacheKey;
+  if (cacheKey && cacheKeys.has(cacheKey)) return true;
+  for (const slotId of relationSlotIds(node)) {
+    if (slotIds.has(slotId)) return true;
+  }
+  return false;
+}
+
+function relationSlotIds(node) {
+  const out = [];
+  if (node.dataset.slot !== undefined) out.push(Number(node.dataset.slot));
+  if (node.dataset.slotId !== undefined) out.push(Number(node.dataset.slotId));
+  if (node.dataset.slotIds) {
+    for (const raw of node.dataset.slotIds.split(",")) {
+      out.push(Number(raw));
+    }
+  }
+  return out.filter((id) => Number.isFinite(id));
+}
+
+function clearRelationHighlights() {
+  if (state && state.ui) state.ui.relationHover = null;
+  clearRelationHighlightClasses();
+}
+
+function clearRelationHighlightClasses() {
+  clearCacheSlotHighlight();
+  clearPromptCacheKeyHighlight();
+  clearQueryCacheKeyHighlight();
+}
+
+function restoreRelationHighlights() {
+  if (state && state.ui && state.ui.relationHover) {
+    applyRelationHighlights(state.ui.relationHover);
+  }
+}
+
+function normalizeRelationInput(input) {
+  const source = ["slot", "query", "cache", "mixed"].includes(input.source) ? input.source : "mixed";
+  const slotIds = Array.from(new Set((input.slotIds || [])
+    .map((id) => Number(id))
+    .filter((id) => Number.isFinite(id))));
+  const cacheKeys = Array.from(new Set((input.cacheKeys || []).filter(Boolean)));
+  const queryIds = Array.from(new Set((input.queryIds || [])
+    .map((id) => String(id))
+    .filter(Boolean)));
+  return { source, slotIds, cacheKeys, queryIds };
+}
+
+document.addEventListener("mousemove", (event) => {
+  if (!state || !state.ui || !state.ui.relationHover) return;
+  const target = event.target && event.target.closest
+    ? event.target.closest(".slot[data-slot], .query-card[data-cache-key], .query-card[data-slot-ids], .query-card[data-query-id], .cache-segment[data-cache-key], .cache-segment[data-slot-id]")
+    : null;
+  if (!target) clearRelationHighlights();
+});

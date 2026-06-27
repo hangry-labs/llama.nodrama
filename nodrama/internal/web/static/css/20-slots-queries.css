@@ -9,6 +9,7 @@
     display: flex; flex-direction: column; gap: 6px;
     min-width: 0;
   }
+  .slot[data-slot] { cursor: help; }
   .slot.idle { opacity: 0.7; }
   .query-grid {
     display: grid; gap: 10px;
@@ -25,7 +26,8 @@
   .query-card.uncached.complete { opacity: 0.82; }
   .query-card.error { border-color: var(--bad); }
   .query-card.cache-linked { border-color: #2f4969; }
-  .query-card[data-cache-key] { cursor: help; }
+  .query-card[data-cache-key],
+  .query-card[data-slot-ids] { cursor: help; }
   .query-card.cache-match-highlight {
     border-color: #58a6ff;
     box-shadow: 0 0 0 1px #58a6ff88 inset, 0 0 18px #58a6ff44;

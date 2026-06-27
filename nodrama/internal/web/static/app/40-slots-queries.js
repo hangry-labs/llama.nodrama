@@ -93,11 +93,12 @@ function renderSlots(slots) {
     .sort((a, b) => Number(a.dataset.slot) - Number(b.dataset.slot));
   for (const n of items) grid.appendChild(n);
   state.slots = slots;
+  restoreRelationHighlights();
   bumpGuidance();
 }
 
 function makeSlotNode(s) {
-  const node = el("div", { class: "slot", data: { slot: String(s.id) } }, [
+  const node = el("div", { class: "slot", tabindex: "0", data: { slot: String(s.id) } }, [
     el("div", { class: "slot-head" }, [
       el("span", { class: "id" }, "slot " + s.id),
       el("span", { class: "badge", "data-role": "state" }, t("slots.idle")),
@@ -117,6 +118,10 @@ function makeSlotNode(s) {
       el("div", { class: "params", "data-role": "params" }, []),
     ]),
   ]);
+  node.addEventListener("mouseenter", () => highlightSlotRelations(Number(node.dataset.slot)));
+  node.addEventListener("mouseleave", clearRelationHighlights);
+  node.addEventListener("focus", () => highlightSlotRelations(Number(node.dataset.slot)));
+  node.addEventListener("blur", clearRelationHighlights);
   return node;
 }
 
@@ -265,17 +270,20 @@ function renderQueries(queries) {
   for (const q of list) {
     grid.appendChild(renderQueryCard(q));
   }
+  restoreRelationHighlights();
 }
 
 function renderQueryCard(q) {
   const status = q.status || "complete";
   const cacheEntry = findPromptCacheEntry(state.promptCache, q.cacheKey);
+  const slotIds = Array.isArray(q.slotIds) ? q.slotIds.filter((id) => Number.isFinite(Number(id))) : [];
+  const queryRelationId = queryRelationKey(q);
   const tokens = [
     num(q.promptTokens, 0),
     num(q.completionTokens, 0),
     num(q.totalTokens, 0),
   ].join(" / ");
-  const slot = Array.isArray(q.slotIds) && q.slotIds.length ? q.slotIds.join(", ") : "—";
+  const slot = slotIds.length ? slotIds.join(", ") : "—";
   const task = Array.isArray(q.taskIds) && q.taskIds.length ? q.taskIds.join(", ") : "—";
   const cacheParts = [];
   if (q.cacheReuseCount) cacheParts.push("reuse x" + q.cacheReuseCount);
@@ -310,8 +318,11 @@ function renderQueryCard(q) {
     class: "query-card " + status + (isCached ? " cached" : " uncached") + (cacheEntry ? " cache-linked" : ""),
     title: titleParts.join("\n"),
   };
-  if (q.cacheKey) {
-    attrs.data = { cacheKey: q.cacheKey };
+  if (q.cacheKey || slotIds.length || queryRelationId) {
+    attrs.data = {};
+    if (queryRelationId) attrs.data.queryId = queryRelationId;
+    if (q.cacheKey) attrs.data.cacheKey = q.cacheKey;
+    if (slotIds.length) attrs.data.slotIds = slotIds.join(",");
     attrs.tabindex = "0";
   }
   const node = el("div", attrs, [
@@ -328,13 +339,21 @@ function renderQueryCard(q) {
       el("div", { class: "k" }, t("queries.duration")), el("div", { class: "v" }, duration),
     ]),
   ]);
-  if (q.cacheKey) {
-    node.addEventListener("mouseenter", () => highlightPromptCacheKey(q.cacheKey));
-    node.addEventListener("mouseleave", clearPromptCacheKeyHighlight);
-    node.addEventListener("focus", () => highlightPromptCacheKey(q.cacheKey));
-    node.addEventListener("blur", clearPromptCacheKeyHighlight);
+  if (q.cacheKey || slotIds.length || queryRelationId) {
+    node.addEventListener("mouseenter", () => highlightQueryRelations(slotIds, q.cacheKey, queryRelationId));
+    node.addEventListener("mouseleave", clearRelationHighlights);
+    node.addEventListener("focus", () => highlightQueryRelations(slotIds, q.cacheKey, queryRelationId));
+    node.addEventListener("blur", clearRelationHighlights);
   }
   return node;
+}
+
+function queryRelationKey(q) {
+  if (!q) return "";
+  if (q.id) return String(q.id);
+  if (Array.isArray(q.taskIds) && q.taskIds.length) return "task_" + q.taskIds.join("_");
+  if (q.cacheKey) return "cache_" + q.cacheKey;
+  return "";
 }
 
 function shortCacheKey(key) {
