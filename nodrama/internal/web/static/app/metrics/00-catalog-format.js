@@ -133,6 +133,14 @@ function fmtDateTime(ts) {
          pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + ":" + pad2(d.getSeconds());
 }
 
+function fmtTimeDate(ts) {
+  const tMs = typeof ts === "number" ? ts : Date.parse(ts);
+  if (!isFinite(tMs)) return "—";
+  const d = new Date(tMs);
+  return pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + ":" + pad2(d.getSeconds()) + " " +
+         pad2(d.getDate()) + "." + pad2(d.getMonth() + 1) + "." + d.getFullYear();
+}
+
 function pad2(value) {
   return String(value).padStart(2, "0");
 }
@@ -149,10 +157,12 @@ function metricPeakNote(card, fact) {
   if (!fact) return [];
   const parts = [];
   if (fact.peak5mAt) {
-    parts.push(formatMetricValue(card, fact.peak5mValue) + " (5m at " + fmtTime(fact.peak5mAt) + ")");
+    const value = fact.peak5mValue === undefined ? 0 : fact.peak5mValue;
+    parts.push(formatMetricValue(card, value) + " (5m at " + fmtTime(fact.peak5mAt) + ")");
   }
   if (fact.peakAt) {
-    parts.push(formatMetricValue(card, fact.peakValue) + " (max at " + fmtTime(fact.peakAt) + ")");
+    const value = fact.peakValue === undefined ? 0 : fact.peakValue;
+    parts.push(formatMetricValue(card, value) + " (max at " + fmtTimeDate(fact.peakAt) + ")");
   }
   return parts;
 }

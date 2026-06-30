@@ -35,9 +35,9 @@ function ensureMetricCards() {
       ]),
       el("div", { class: "row" }, [
         el("div", { class: "value", id: "metric-" + c.id + "-value" }, "—"),
-        el("div", { class: "unit" }, c.unit || ""),
+        el("div", { class: "unit", id: "metric-" + c.id + "-unit" }, c.unit || ""),
       ]),
-      (c.percent || c.contextUsed)
+      c.percent
         ? el("div", { class: "pct-bar", id: "metric-" + c.id + "-bar" },
             el("span", { style: "width: 0%" }))
         : null,
@@ -142,12 +142,18 @@ function renderMetrics(parsed, metricHistory, metricFacts) {
       ? (capacity > 0 ? (fmtTokensCompact(v) + " / " + fmtTokensCompact(capacity)) : "—")
       : (c.duration ? fmtDuration(v) : fmtNumber(v, { percent: c.percent }));
 
+    const unit = $("#metric-" + c.id + "-unit");
+    if (unit) {
+      unit.textContent = c.contextUsed && capacity > 0
+        ? ((c.unit || "") + " (" + fmtNumber(ratio, { percent: true }) + "%)")
+        : (c.unit || "");
+    }
+
     const note = $("#metric-" + c.id + "-note");
     if (note) {
       const fact = factsByMetric[c.metric];
       note.innerHTML = "";
       if (c.contextUsed && capacity > 0) {
-        note.appendChild(el("div", null, fmtNumber(ratio, { percent: true }) + "% used"));
         const lines = metricPeakNote(c, fact);
         if (lines.length) {
           for (const line of lines) note.appendChild(el("div", null, line));
@@ -167,7 +173,7 @@ function renderMetrics(parsed, metricHistory, metricFacts) {
       }
     }
 
-    if (c.percent || c.contextUsed) {
+    if (c.percent) {
       const bar = $("#metric-" + c.id + "-bar");
       const span = bar.querySelector("span");
       const pct = Math.max(0, Math.min(100, (ratio || 0) * 100));
