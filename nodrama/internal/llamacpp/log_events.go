@@ -172,6 +172,49 @@ func splitLogPrefix(line string) (string, string, string) {
 	return "", "", line
 }
 
+func LogLineUptime(line string) (time.Duration, bool) {
+	timestampRaw, _, _ := splitLogPrefix(strings.TrimSpace(line))
+	return ParseLogTimestampDuration(timestampRaw)
+}
+
+func ParseLogTimestampDuration(raw string) (time.Duration, bool) {
+	parts := strings.Split(strings.TrimSpace(raw), ".")
+	if len(parts) != 4 {
+		return 0, false
+	}
+	minutes, ok := parseTimestampPart(parts[0])
+	if !ok {
+		return 0, false
+	}
+	seconds, ok := parseTimestampPart(parts[1])
+	if !ok || seconds >= 60 {
+		return 0, false
+	}
+	milliseconds, ok := parseTimestampPart(parts[2])
+	if !ok || milliseconds >= 1000 {
+		return 0, false
+	}
+	microseconds, ok := parseTimestampPart(parts[3])
+	if !ok || microseconds >= 1000 {
+		return 0, false
+	}
+	return time.Duration(minutes)*time.Minute +
+		time.Duration(seconds)*time.Second +
+		time.Duration(milliseconds)*time.Millisecond +
+		time.Duration(microseconds)*time.Microsecond, true
+}
+
+func parseTimestampPart(raw string) (int64, bool) {
+	if raw == "" {
+		return 0, false
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || value < 0 {
+		return 0, false
+	}
+	return value, true
+}
+
 func isSeverity(value string) bool {
 	switch value {
 	case "I", "W", "E", "F":

@@ -186,21 +186,24 @@ type PromptCacheEntry struct {
 }
 
 type Overview struct {
-	Online                 bool    `json:"online"`
-	RequestsProcessing     float64 `json:"requestsProcessing"`
-	RequestsDeferred       float64 `json:"requestsDeferred"`
-	PromptTokensPerSec     float64 `json:"promptTokensPerSec"`
-	GenerationTokensPerSec float64 `json:"generationTokensPerSec"`
-	BusySlots              int     `json:"busySlots"`
-	TotalSlots             int     `json:"totalSlots"`
-	PromptTokensTotal      float64 `json:"promptTokensTotal"`
-	GeneratedTokensTotal   float64 `json:"generatedTokensTotal"`
-	ContextTokens          int     `json:"contextTokens"`
-	ContextUsedTokens      int     `json:"contextUsedTokens"`
-	ContextCapacityTokens  int     `json:"contextCapacityTokens"`
-	ContextUsedRatio       float64 `json:"contextUsedRatio"`
-	ContextCapacitySource  string  `json:"contextCapacitySource,omitempty"`
-	ModelAlias             string  `json:"modelAlias"`
+	Online                 bool       `json:"online"`
+	RequestsProcessing     float64    `json:"requestsProcessing"`
+	RequestsDeferred       float64    `json:"requestsDeferred"`
+	PromptTokensPerSec     float64    `json:"promptTokensPerSec"`
+	GenerationTokensPerSec float64    `json:"generationTokensPerSec"`
+	ServerUptimeSeconds    float64    `json:"serverUptimeSeconds,omitempty"`
+	ServerStartedAt        *time.Time `json:"serverStartedAt,omitempty"`
+	ServerUptimeSource     string     `json:"serverUptimeSource,omitempty"`
+	BusySlots              int        `json:"busySlots"`
+	TotalSlots             int        `json:"totalSlots"`
+	PromptTokensTotal      float64    `json:"promptTokensTotal"`
+	GeneratedTokensTotal   float64    `json:"generatedTokensTotal"`
+	ContextTokens          int        `json:"contextTokens"`
+	ContextUsedTokens      int        `json:"contextUsedTokens"`
+	ContextCapacityTokens  int        `json:"contextCapacityTokens"`
+	ContextUsedRatio       float64    `json:"contextUsedRatio"`
+	ContextCapacitySource  string     `json:"contextCapacitySource,omitempty"`
+	ModelAlias             string     `json:"modelAlias"`
 }
 
 type Dashboard struct {
@@ -215,25 +218,29 @@ type Dashboard struct {
 	snapshot     Snapshot
 	previousSlot map[int]llamacpp.Slot
 
-	historyMu      sync.Mutex
-	rateHistory    []metricRateSample
-	slotRateLast   map[int]slotRateSample
-	slotLiveRates  map[int]slotLiveRate
-	slotLogRates   map[int]slotLogRate
-	metricHistory  map[string][]HistoryPoint
-	metricRecent   map[string][]HistoryPoint
-	metricLong     map[string][]HistoryPoint
-	metricFacts    map[string]MetricFact
-	cpuLast        cpuUsageSample
-	cpuLastOK      bool
-	slotHistory    map[int][]SlotHistoryPoint
-	logOffset      int64
-	logInitialized bool
-	logPartial     string
-	logEventSeq    uint64
-	logEvents      []llamacpp.LogEvent
-	promptCache    PromptCacheSummary
-	promptCacheMap map[string]PromptCacheEntry
+	historyMu              sync.Mutex
+	rateHistory            []metricRateSample
+	slotRateLast           map[int]slotRateSample
+	slotLiveRates          map[int]slotLiveRate
+	slotLogRates           map[int]slotLogRate
+	metricHistory          map[string][]HistoryPoint
+	metricRecent           map[string][]HistoryPoint
+	metricLong             map[string][]HistoryPoint
+	metricFacts            map[string]MetricFact
+	cpuLast                cpuUsageSample
+	cpuLastOK              bool
+	slotHistory            map[int][]SlotHistoryPoint
+	logOffset              int64
+	logInitialized         bool
+	logPartial             string
+	logModTime             time.Time
+	logEventSeq            uint64
+	logEvents              []llamacpp.LogEvent
+	serverUptimeDuration   time.Duration
+	serverUptimeObservedAt time.Time
+	serverUptimeSource     string
+	promptCache            PromptCacheSummary
+	promptCacheMap         map[string]PromptCacheEntry
 
 	requestSeq uint64
 	requestMu  sync.Mutex
@@ -988,6 +995,10 @@ func (m *Dashboard) ResetHistory() {
 	m.logOffset = 0
 	m.logInitialized = false
 	m.logPartial = ""
+	m.logModTime = time.Time{}
+	m.serverUptimeDuration = 0
+	m.serverUptimeObservedAt = time.Time{}
+	m.serverUptimeSource = ""
 	m.resetPromptCacheLocked()
 	empty := m.copyHistoryLocked()
 	m.historyMu.Unlock()
@@ -1270,6 +1281,15 @@ func (m *Dashboard) poll(parent context.Context) {
 	if cpuPercent, ok := m.recordContainerCPUPercent(snapshotAt); ok {
 		rawMetrics["nodrama:container_cpu_percent"] = cpuPercent
 	}
+	propsOKForOnline := false
+	if probe, ok := endpoints["props"]; ok {
+		propsOKForOnline = probe.OK
+	}
+	serverOnlineNow := healthProbe.OK || metricsProbe.OK || slotsProbe.OK || propsOKForOnline
+	serverUptimeSeconds, serverStartedAt, serverUptimeSource, hasServerUptime := m.serverUptimeEstimate(snapshotAt, rawMetrics, serverOnlineNow)
+	if hasServerUptime {
+		rawMetrics[serverUptimeMetric] = serverUptimeSeconds
+	}
 	history := m.recordMetricHistory(snapshotAt, rawMetrics)
 	metricFacts := m.copyMetricFacts()
 
@@ -1386,6 +1406,9 @@ func (m *Dashboard) poll(parent context.Context) {
 		RequestsDeferred:       metrics.RequestsDeferred,
 		PromptTokensPerSec:     metrics.PromptTokensLivePerSec,
 		GenerationTokensPerSec: metrics.GenerationTokensLivePerSec,
+		ServerUptimeSeconds:    serverUptimeSeconds,
+		ServerStartedAt:        serverStartedAt,
+		ServerUptimeSource:     serverUptimeSource,
 		BusySlots:              busySlots,
 		TotalSlots:             totalSlots,
 		PromptTokensTotal:      metrics.PromptTokensTotal,

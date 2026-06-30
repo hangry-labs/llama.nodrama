@@ -20,6 +20,16 @@ func (m *Dashboard) ShortInfo() string {
 	fmt.Fprintf(&b, "server: %s\n", snapshot.Server)
 	fmt.Fprintf(&b, "model: %s\n", emptyDash(overview.ModelAlias))
 	fmt.Fprintf(&b, "updated: %s\n", snapshot.UpdatedAt.Format(time.RFC3339))
+	if overview.ServerUptimeSeconds > 0 {
+		fmt.Fprintf(&b, "server_uptime: %s", formatShortDuration(time.Duration(overview.ServerUptimeSeconds*float64(time.Second))))
+		if overview.ServerStartedAt != nil {
+			fmt.Fprintf(&b, " since=%s", overview.ServerStartedAt.Format(time.RFC3339))
+		}
+		if overview.ServerUptimeSource != "" {
+			fmt.Fprintf(&b, " source=%s", overview.ServerUptimeSource)
+		}
+		fmt.Fprintf(&b, "\n")
+	}
 	fmt.Fprintf(&b, "slots: busy=%d free=%d total=%d\n", overview.BusySlots, freeSlots, overview.TotalSlots)
 	fmt.Fprintf(&b, "queue: deferred=%.0f processing=%.0f\n", overview.RequestsDeferred, overview.RequestsProcessing)
 	fmt.Fprintf(&b, "context_active: used=%d capacity=%d ratio=%.1f%% source=%s\n",
@@ -99,4 +109,27 @@ func emptyDash(value string) string {
 		return "-"
 	}
 	return value
+}
+
+func formatShortDuration(value time.Duration) string {
+	if value < 0 {
+		value = 0
+	}
+	seconds := int64(value.Seconds())
+	days := seconds / 86400
+	seconds %= 86400
+	hours := seconds / 3600
+	seconds %= 3600
+	minutes := seconds / 60
+	seconds %= 60
+	if days > 0 {
+		return fmt.Sprintf("%dd %02dh %02dm", days, hours, minutes)
+	}
+	if hours > 0 {
+		return fmt.Sprintf("%dh %02dm %02ds", hours, minutes, seconds)
+	}
+	if minutes > 0 {
+		return fmt.Sprintf("%dm %02ds", minutes, seconds)
+	}
+	return fmt.Sprintf("%ds", seconds)
 }

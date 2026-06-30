@@ -156,6 +156,14 @@ function renderMetrics(parsed, metricHistory, metricFacts) {
         }
       } else if (c.peakNote) {
         for (const line of metricPeakNote(c, fact)) note.appendChild(el("div", null, line));
+      } else if (c.uptime) {
+        const overview = state.snapshot && state.snapshot.overview ? state.snapshot.overview : {};
+        if (overview.serverStartedAt) {
+          note.appendChild(el("div", null, t("metrics.server_started", { time: fmtDateTime(overview.serverStartedAt) })));
+        }
+        if (overview.serverUptimeSource) {
+          note.appendChild(el("div", null, t("metrics.server_uptime_source", { source: overview.serverUptimeSource })));
+        }
       }
     }
 

@@ -2,6 +2,8 @@ package app
 
 import (
 	"math"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -87,6 +89,66 @@ func TestRecordMetricHistoryTracksPeakFacts(t *testing.T) {
 	}
 	if fact.Peak5mAt == nil || !fact.Peak5mAt.Equal(base.Add(2*time.Second)) {
 		t.Fatalf("5m peak at = %v", fact.Peak5mAt)
+	}
+}
+
+func TestServerUptimeEstimateFromMetricsStartTime(t *testing.T) {
+	dashboard := NewDashboard(nil, Config{}, BuildInfo{})
+	now := time.Unix(1_700_000_100, 0)
+
+	seconds, startedAt, source, ok := dashboard.serverUptimeEstimate(now, map[string]float64{
+		"process_start_time_seconds": float64(now.Add(-90 * time.Second).Unix()),
+	}, true)
+
+	if !ok {
+		t.Fatal("uptime estimate missing")
+	}
+	if seconds != 90 {
+		t.Fatalf("uptime seconds = %v", seconds)
+	}
+	if startedAt == nil || !startedAt.Equal(now.Add(-90*time.Second)) {
+		t.Fatalf("startedAt = %v", startedAt)
+	}
+	if source != "metrics" {
+		t.Fatalf("source = %q", source)
+	}
+}
+
+func TestServerUptimeEstimateFromInitialLogTimestamp(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "llama.log")
+	body := "124.55.423.849 I slot print_timing: id  2 | task 248761 | n_decoded =   7609, tg =  38.97 t/s\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	observedAt := time.Unix(1_700_000_000, 0)
+	if err := os.Chtimes(path, observedAt, observedAt); err != nil {
+		t.Fatal(err)
+	}
+
+	dashboard := NewDashboard(nil, Config{LogPath: path}, BuildInfo{})
+	events, err := dashboard.pollLogEvents(path, observedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("initial timing line should not become an event, got %d", len(events))
+	}
+
+	now := observedAt.Add(10 * time.Second)
+	seconds, startedAt, source, ok := dashboard.serverUptimeEstimate(now, nil, true)
+	if !ok {
+		t.Fatal("uptime estimate missing")
+	}
+	want := (124*time.Minute + 55*time.Second + 423*time.Millisecond + 849*time.Microsecond + 10*time.Second).Seconds()
+	if math.Abs(seconds-want) > 0.001 {
+		t.Fatalf("uptime seconds = %v, want %v", seconds, want)
+	}
+	if startedAt == nil {
+		t.Fatal("startedAt missing")
+	}
+	if source != "log" {
+		t.Fatalf("source = %q", source)
 	}
 }
 

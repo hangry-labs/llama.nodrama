@@ -62,6 +62,7 @@ function installDemoShim(mode) {
 
   const renderRawMetrics = () => {
     const c = counters(), g = gauges();
+    const sec = (Date.now() - t0) / 1000;
     return {
       "llamacpp:prompt_tokens_total": Number(c.prompt_tokens_total),
       "llamacpp:prompt_seconds_total": Number(c.prompt_seconds_total),
@@ -76,6 +77,7 @@ function installDemoShim(mode) {
       "llamacpp:requests_deferred": Number(g.requests_deferred),
       "nodrama:prompt_tokens_rate": Number(g.prompt_tokens_seconds),
       "nodrama:tokens_predicted_rate": Number(g.predicted_tokens_seconds),
+      "nodrama:server_uptime_seconds": sec,
     };
   };
 
@@ -246,7 +248,12 @@ function installDemoShim(mode) {
       startedAt: new Date(t0).toISOString(),
       updatedAt: new Date().toISOString(),
       endpoints: {},
-      overview: { online: true },
+      overview: {
+        online: true,
+        serverUptimeSeconds: (Date.now() - t0) / 1000,
+        serverStartedAt: new Date(t0).toISOString(),
+        serverUptimeSource: "demo",
+      },
       props: propsResp,
       models: v1ModelsResp.data,
       routerModels: modelsResp || [],

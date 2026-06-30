@@ -36,8 +36,15 @@ func (m *Dashboard) pollLogEvents(logPath string, now time.Time) ([]llamacpp.Log
 		return m.copyLogEvents(), nil
 	}
 
+	logObservedAt := m.logModTime
+	if logObservedAt.IsZero() {
+		logObservedAt = now
+	}
 	for i, line := range lines {
 		eventAt := now.Add(time.Duration(i) * time.Nanosecond)
+		if uptime, ok := llamacpp.LogLineUptime(line); ok {
+			m.recordServerUptimeSampleLocked(logObservedAt, uptime, "log")
+		}
 		event, ok := llamacpp.ParseLogLine(line, eventAt)
 		if !ok {
 			continue
@@ -80,6 +87,7 @@ func (m *Dashboard) readNewLogLines(logPath string) ([]string, error) {
 		return nil, err
 	}
 	size := info.Size()
+	m.logModTime = info.ModTime()
 	if size < m.logOffset {
 		m.logOffset = 0
 		m.logPartial = ""
@@ -88,7 +96,7 @@ func (m *Dashboard) readNewLogLines(logPath string) ([]string, error) {
 		m.logInitialized = true
 		m.logOffset = size
 		m.logPartial = ""
-		return readInitialLogStateLines(file)
+		return m.readInitialLogStateLines(file, m.logModTime)
 	}
 	if size == m.logOffset {
 		return nil, nil
@@ -128,15 +136,21 @@ func (m *Dashboard) readNewLogLines(logPath string) ([]string, error) {
 	return splitEventLogLines(text), nil
 }
 
-func readInitialLogStateLines(file *os.File) ([]string, error) {
+func (m *Dashboard) readInitialLogStateLines(file *os.File, observedAt time.Time) ([]string, error) {
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		return nil, err
 	}
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
 	lines := make([]string, 0, 16)
+	var lastUptime time.Duration
+	hasUptime := false
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
+		if uptime, ok := llamacpp.LogLineUptime(line); ok {
+			lastUptime = uptime
+			hasUptime = true
+		}
 		if !initialLogStateLine(line) {
 			continue
 		}
@@ -147,6 +161,9 @@ func readInitialLogStateLines(file *os.File) ([]string, error) {
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, err
+	}
+	if hasUptime {
+		m.recordServerUptimeSampleLocked(observedAt, lastUptime, "log")
 	}
 	return lines, nil
 }

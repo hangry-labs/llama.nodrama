@@ -30,6 +30,26 @@ func TestParseTimingLogLine(t *testing.T) {
 	}
 }
 
+func TestParseLogTimestampDuration(t *testing.T) {
+	duration, ok := ParseLogTimestampDuration("124.55.423.849")
+	if !ok {
+		t.Fatal("timestamp was not parsed")
+	}
+	want := 124*time.Minute + 55*time.Second + 423*time.Millisecond + 849*time.Microsecond
+	if duration != want {
+		t.Fatalf("duration = %s, want %s", duration, want)
+	}
+
+	duration, ok = LogLineUptime("0.00.936.858 I log_info: verbosity = 3")
+	if !ok {
+		t.Fatal("line timestamp was not parsed")
+	}
+	want = 936*time.Millisecond + 858*time.Microsecond
+	if duration != want {
+		t.Fatalf("line duration = %s, want %s", duration, want)
+	}
+}
+
 func TestParsePromptEvalLogLine(t *testing.T) {
 	event, ok := ParseLogLine("1699.58.709.999 I slot print_timing: id  1 | task 3079110 | prompt eval time =     355.18 ms /   590 tokens (    0.60 ms per token,  1661.15 tokens per second)", time.Unix(1_700_000_000, 0))
 	if !ok {
