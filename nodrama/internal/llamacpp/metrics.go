@@ -16,6 +16,7 @@ type MetricsSummary struct {
 	GenerationTokensLivePerSec float64 `json:"generationTokensLivePerSec"`
 	BusySlotsPerDecode         float64 `json:"busySlotsPerDecode"`
 	PromptTokensTotal          float64 `json:"promptTokensTotal"`
+	PromptTokensCachedTotal    float64 `json:"promptTokensCachedTotal"`
 	GeneratedTokensTotal       float64 `json:"generatedTokensTotal"`
 	DecodeTotal                float64 `json:"decodeTotal"`
 	TokensMax                  float64 `json:"tokensMax"`
@@ -45,15 +46,16 @@ func ParsePrometheus(text string) map[string]float64 {
 
 func SummarizeMetrics(metrics map[string]float64) MetricsSummary {
 	return MetricsSummary{
-		RequestsProcessing:     finite(metrics["llamacpp:requests_processing"]),
-		RequestsDeferred:       finite(metrics["llamacpp:requests_deferred"]),
-		PromptTokensPerSec:     finite(metrics["llamacpp:prompt_tokens_seconds"]),
-		GenerationTokensPerSec: finite(metrics["llamacpp:predicted_tokens_seconds"]),
-		BusySlotsPerDecode:     finite(metrics["llamacpp:n_busy_slots_per_decode"]),
-		PromptTokensTotal:      firstFinite(metrics, "llamacpp:prompt_tokens_total", "llamacpp:n_prompt_tokens_total"),
-		GeneratedTokensTotal:   firstFinite(metrics, "llamacpp:tokens_predicted_total", "llamacpp:n_tokens_predicted_total"),
-		DecodeTotal:            finite(metrics["llamacpp:n_decode_total"]),
-		TokensMax:              finite(metrics["llamacpp:n_tokens_max"]),
+		RequestsProcessing:      finite(metrics["llamacpp:requests_processing"]),
+		RequestsDeferred:        finite(metrics["llamacpp:requests_deferred"]),
+		PromptTokensPerSec:      finite(metrics["llamacpp:prompt_tokens_seconds"]),
+		GenerationTokensPerSec:  finite(metrics["llamacpp:predicted_tokens_seconds"]),
+		BusySlotsPerDecode:      finite(metrics["llamacpp:n_busy_slots_per_decode"]),
+		PromptTokensTotal:       firstFinite(metrics, "llamacpp:prompt_tokens_total", "llamacpp:n_prompt_tokens_total"),
+		PromptTokensCachedTotal: firstFinite(metrics, "llamacpp:prompt_tokens_cached_total", "llamacpp:n_prompt_tokens_cached_total"),
+		GeneratedTokensTotal:    firstFinite(metrics, "llamacpp:tokens_predicted_total", "llamacpp:n_tokens_predicted_total"),
+		DecodeTotal:             finite(metrics["llamacpp:n_decode_total"]),
+		TokensMax:               finite(metrics["llamacpp:n_tokens_max"]),
 	}
 }
 

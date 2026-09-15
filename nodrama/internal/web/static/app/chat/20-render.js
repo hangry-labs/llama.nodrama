@@ -26,6 +26,7 @@ function renderChatPanel() {
 
   const msgs = el("div", { class: "chat-msgs", id: "chat-msgs", role: "log",
                             "aria-live": "polite",
+                            onscroll: updateChatAutoScroll,
                             onwheel: handleChatWheel });
   if (chat.params && state.params.prompt) {
     /* honor ?prompt= by prefilling input — no auto-send to avoid surprises */
@@ -73,13 +74,38 @@ function renderChatPanel() {
                                   oninput: (e) => { chat.systemPrompt = e.target.value; } });
   const thinkingMode = el("select", {
     id: "chat-thinking-mode",
-    onchange: (e) => { chat.params.thinking = e.target.value; },
+    onchange: (e) => {
+      chat.params.thinking = e.target.value;
+      effortLabel.hidden = chat.params.thinking !== "effort";
+      if (!effortLabel.hidden) effortInput.focus();
+    },
   }, [
     el("option", { value: "auto" }, t("chat.thinking_auto")),
     el("option", { value: "think" }, t("chat.thinking_on")),
     el("option", { value: "no_think" }, t("chat.thinking_off")),
+    el("option", { value: "effort" }, t("chat.thinking_effort_mode")),
   ]);
   thinkingMode.value = chat.params.thinking;
+  const effortInput = el("input", {
+    type: "text",
+    id: "chat-thinking-effort",
+    list: "chat-thinking-efforts",
+    value: chat.params.thinkingEffort,
+    placeholder: t("chat.thinking_effort_placeholder"),
+    autocomplete: "off",
+    oninput: (e) => { chat.params.thinkingEffort = e.target.value; },
+  });
+  const effortLabel = el("label", {
+    id: "chat-thinking-effort-label",
+    hidden: chat.params.thinking !== "effort" ? "hidden" : null,
+  }, [t("chat.thinking_effort"), effortInput]);
+  const effortOptions = el("datalist", { id: "chat-thinking-efforts" }, [
+    el("option", { value: "minimal" }),
+    el("option", { value: "low" }),
+    el("option", { value: "medium" }),
+    el("option", { value: "high" }),
+    el("option", { value: "xhigh" }),
+  ]);
   const cachePrompt = el("input", {
     type: "checkbox",
     id: "chat-cache-prompt",
@@ -117,9 +143,11 @@ function renderChatPanel() {
   const side = el("div", { class: "chat-side", id: "chat-side", hidden: !chat.open }, [
     el("label", null, [t("chat.system_prompt"), sysTa]),
     el("label", null, [t("chat.thinking_mode"), thinkingMode]),
+    effortLabel,
+    effortOptions,
     el("label", null, [t("chat.slot"), slotSelect]),
-    el("label", null, [cachePrompt, " " + t("chat.cache_prompt")]),
-    el("label", null, [keepThinking, " " + t("chat.keep_thinking")]),
+    el("label", { class: "chat-check" }, [cachePrompt, " " + t("chat.cache_prompt")]),
+    el("label", { class: "chat-check" }, [keepThinking, " " + t("chat.keep_thinking")]),
     tempRange, topPRange, maxTok, fanout,
     clearBtn,
   ]);
@@ -183,6 +211,7 @@ function clearChat() {
   chat.messages = [];
   const msgs = $("#chat-msgs");
   if (msgs) {
+    chat.autoScroll = true;
     while (msgs.firstChild) msgs.removeChild(msgs.firstChild);
     msgs.appendChild(el("div", { class: "chat-empty", id: "chat-empty" },
                          t("chat.empty")));
@@ -202,6 +231,7 @@ function appendChatMessage(role, content, opts) {
                   [el("span", { class: "who" }, label),
                    body, stats]);
   msgs.appendChild(node);
+  chat.autoScroll = true;
   msgs.scrollTop = msgs.scrollHeight;
   return { body, stats, node };
 }
@@ -226,9 +256,15 @@ function updateMarkdownBody(body, content) {
   body.appendChild(renderMarkdown(content || ""));
 }
 
+function updateChatAutoScroll(e) {
+  const msgs = e && e.currentTarget ? e.currentTarget : $("#chat-msgs");
+  if (!msgs) return;
+  chat.autoScroll = (msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight) < 120;
+}
+
 function scrollChatIfNearBottom() {
   const msgs = $("#chat-msgs");
-  if (msgs && (msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight) < 80) {
+  if (msgs && chat.autoScroll) {
     msgs.scrollTop = msgs.scrollHeight;
   }
 }
@@ -247,11 +283,20 @@ function handleChatWheel(e) {
 }
 
 function applyThinkingMode(payload, mode) {
+  const kwargs = Object.assign({}, payload.chat_template_kwargs || {});
   if (mode === "think") {
-    payload.chat_template_kwargs = { enable_thinking: true };
+    kwargs.enable_thinking = true;
   } else if (mode === "no_think") {
-    payload.chat_template_kwargs = { enable_thinking: false };
+    kwargs.enable_thinking = false;
+  } else if (mode === "effort") {
+    const effort = String(chat.params.thinkingEffort || "").trim();
+    if (effort) {
+      payload.reasoning_effort = effort;
+      kwargs.reasoning_effort = effort;
+      kwargs.enable_thinking = effort.toLowerCase() !== "none";
+    }
   }
+  if (Object.keys(kwargs).length) payload.chat_template_kwargs = kwargs;
 }
 
 function setChatStats(s) {

@@ -19,13 +19,15 @@ func (m *Dashboard) applyPromptCacheEventLocked(event llamacpp.LogEvent) {
 	if isPromptCacheStateEvent(event) {
 		at := event.At
 		m.promptCache = PromptCacheSummary{
-			Available:   true,
-			UpdatedAt:   &at,
-			PromptCount: event.CachePrompts,
-			UsedMiB:     event.CacheUsedMiB,
-			LimitMiB:    event.CacheLimitMiB,
-			LimitTokens: event.CacheLimitTokens,
-			EstTokens:   event.CacheEstTokens,
+			Available:        true,
+			DetailsAvailable: true,
+			Source:           "logs",
+			UpdatedAt:        &at,
+			PromptCount:      event.CachePrompts,
+			UsedMiB:          event.CacheUsedMiB,
+			LimitMiB:         event.CacheLimitMiB,
+			LimitTokens:      event.CacheLimitTokens,
+			EstTokens:        event.CacheEstTokens,
 		}
 		m.promptCache.UsedTokensEstimate = promptCacheUsedTokensEstimate(event.CacheUsedMiB, event.CacheLimitMiB, event.CacheEstTokens)
 		m.promptCacheMap = map[string]PromptCacheEntry{}
@@ -36,15 +38,20 @@ func (m *Dashboard) applyPromptCacheEventLocked(event llamacpp.LogEvent) {
 	if event.CacheAction != "observe" || event.CacheKey == "" {
 		return
 	}
+	at := event.At
+	m.promptCache.DetailsAvailable = true
+	m.promptCache.Source = "logs"
+	m.promptCache.UpdatedAt = &at
 
 	if m.promptCacheMap == nil {
 		m.promptCacheMap = map[string]PromptCacheEntry{}
 	}
 	if !m.promptCache.Available {
-		at := event.At
 		m.promptCache = PromptCacheSummary{
-			Available: true,
-			UpdatedAt: &at,
+			Available:        true,
+			DetailsAvailable: true,
+			Source:           "logs",
+			UpdatedAt:        &at,
 		}
 	}
 
@@ -77,6 +84,31 @@ func promptCacheUsedTokensEstimate(usedMiB, limitMiB float64, estTokens int) int
 	}
 	ratio := math.Max(0, math.Min(1, usedMiB/limitMiB))
 	return int(math.Round(ratio * float64(estTokens)))
+}
+
+// promptCacheWithMetrics keeps the detailed log-derived cache view when it is
+// available and supplements it with llama.cpp's cumulative cache-reuse
+// counter. Current llama.cpp builds emit cache occupancy and entry details at
+// trace level, so normal logs often provide no safe basis for a MiB estimate.
+// In that case the metric-only summary explicitly remains non-detailed.
+func promptCacheWithMetrics(cache *PromptCacheSummary, metrics map[string]float64, observedAt time.Time) *PromptCacheSummary {
+	reused, ok := metrics["llamacpp:prompt_tokens_cached_total"]
+	if !ok {
+		reused, ok = metrics["llamacpp:n_prompt_tokens_cached_total"]
+	}
+	if !ok || math.IsNaN(reused) || math.IsInf(reused, 0) {
+		return cache
+	}
+	if cache == nil {
+		at := observedAt
+		cache = &PromptCacheSummary{
+			Available: true,
+			Source:    "metrics",
+			UpdatedAt: &at,
+		}
+	}
+	cache.ReusedTokensTotal = int64(math.Round(math.Max(0, reused)))
+	return cache
 }
 
 func (m *Dashboard) rebuildPromptCacheSummaryLocked() {

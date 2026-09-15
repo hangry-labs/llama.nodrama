@@ -8,6 +8,7 @@ llamacpp:requests_processing 2
 llamacpp:prompt_tokens_seconds 1207.29
 llamacpp:ignored NaN
 metric_with_labels{slot="0"} 42
+llamacpp:prompt_tokens_cached_total 12647500
 `)
 
 	if parsed["llamacpp:requests_processing"] != 2 {
@@ -21,5 +22,8 @@ metric_with_labels{slot="0"} 42
 	}
 	if parsed["metric_with_labels"] != 42 {
 		t.Fatalf("metric_with_labels = %v", parsed["metric_with_labels"])
+	}
+	if got := SummarizeMetrics(parsed).PromptTokensCachedTotal; got != 12647500 {
+		t.Fatalf("prompt tokens cached total = %v", got)
 	}
 }

@@ -33,22 +33,39 @@ function renderPromptCache(cache) {
   const limit = Number(cache.limitMiB || 0);
   const prompts = Number(cache.promptCount || 0);
   const observed = Number(cache.observedEntries || 0);
+  const reused = Number(cache.reusedTokensTotal || 0);
+  const detailsAvailable = cache.detailsAvailable === true ||
+    (cache.detailsAvailable === undefined &&
+      (used > 0 || limit > 0 || prompts > 0 || observed > 0 || cache.complete === true));
+  if (!detailsAvailable) {
+    summary.textContent = t("cache.reuse_only", {
+      reused: fmtTokensCompact(reused),
+    });
+    summary.title = t("cache.reuse_only_help");
+    bar.hidden = true;
+    return;
+  }
+
+  summary.title = "";
   const usedText = limit > 0
     ? formatCacheMiB(used) + " / " + formatCacheMiB(limit)
     : formatCacheMiB(used);
   const countText = observed && prompts
     ? observed + "/" + prompts
     : (observed || prompts || 0);
-  summary.textContent = t("cache.summary", {
+  let summaryText = t("cache.summary", {
     used: usedText,
     count: countText,
   });
+  if (reused > 0) {
+    summaryText += " · " + t("cache.reused", { reused: fmtTokensCompact(reused) });
+  }
+  summary.textContent = summaryText;
 
   const denom = limit > 0 ? limit : Math.max(used, cacheEntryMiBSum(cache));
   const segments = promptCacheSegments(cache, denom);
   if (!segments.length) {
     bar.hidden = true;
-    summary.textContent = t("cache.empty");
     return;
   }
 

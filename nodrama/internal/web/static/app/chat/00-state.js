@@ -18,12 +18,14 @@ const chat = {
   messages: [],          /* {role, content, stats?} */
   systemPrompt: "",
   inflight: null,        /* AbortController */
+  autoScroll: true,
   params: {
     temperature: 0.7,
     top_p: 0.95,
     max_tokens: 512,
     fanout: 1,
     thinking: "auto",
+    thinkingEffort: "medium",
     keepThinking: false,
     cachePrompt: true,
     slot: -1,

@@ -39,6 +39,7 @@ function installDemoShim(mode) {
     const sec = (Date.now() - t0) / 1000;
     return {
       prompt_tokens_total:        Math.floor(120 + sec * 14),
+      prompt_tokens_cached_total: Math.floor(80 + sec * 9),
       tokens_predicted_total:     Math.floor(80 + sec * 27),
       prompt_seconds_total:       (sec * 0.18).toFixed(3),
       tokens_predicted_seconds_total: (sec * 0.62).toFixed(3),
@@ -65,6 +66,7 @@ function installDemoShim(mode) {
     const sec = (Date.now() - t0) / 1000;
     return {
       "llamacpp:prompt_tokens_total": Number(c.prompt_tokens_total),
+      "llamacpp:prompt_tokens_cached_total": Number(c.prompt_tokens_cached_total),
       "llamacpp:prompt_seconds_total": Number(c.prompt_seconds_total),
       "llamacpp:tokens_predicted_total": Number(c.tokens_predicted_total),
       "llamacpp:tokens_predicted_seconds_total": Number(c.tokens_predicted_seconds_total),
@@ -260,6 +262,12 @@ function installDemoShim(mode) {
       loraAdapters: [],
       slots: renderSlots(),
       rawMetrics: renderRawMetrics(),
+      promptCache: {
+        available: true,
+        detailsAvailable: false,
+        source: "metrics",
+        reusedTokensTotal: Number(counters().prompt_tokens_cached_total),
+      },
       history: { metrics: {}, slots: {} },
       suggestions: [],
       requests: [],

@@ -5,7 +5,7 @@
  *  values + sparkline in place to avoid layout jitter.
  *
  *  Metrics emitted by current llama.cpp master (/metrics endpoint):
- *    counter: prompt_tokens_total, prompt_seconds_total,
+ *    counter: prompt_tokens_total, prompt_tokens_cached_total, prompt_seconds_total,
  *             tokens_predicted_total, tokens_predicted_seconds_total,
  *             n_decode_total, n_tokens_max, n_busy_slots_per_decode
  *    gauge:   prompt_tokens_seconds, predicted_tokens_seconds,
@@ -55,6 +55,9 @@ const METRIC_CARDS = [
   { id: "prompt_total",  titleKey: "metrics.prompt_total",
     metric: "llamacpp:prompt_tokens_total",      unit: "tok",   min: 0, cumulative: true,
     helpKey: "metrics.help.prompt_total" },
+  { id: "prompt_cached_total", titleKey: "metrics.prompt_cached_total",
+    metric: "llamacpp:prompt_tokens_cached_total", unit: "tok", min: 0, cumulative: true,
+    helpKey: "metrics.help.prompt_cached_total" },
   { id: "predicted_total", titleKey: "metrics.predicted_total",
     metric: "llamacpp:tokens_predicted_total",   unit: "tok",   min: 0, cumulative: true,
     helpKey: "metrics.help.predicted_total" },

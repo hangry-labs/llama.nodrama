@@ -157,7 +157,10 @@ type QuerySummary struct {
 
 type PromptCacheSummary struct {
 	Available          bool               `json:"available"`
+	DetailsAvailable   bool               `json:"detailsAvailable"`
+	Source             string             `json:"source,omitempty"`
 	UpdatedAt          *time.Time         `json:"updatedAt,omitempty"`
+	ReusedTokensTotal  int64              `json:"reusedTokensTotal,omitempty"`
 	PromptCount        int                `json:"promptCount,omitempty"`
 	ObservedEntries    int                `json:"observedEntries,omitempty"`
 	Complete           bool               `json:"complete"`
@@ -1264,7 +1267,7 @@ func (m *Dashboard) poll(parent context.Context) {
 		}
 		events = parsedEvents
 	}
-	promptCache := m.copyPromptCache()
+	promptCache := promptCacheWithMetrics(m.copyPromptCache(), rawMetrics, snapshotAt)
 	processContextTokens := 0
 	if previous.Overview.ContextCapacitySource == "process args" {
 		processContextTokens = previous.Overview.ContextCapacityTokens
