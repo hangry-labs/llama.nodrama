@@ -3,6 +3,12 @@
     display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
   }
   .cache-head h2 { margin: 0; }
+  .cache-trace-hint {
+    margin: -2px 0 0;
+    color: var(--fg-mute);
+    font-size: 11px;
+    line-height: 1.45;
+  }
   .cache-bar {
     display: flex;
     width: 100%;

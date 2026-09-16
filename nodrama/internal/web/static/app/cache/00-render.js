@@ -11,6 +11,7 @@ function renderPromptCache(cache) {
         el("h2", null, t("cache.title")),
         el("span", { class: "sub", id: "cache-summary" }, t("cache.empty")),
       ]),
+      el("p", { class: "cache-trace-hint" }, t("cache.trace_hint")),
       el("div", { class: "cache-bar", id: "cache-bar" }),
     ]));
   }
