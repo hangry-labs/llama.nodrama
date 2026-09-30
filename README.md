@@ -1,4 +1,6 @@
-# llama.nodrama
+<p align="center">
+  <img src="assets/llama-nodrama_logo.png" alt="llama.nodrama by HangryLabs" width="720">
+</p>
 
 **Read this in:** [🇺🇸 English](README.md) | [🇰🇷 한국어](docs/readme/README.ko-KR.md) | [🇯🇵 日本語](docs/readme/README.ja-JP.md) | [🇨🇳 简体中文](docs/readme/README.zh-CN.md) | [🇪🇸 Español](docs/readme/README.es-ES.md)
 
