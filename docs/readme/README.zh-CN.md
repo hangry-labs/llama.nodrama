@@ -19,13 +19,13 @@
 Linux 和 macOS:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/hangry-labs/llama.nodrama/master/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/hangry-labs/llama.nodrama/main/install.sh | sh
 ```
 
 Windows PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/hangry-labs/llama.nodrama/master/install.ps1 | iex
+irm https://raw.githubusercontent.com/hangry-labs/llama.nodrama/main/install.ps1 | iex
 ```
 
 Windows 安装脚本会把 `llama-nodrama.exe` 复制到用户本地安装目录，并把该目录加入用户 PATH。当前 PowerShell 会话也会同步更新，因此安装后应能立即运行 `llama-nodrama --help`。
@@ -91,7 +91,7 @@ go build -o llama-nodrama .
 
 ## 发布
 
-CI 会在推送和 pull request 到 `master` 与 `main` 时运行 Go formatting、vet、tests 和 cross-platform builds。
+CI 会在推送和 pull request 到 `main` 时运行 Go formatting、vet、tests 和 cross-platform builds。
 
 源码版本位于 `nodrama/VERSION`。Snapshot builds 使用 `vX.Y.Z-SNAPSHOT`，release tags 使用 finalized `vX.Y.Z` 格式。
 

@@ -134,12 +134,12 @@ jobs:
           Publisher: Hangry Labs
           PublisherUrl: https://github.com/hangry-labs
           PublisherSupportUrl: https://github.com/hangry-labs/llama.nodrama/issues
-          PrivacyUrl: https://github.com/hangry-labs/llama.nodrama/blob/master/PRIVACY.md
+          PrivacyUrl: https://github.com/hangry-labs/llama.nodrama/blob/main/PRIVACY.md
           Author: Hangry Labs
           PackageName: llama.nodrama
           PackageUrl: https://github.com/hangry-labs/llama.nodrama
           License: MIT
-          LicenseUrl: https://github.com/hangry-labs/llama.nodrama/blob/master/LICENSE
+          LicenseUrl: https://github.com/hangry-labs/llama.nodrama/blob/main/LICENSE
           ShortDescription: Dashboard and monitor for llama.cpp server slots, throughput, cache reuse, and request behavior.
           Moniker: llama-nodrama
           Tags:

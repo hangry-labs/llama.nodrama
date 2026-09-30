@@ -19,13 +19,13 @@
 Linux と macOS:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/hangry-labs/llama.nodrama/master/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/hangry-labs/llama.nodrama/main/install.sh | sh
 ```
 
 Windows PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/hangry-labs/llama.nodrama/master/install.ps1 | iex
+irm https://raw.githubusercontent.com/hangry-labs/llama.nodrama/main/install.ps1 | iex
 ```
 
 Windows インストーラーは `llama-nodrama.exe` をユーザーのローカルインストールディレクトリにコピーし、そのディレクトリをユーザー PATH に追加します。現在の PowerShell セッションも更新されるため、インストール直後に `llama-nodrama --help` が使えるはずです。
@@ -91,7 +91,7 @@ go build -o llama-nodrama .
 
 ## リリース
 
-CI は `master` と `main` への push および pull request で、Go formatting、vet、tests、cross-platform builds を実行します。
+CI は `main` への push および pull request で、Go formatting、vet、tests、cross-platform builds を実行します。
 
 ソースのバージョンは `nodrama/VERSION` にあります。Snapshot builds は `vX.Y.Z-SNAPSHOT` を使い、release tags は finalized `vX.Y.Z` 形式を使います。
 

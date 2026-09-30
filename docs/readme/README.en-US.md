@@ -19,13 +19,13 @@ This is especially useful when running on a budget machine where concurrency and
 Linux and macOS:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/hangry-labs/llama.nodrama/master/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/hangry-labs/llama.nodrama/main/install.sh | sh
 ```
 
 Windows PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/hangry-labs/llama.nodrama/master/install.ps1 | iex
+irm https://raw.githubusercontent.com/hangry-labs/llama.nodrama/main/install.ps1 | iex
 ```
 
 The Windows installer copies `llama-nodrama.exe` to a user-local install directory and adds that directory to the user PATH. The current PowerShell session is updated too, so `llama-nodrama --help` should work immediately after install.
@@ -91,7 +91,7 @@ Runtime logs use explicit levels (`INFO`, `WARN`, `ERROR`). Set `LLAMA_NODRAMA_D
 
 ## Releases
 
-CI runs Go formatting, vet, tests, and cross-platform builds on pushes and pull requests to `master` and `main`.
+CI runs Go formatting, vet, tests, and cross-platform builds on pushes and pull requests to `main`.
 
 The source version lives in `nodrama/VERSION`. Snapshot builds use `vX.Y.Z-SNAPSHOT`; release tags use the finalized `vX.Y.Z` form.
 

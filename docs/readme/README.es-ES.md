@@ -19,13 +19,13 @@ Es especialmente útil en máquinas de presupuesto limitado, donde la concurrenc
 Linux y macOS:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/hangry-labs/llama.nodrama/master/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/hangry-labs/llama.nodrama/main/install.sh | sh
 ```
 
 Windows PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/hangry-labs/llama.nodrama/master/install.ps1 | iex
+irm https://raw.githubusercontent.com/hangry-labs/llama.nodrama/main/install.ps1 | iex
 ```
 
 El instalador de Windows copia `llama-nodrama.exe` a un directorio local del usuario y añade ese directorio al PATH del usuario. También actualiza la sesión actual de PowerShell, así que `llama-nodrama --help` debería funcionar inmediatamente después de instalar.
@@ -91,7 +91,7 @@ Los logs de ejecución usan niveles explícitos (`INFO`, `WARN`, `ERROR`). Defin
 
 ## Releases
 
-CI ejecuta Go formatting, vet, tests y cross-platform builds en pushes y pull requests a `master` y `main`.
+CI ejecuta Go formatting, vet, tests y cross-platform builds en pushes y pull requests a `main`.
 
 La versión fuente está en `nodrama/VERSION`. Los snapshot builds usan `vX.Y.Z-SNAPSHOT`; los release tags usan la forma final `vX.Y.Z`.
 

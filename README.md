@@ -30,13 +30,13 @@ obvious without turning monitoring itself into another project.
 Linux and macOS:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/hangry-labs/llama.nodrama/master/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/hangry-labs/llama.nodrama/main/install.sh | sh
 ```
 
 Windows PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/hangry-labs/llama.nodrama/master/install.ps1 | iex
+irm https://raw.githubusercontent.com/hangry-labs/llama.nodrama/main/install.ps1 | iex
 ```
 
 The Windows installer copies `llama-nodrama.exe` to a user-local install
@@ -116,7 +116,7 @@ to Hangry Labs. See [PRIVACY.md](PRIVACY.md) for the full privacy statement.
 ## Releases
 
 CI runs Go formatting, vet, tests, and cross-platform builds on pushes and pull
-requests to `master` and `main`.
+requests to `main`.
 
 The source version lives in `nodrama/VERSION`. Snapshot builds use
 `vX.Y.Z-SNAPSHOT`; release tags use the finalized `vX.Y.Z` form.
