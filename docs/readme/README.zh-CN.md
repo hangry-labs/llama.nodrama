@@ -128,4 +128,4 @@ release workflow 支持可选的 Authenticode signing。添加以下 repository 
 
 ## 许可证
 
-MIT。Third-party attribution 记录在 [LICENSE](../../LICENSE)。
+项目源代码和文档采用 [MIT License](../../LICENSE)。Logo、吉祥物、badge、icon 及其他品牌图稿不属于 MIT 授权范围，而由 [BRAND_ASSETS.md](../../BRAND_ASSETS.md) 管理。所需的 third-party license text 和 attribution 记录在 [THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md) 中。release workflow 会在新生成的 archives 中包含这三个文件。

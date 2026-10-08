@@ -128,4 +128,4 @@ Optional Authenticode signing は release workflow でサポートされてい�
 
 ## ライセンス
 
-MIT. Third-party attribution は [LICENSE](../../LICENSE) に記録されています。
+プロジェクトの source code と documentation は [MIT License](../../LICENSE) で提供されます。ロゴ、マスコット、badge、icon、その他の brand artwork は MIT の対象外であり、[BRAND_ASSETS.md](../../BRAND_ASSETS.md) に従います。必要な third-party license text と attribution は [THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md) に記録されます。release workflow は、新しく生成する archive に 3 つのファイルすべてを含めます。

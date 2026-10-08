@@ -1,10 +1,12 @@
+License scope
+
+The MIT License below applies to the project source code and documentation,
+excluding the brand assets identified in BRAND_ASSETS.md. Those assets are
+governed by BRAND_ASSETS.md instead.
+
 MIT License
 
 Copyright (c) 2026 Hangry Labs
-
-Attribution notice: portions of the dashboard UI are derived from
-zerollama-dashboard (https://github.com/jungrok5/zerollama-dashboard), MIT
-License, Copyright (c) 2026 zerollama-dashboard contributors.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

@@ -86,7 +86,7 @@ func run() error {
 							"FileDescription":  "llama.cpp dashboard",
 							"FileVersion":      version,
 							"InternalName":     "llama-nodrama",
-							"LegalCopyright":   "MIT License",
+							"LegalCopyright":   "Copyright (c) 2026 Hangry Labs",
 							"OriginalFilename": "llama-nodrama.exe",
 							"ProductName":      "llama.nodrama",
 							"ProductVersion":   version,

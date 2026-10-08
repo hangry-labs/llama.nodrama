@@ -128,4 +128,4 @@ Windows 릴리스 바이너리에는 `go-winres`가 `nodrama/VERSION`을 사용�
 
 ## 라이선스
 
-MIT. Third-party attribution은 [LICENSE](../../LICENSE)에 기록되어 있습니다.
+프로젝트의 source code와 documentation은 [MIT License](../../LICENSE)로 제공됩니다. logo, mascot, badge, icon 및 기타 brand artwork는 MIT 대상에서 제외되며 [BRAND_ASSETS.md](../../BRAND_ASSETS.md)를 따릅니다. 필요한 third-party license text와 attribution은 [THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md)에 기록됩니다. release workflow는 새로 생성하는 archive에 세 파일을 모두 포함합니다.

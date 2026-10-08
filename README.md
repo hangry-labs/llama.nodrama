@@ -177,4 +177,9 @@ but remain unsigned.
 
 ## License
 
-MIT. Third-party attribution is recorded in `LICENSE`.
+The project source code and documentation are licensed under the
+[MIT License](LICENSE). Logos, mascots, badges, icons, and other brand artwork
+are excluded from MIT and governed by [BRAND_ASSETS.md](BRAND_ASSETS.md).
+Required third-party license text and attribution are recorded in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The release workflow includes
+all three files in newly built archives.

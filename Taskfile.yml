@@ -26,7 +26,7 @@ tasks:
     dir: nodrama
     cmds:
       - powershell -NoProfile -Command "Remove-Item Env:GOOS,Env:GOARCH -ErrorAction SilentlyContinue; go run ./tools/windowsres"
-      - powershell -NoProfile -Command "Remove-Item Env:GOOS,Env:GOARCH -ErrorAction SilentlyContinue; go install github.com/tc-hib/go-winres@latest"
+      - powershell -NoProfile -Command "Remove-Item Env:GOOS,Env:GOARCH -ErrorAction SilentlyContinue; go install github.com/tc-hib/go-winres@v0.3.3"
       - powershell -NoProfile -Command "Remove-Item Env:GOOS,Env:GOARCH -ErrorAction SilentlyContinue; go-winres make --arch amd64,arm64"
 
   release:

@@ -36,7 +36,7 @@
             "FileDescription": "llama.cpp dashboard",
             "FileVersion": "v0.6.0-SNAPSHOT",
             "InternalName": "llama-nodrama",
-            "LegalCopyright": "MIT License",
+            "LegalCopyright": "Copyright (c) 2026 Hangry Labs",
             "OriginalFilename": "llama-nodrama.exe",
             "ProductName": "llama.nodrama",
             "ProductVersion": "v0.6.0-SNAPSHOT"

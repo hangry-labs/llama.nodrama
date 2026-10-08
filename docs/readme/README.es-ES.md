@@ -128,4 +128,4 @@ Sin esos secrets, los binarios Windows se compilan con icon/version resources pe
 
 ## Licencia
 
-MIT. La atribución de terceros está registrada en [LICENSE](../../LICENSE).
+El código fuente y la documentación del proyecto están bajo la [Licencia MIT](../../LICENSE). Los logotipos, mascotas, badges, iconos y demás arte de marca están excluidos de MIT y se rigen por [BRAND_ASSETS.md](../../BRAND_ASSETS.md). Los textos de licencia y las atribuciones de terceros requeridos se registran en [THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md). El workflow de release incluye los tres archivos en los nuevos archives que genera.
