@@ -13,6 +13,7 @@ function modelFromSnapshot(m) {
     family: m.family || "",
     format: m.format || "",
     meta,
+    architecture: m.architecture || {},
   };
 }
 
@@ -26,6 +27,7 @@ function propsFromSnapshot(p) {
     n_ctx: p.n_ctx || p.contextTokens || 0,
     n_ctx_train: p.n_ctx_train || p.contextTrain || 0,
     modalities: p.modalities || {},
+    chat_template_caps: p.chat_template_caps || p.chatTemplateCaps || {},
     default_generation_settings: p.default_generation_settings || p.samplerDefaults || {},
     is_sleeping: p.is_sleeping || false,
     chat_template: p.chat_template || "",
@@ -183,6 +185,7 @@ function applySnapshot(snapshot, opts) {
     renderGuidance();
     updateChatTokenSlider();
     updateChatSlotOptions();
+    if (chat.attachments.length) renderChatAttachments();
   }
 }
 

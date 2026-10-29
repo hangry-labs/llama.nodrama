@@ -109,7 +109,8 @@ async function openSettingsModal() {
     fields.timeout = el("input", { type: "number", min: "250", max: "120000", step: "250", value: String(loaded.timeoutMs || 5000) });
     body.append(
       el("label", null, [t("settings.server"), fields.server]),
-      el("label", null, [t("settings.log_path"), fields.logPath]),
+      el("label", null, [t("settings.log_path"), fields.logPath,
+        el('small', { class: 'sub' }, t('settings.log_help'))]),
       el("label", null, [t("settings.poll"), fields.poll]),
       el("label", null, [t("settings.timeout"), fields.timeout]),
       el("div", { class: "readonly" }, [

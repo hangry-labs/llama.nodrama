@@ -1,29 +1,33 @@
 "use strict";
 
 async function sendChat() {
-  if (chat.inflight) return;
+  if (chat.inflight || chat.attachmentLoading) return;
   const ta = $("#chat-input");
   const text = ta ? ta.value.trim() : "";
-  if (!text) return;
+  const attachments = chat.attachments.slice();
+  if (!text && !attachments.length) return;
+  if (chatImageSupport() === false && (attachments.some(item => item.kind === 'image')
+      || chat.messages.some(message => message.attachments?.some(item => item.kind === 'image')))) {
+    setChatStats(t('chat.attachment_no_vision')); return;
+  }
 
   const ctrl = new AbortController();
   chat.inflight = ctrl;
+  chat.attachments = [];
+  chat.attachmentError = '';
   setSendingUI(true);
   setChatStats(t("chat.streaming"));
   ta.value = ""; ta.style.height = "auto";
   const previousMessages = chat.messages.slice();
-  const user = { role: "user", content: text };
+  const user = { role: "user", content: text, attachments };
   chat.messages.push(user);
   trimChatHistory();
-  const userTarget = appendChatMessage("user", text);
+  const userTarget = appendChatMessage("user", text, { attachments });
   const n = Math.max(1, Math.min(8, chat.params.fanout | 0));
   const targets = [];
   let batch;
 
   try {
-    for (let k = 0; k < n; k++) {
-      targets.push(appendAssistantTarget({ stats: n > 1 ? "#" + (k + 1) + "/" + n + " — …" : "…" }));
-    }
     const payload = {
       model: state.selectedModel
         || (state.models[0] && state.models[0].id)
@@ -41,6 +45,12 @@ async function sendChat() {
     if (chat.systemPrompt.trim()) payload.messages.push({ role: "system", content: chat.systemPrompt.trim() });
     for (const message of chat.messages) payload.messages.push({ role: message.role, content: chatHistoryContent(message) });
     applyThinkingMode(payload, chat.params.thinking);
+    if (new TextEncoder().encode(JSON.stringify(payload)).length > CHAT_REQUEST_MAX_BYTES) {
+      throw new Error(t('chat.attachment_request_size'));
+    }
+    for (let k = 0; k < n; k++) {
+      targets.push(appendAssistantTarget({ stats: n > 1 ? "#" + (k + 1) + "/" + n + " — …" : "…" }));
+    }
 
     const url = endpoint("/api/chat/completions", false);
     const t0 = Date.now();
@@ -63,6 +73,7 @@ async function sendChat() {
       // A failed turn can be retried; do not silently send an unanswered user
       // message from a failed request as context for the next conversation turn.
       chat.messages = previousMessages;
+      chat.attachments = attachments;
       ta.value = text;
       if (userTarget) userTarget.stats.textContent = t("chat.excluded");
     }
@@ -76,6 +87,7 @@ async function sendChat() {
     setChatStats(failed ? t("chat.error") : ctrl.signal.aborted ? t("chat.cancelled") : "");
   } catch (error) {
     chat.messages = previousMessages;
+    chat.attachments = attachments;
     ta.value = text;
     if (userTarget) userTarget.stats.textContent = t("chat.excluded");
     setChatStats(t("chat.error") + ": " + error.message);

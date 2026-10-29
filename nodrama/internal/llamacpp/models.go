@@ -3,25 +3,27 @@ package llamacpp
 import "encoding/json"
 
 type ModelSummary struct {
-	ID      string         `json:"id"`
-	Aliases []string       `json:"aliases,omitempty"`
-	OwnedBy string         `json:"ownedBy,omitempty"`
-	Object  string         `json:"object,omitempty"`
-	Family  string         `json:"family,omitempty"`
-	Format  string         `json:"format,omitempty"`
-	Size    float64        `json:"size,omitempty"`
-	Params  float64        `json:"params,omitempty"`
-	Meta    map[string]any `json:"meta,omitempty"`
+	ID           string         `json:"id"`
+	Aliases      []string       `json:"aliases,omitempty"`
+	OwnedBy      string         `json:"ownedBy,omitempty"`
+	Object       string         `json:"object,omitempty"`
+	Family       string         `json:"family,omitempty"`
+	Format       string         `json:"format,omitempty"`
+	Size         float64        `json:"size,omitempty"`
+	Params       float64        `json:"params,omitempty"`
+	Meta         map[string]any `json:"meta,omitempty"`
+	Architecture map[string]any `json:"architecture,omitempty"`
 }
 
 func DecodeModels(body []byte) ([]ModelSummary, error) {
 	var envelope struct {
 		Data []struct {
-			ID      string         `json:"id"`
-			Aliases []string       `json:"aliases"`
-			OwnedBy string         `json:"owned_by"`
-			Object  string         `json:"object"`
-			Meta    map[string]any `json:"meta"`
+			ID           string         `json:"id"`
+			Aliases      []string       `json:"aliases"`
+			OwnedBy      string         `json:"owned_by"`
+			Object       string         `json:"object"`
+			Meta         map[string]any `json:"meta"`
+			Architecture any            `json:"architecture"`
 		} `json:"data"`
 		Models []struct {
 			Name    string `json:"name"`
@@ -43,14 +45,16 @@ func DecodeModels(body []byte) ([]ModelSummary, error) {
 			continue
 		}
 		seen[model.ID] = true
+		architecture, _ := model.Architecture.(map[string]any)
 		out = append(out, ModelSummary{
-			ID:      model.ID,
-			Aliases: model.Aliases,
-			OwnedBy: model.OwnedBy,
-			Object:  model.Object,
-			Size:    numberAt(model.Meta, "size"),
-			Params:  numberAt(model.Meta, "n_params"),
-			Meta:    model.Meta,
+			ID:           model.ID,
+			Aliases:      model.Aliases,
+			OwnedBy:      model.OwnedBy,
+			Object:       model.Object,
+			Size:         numberAt(model.Meta, "size"),
+			Params:       numberAt(model.Meta, "n_params"),
+			Meta:         model.Meta,
+			Architecture: architecture,
 		})
 	}
 	for _, model := range envelope.Models {

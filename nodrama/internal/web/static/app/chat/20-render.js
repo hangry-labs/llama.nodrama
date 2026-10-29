@@ -57,6 +57,12 @@ function renderChatPanel() {
   });
   if (state.params.prompt) ta.value = state.params.prompt;
 
+  const files = el('input', { id: 'chat-files', type: 'file', multiple: true, hidden: true,
+    onchange: event => { const selected = Array.from(event.target.files); event.target.value = ''; void addChatAttachments(selected); } });
+  const attachBtn = el('button', { id: 'chat-attach', type: 'button',
+    title: t('chat.attachment_help'), 'aria-label': t('chat.attach'),
+    onclick: () => files.click() }, t('chat.attach'));
+
   const sendBtn = el("button", { id: "chat-send", class: "primary",
                                   onclick: sendChat,
                                   "aria-label": t("chat.send") },
@@ -68,9 +74,15 @@ function renderChatPanel() {
                      t("chat.stop"));
   const inputRow = el("div", { class: "chat-input-row", id: "chat-input-row",
                                 hidden: !chat.open },
-                      [ta, sendBtn, stopBtn]);
+                      [ta, attachBtn, files, sendBtn, stopBtn]);
 
-  const main = el("div", { class: "chat-main" }, [msgs, inputRow]);
+  const composer = el('div', { class: 'chat-composer' }, [
+    el('div', { id: 'chat-attachments', class: 'chat-attachments', hidden: true }),
+    el('div', { id: 'chat-attachment-status', class: 'chat-attachment-status', role: 'status', 'aria-live': 'polite', hidden: true }),
+    inputRow,
+  ]);
+  wireChatAttachments(composer, ta);
+  const main = el("div", { class: "chat-main" }, [msgs, composer]);
 
   /* Side panel — params */
   const sysTa = el("textarea", { id: "chat-system",
@@ -168,6 +180,7 @@ function renderChatPanel() {
 
   /* sync open state */
   applyChatOpenState();
+  renderChatAttachments();
 }
 
 function paramSlider(id, labelKey, initial, min, max, step, onChange) {
@@ -212,8 +225,10 @@ function applyChatOpenState() {
 }
 
 function clearChat() {
-  if (chat.inflight) return;  /* refuse while a request is in flight */
+  if (chat.inflight || chat.attachmentLoading) return;
   chat.messages = [];
+  chat.attachments = [];
+  renderChatAttachments('');
   setChatStats("");
   const msgs = $("#chat-msgs");
   if (msgs) {
@@ -231,6 +246,11 @@ function appendChatMessage(role, content, opts) {
   if (!msgs) return null;
   const body = el("div", { class: "body" });
   body.appendChild(renderMarkdown(content || ""));
+  if (opts?.attachments?.length) {
+    body.appendChild(el('div', { class: 'chat-message-attachments' }, opts.attachments.map(item =>
+      el('figure', null, [item.kind === 'image' ? el('img', { src: item.dataURL, alt: item.name, loading: 'lazy' }) : null,
+        el('figcaption', { title: item.name }, item.name)].filter(Boolean)))));
+  }
   const stats = el("div", { class: "stats" }, opts && opts.stats ? opts.stats : "");
   const label = role === "user" ? t("chat.you") : (role === "thinking" ? t("chat.thinking") : t("chat.assistant"));
   const node = el("div", { class: "chat-msg " + role },
@@ -324,5 +344,6 @@ function setSendingUI(sending) {
   if (send) send.hidden = !!sending;
   if (stop) stop.hidden = !sending;
   if (ta) ta.disabled = !!sending;
+  renderChatAttachments();
 }
 

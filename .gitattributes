@@ -1,0 +1,8 @@
+# gofmt requires LF, including on Windows checkouts with core.autocrlf=true.
+* text=auto
+*.go text eol=lf
+*.sh text eol=lf
+
+# Preserve raster assets byte-for-byte.
+*.webp binary
+*.syso binary

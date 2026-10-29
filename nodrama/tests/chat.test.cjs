@@ -15,7 +15,7 @@ function harness(fetchImpl) {
   const input = { value: '', style: {}, focus() {} };
   const targets = [], calls = [], headers = [];
   const context = vm.createContext({
-    TextDecoder, Response, ReadableStream, AbortController, DOMException, atob,
+    TextDecoder, TextEncoder, Response, ReadableStream, AbortController, DOMException, atob,
     setTimeout, clearTimeout, Date, console,
     state: { params: { demo: '1' }, selectedModel: 'synthetic-model', models: [], v1models: [] },
     $: selector => selector === '#chat-input' ? input : null,
@@ -37,7 +37,7 @@ function harness(fetchImpl) {
       return fetchImpl(url, options, calls.length - 1);
     },
   });
-  for (const file of ['00-state.js', '25-transport.js', '30-stream.js']) {
+  for (const file of ['00-state.js', '15-attachments.js', '25-transport.js', '30-stream.js']) {
     vm.runInContext(fs.readFileSync(path.join(chatDir, file), 'utf8'), context, { filename: file });
   }
   const run = source => vm.runInContext(source, context);
@@ -338,4 +338,80 @@ test('stopping a batch cancels replies still waiting for upstream headers', asyn
   assert.equal(h.calls.length, 1);
   assert.equal(h.input.value, 'retry');
   assert.equal(h.chat.messages.length, 0);
+});
+
+test('attachments become multimodal image parts and named text, retained in subsequent history', async () => {
+  const h = harness(() => response(delta('answer') + done));
+  h.chat.attachments = [
+    { kind: 'text', name: 'example.go', text: 'package main\n// synthetic', size: 24 },
+    { kind: 'image', name: 'diagram.png', dataURL: 'data:image/png;base64,AA==', size: 1 },
+  ];
+  h.input.value = 'Review these';
+  await h.run('sendChat()');
+  const content = plain(h.calls[0].messages[0].content);
+  assert.match(content[0].text, /Review these[\s\S]*Attached file: example.go[\s\S]*package main/);
+  assert.deepEqual(content[1], { type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } });
+  assert.equal(h.chat.attachments.length, 0);
+  h.input.value = 'Continue';
+  await h.run('sendChat()');
+  assert.deepEqual(plain(h.calls[1].messages[0].content), content);
+});
+
+test('attachment-only turns work and failed requests restore the full draft', async () => {
+  const h = harness(() => { throw new Error('offline'); });
+  const attachment = { kind: 'text', name: 'note.txt', text: 'synthetic text', size: 14 };
+  h.chat.attachments = [attachment];
+  await h.run('sendChat()');
+  assert.equal(h.calls.length, 1);
+  assert.match(h.calls[0].messages[0].content, /synthetic text/);
+  assert.equal(h.chat.attachments[0], attachment);
+  assert.equal(h.chat.messages.length, 0);
+});
+
+test('known text-only models reject image turns before sending and preserve the draft', async () => {
+  const h = harness(() => { throw new Error('must not fetch'); });
+  h.context.state.props = { modalities: { vision: false } };
+  h.chat.attachments = [{ kind: 'image', name: 'image.png', dataURL: 'data:image/png;base64,AA==' }];
+  h.input.value = 'Describe';
+  await h.run('sendChat()');
+  assert.equal(h.calls.length, 0);
+  assert.equal(h.chat.attachments.length, 1);
+  assert.equal(h.input.value, 'Describe');
+  assert.equal(h.context.stats, 'chat.attachment_no_vision');
+  // Router-wide props cannot deny images for a different selected model.
+  h.context.state.mode = 'router';
+  assert.equal(h.run('chatImageSupport()'), null);
+  h.context.state.models = [{ id: 'synthetic-model', architecture: { input_modalities: ['text', 'image'] } }];
+  assert.equal(h.run('chatImageSupport()'), true);
+});
+
+test('oversized conversation attachments fail locally without losing the draft/history', async () => {
+  const h = harness(() => { throw new Error('must not fetch'); });
+  h.chat.attachments = [{ kind: 'text', name: 'huge.txt', text: 'x'.repeat(4 * 1024 * 1024) }];
+  h.input.value = 'Review';
+  await h.run('sendChat()');
+  assert.equal(h.calls.length, 0);
+  assert.equal(h.chat.attachments.length, 1);
+  assert.equal(h.chat.messages.length, 0);
+  assert.equal(h.input.value, 'Review');
+  assert.match(h.context.stats, /chat.attachment_request_size/);
+});
+
+test('text attachments reject binary, invalid UTF-8 and oversized files without guessing content', async () => {
+  const h = harness();
+  for (const [file, error] of [
+    [new File(['%PDF-synthetic'], 'document.pdf', { type: 'application/pdf' }), /attachment_type/],
+    [new File([Uint8Array.of(0xc3, 0x28)], 'bad.txt'), /attachment_encoding/],
+    [new File([Uint8Array.of(0)], 'binary.txt'), /attachment_encoding/],
+    [new File(['x'.repeat(256 * 1024 + 1)], 'huge.txt'), /attachment_text_size/],
+  ]) {
+    h.context.file = file;
+    await assert.rejects(h.run('prepareChatAttachment(file)'), error);
+  }
+  h.context.file = new File(['héllo 🦙'], 'notes.md');
+  const result = await h.run('prepareChatAttachment(file)');
+  assert.equal(result.text, 'héllo 🦙');
+  assert.equal(result.kind, 'text');
+  h.context.file = new File(['# synthetic ignore rules\noutput/'], '.gitignore');
+  assert.match((await h.run('prepareChatAttachment(file)')).text, /output\//);
 });

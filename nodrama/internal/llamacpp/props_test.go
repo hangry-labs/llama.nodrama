@@ -2,6 +2,13 @@ package llamacpp
 
 import "testing"
 
+func TestDecodePropsPreservesVisionCapability(t *testing.T) {
+	props, err := DecodeProps([]byte(`{"modalities":{"vision":true},"chat_template_caps":{"vision":true}}`))
+	if err != nil || props.Modalities["vision"] != true || props.ChatTemplateCaps["vision"] != true {
+		t.Fatalf("vision metadata lost: %#v, %v", props, err)
+	}
+}
+
 func TestDecodePropsIncludesSleepingState(t *testing.T) {
 	props, err := DecodeProps([]byte(`{
 	  "model_alias": "demo",

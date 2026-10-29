@@ -2,6 +2,24 @@ package llamacpp
 
 import "testing"
 
+func TestDecodeModelsPreservesInputModalities(t *testing.T) {
+	models, err := DecodeModels([]byte(`{"data":[{"id":"synthetic","architecture":{"input_modalities":["text","image"]}}]}`))
+	if err != nil || len(models) != 1 {
+		t.Fatalf("models=%#v, %v", models, err)
+	}
+	inputs, ok := models[0].Architecture["input_modalities"].([]any)
+	if !ok || len(inputs) != 2 || inputs[1] != "image" {
+		t.Fatalf("input modalities lost: %#v", models[0])
+	}
+}
+
+func TestDecodeModelsToleratesOtherArchitectureMetadata(t *testing.T) {
+	models, err := DecodeModels([]byte(`{"data":[{"id":"synthetic","architecture":"text-model"}]}`))
+	if err != nil || len(models) != 1 || models[0].ID != "synthetic" {
+		t.Fatalf("models=%#v, %v", models, err)
+	}
+}
+
 func TestDecodeRouterModelsDetectsRouterShape(t *testing.T) {
 	models, router, err := DecodeRouterModels([]byte(`{
 	  "data": [

@@ -16,6 +16,9 @@ const CHAT_HISTORY_MAX_TURNS = 40;   /* cap to bound payload + memory */
 const chat = {
   open: false,
   messages: [],          /* {role, content, stats?} */
+  attachments: [],
+  attachmentLoading: false,
+  attachmentError: '',
   systemPrompt: "",
   inflight: null,        /* AbortController */
   autoScroll: true,
@@ -85,7 +88,7 @@ function updateChatSlotOptions() {
 }
 
 function chatHistoryContent(message) {
-  if (!message || message.role !== "assistant") return message ? message.content : "";
+  if (!message || message.role !== "assistant") return message ? chatUserContent(message) : "";
   if (!chat.params.keepThinking || !message.reasoning) return message.content || "";
   const content = message.content || "";
   const reasoning = message.reasoning || "";

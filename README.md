@@ -124,6 +124,33 @@ deployment details. Chat content and metric histories remain in memory. Invalid
 settings and failed writes report errors; a failed UI save leaves the active
 configuration unchanged.
 
+## Log Setup
+
+Log paths refer to the machine running **llama.nodrama**, which may be different
+from the browser or llama.cpp host. The HTTP endpoints do not advertise an
+arbitrary log-file location, so the dashboard uses an explicit path rather than
+guessing folders or inspecting machine-specific launchers.
+
+For a local server, ask llama.cpp to write a log file alongside its usual model
+and server options:
+
+```sh
+llama-server --metrics --log-file llama-server.log --log-verbosity 4
+```
+
+In a second terminal in the same working directory, start the dashboard:
+
+```sh
+llama-nodrama --server http://127.0.0.1:8080 --log ./llama-server.log
+```
+
+Alternatively, enter the absolute path in **Settings → Log file path** and save.
+Trace verbosity (`--log-verbosity 4`) supplies detailed prompt-cache events.
+Keep the file readable by the dashboard's service account. If the server runs
+elsewhere or inside a container, explicitly forward its logs or mount its log
+directory into the dashboard's environment; use the path visible there.
+Docker stdout and systemd journal ingestion are not currently supported.
+
 ## Build From Source
 
 ```sh
@@ -196,6 +223,19 @@ turns are excluded from outgoing history and the input is restored for retry.
 Parallel stress requests use the first completed reply in request order for
 history and label that reply. Token statistics use server usage when available;
 otherwise the footer shows characters.
+
+Use **Attach**, drag files into the composer, or paste an image from the
+clipboard. Draft attachments have removable previews and are shown beside the
+sent message. Images use llama.cpp's multimodal input and require a vision
+model; a server that advertises text-only support is rejected before sending.
+If support is unknown, the server validates the request. Text/code files are
+included as named UTF-8 text blocks. Attachments stay in conversation memory
+and are restored with the draft when a request fails.
+
+Up to eight files can be attached to a message. Text files are limited to
+256 KiB each; source images to 10 MiB. Images are resized to a maximum 2048 px
+edge and normalized to PNG/JPEG. The complete conversation request must fit
+within 4 MiB. PDF, office documents, audio and archives are not supported.
 
 Parallel chat launches up to eight upstream requests from Go and streams the
 indexed replies over one browser connection. This leaves monitoring responsive
@@ -272,11 +312,15 @@ published as a `v0.6.0` release. Build from source to try them.
   and links between cache entries, slots and queries. Surface log-source hints.
 - Improve chat stream parsing, stopped replies, retryable failures, reasoning
   controls and deterministic conversation history for parallel requests.
+- Add image paste, drag-and-drop and file attachments, with previews, model
+  capability checks and named text/code context retained in chat history.
 - Send up to eight parallel chat requests through Go over one browser stream,
   keeping monitoring responsive while llama.cpp queues requests. Cancel queued
   work with Stop and distinguish monitoring timeouts from deliberate aborts.
 - Add automated Go/UI checks and Chromium coverage for offline, demo, live
   concurrency and responsive behavior. Make demo activity internally consistent.
+- Keep Go source checkouts in LF format on Windows as well as Linux/macOS, so
+  Git's CRLF conversion does not cause the CI formatting check to fail.
 - Convert raster source artwork and icons to WebP; retain native Windows icon
   resources. Document brand restrictions and bundled third-party notices.
 
