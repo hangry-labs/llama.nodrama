@@ -4,6 +4,8 @@
 
 **Leer en:** [🇺🇸 English](../../README.md) | [🇰🇷 한국어](README.ko-KR.md) | [🇯🇵 日本語](README.ja-JP.md) | [🇨🇳 简体中文](README.zh-CN.md) | [🇪🇸 Español](README.es-ES.md)
 
+Versión de desarrollo: **v0.6.0-SNAPSHOT**. [Historial de versiones](../../README.md#version-history).
+
 `llama.nodrama` es un pequeño panel escrito en Go para operar servidores `llama.cpp`. Existe porque ejecutar `llama.cpp` con varios slots no debería sentirse como ir a ciegas. La idea es simple: apúntalo a tu llama, obtén una vista visual clara y evita el drama.
 
 El panel se centra en lo que cuesta ver solo con logs crudos: actividad de slots, flujo de consultas, cola de espera, rendimiento de tokens, reutilización de caché y líneas de tiempo de lo que cambió mientras el servidor estaba bajo carga. Sirve una UI web y una API backend tipada que organiza metrics, slots, requests, suggestions e historical values de `llama.cpp` en una vista en vivo.
@@ -91,40 +93,9 @@ Los logs de ejecución usan niveles explícitos (`INFO`, `WARN`, `ERROR`). Defin
 
 ## Releases
 
-CI ejecuta Go formatting, vet, tests y cross-platform builds en pushes y pull requests a `main`.
+Las versiones publicadas incluyen binarios para Linux, macOS y Windows en amd64 y arm64, junto con sumas de comprobación. Los instaladores usan la última versión estable publicada de forma predeterminada. Los artefactos de CI de las ramas son compilaciones de desarrollo.
 
-La versión fuente está en `nodrama/VERSION`. Los snapshot builds usan `vX.Y.Z-SNAPSHOT`; los release tags usan la forma final `vX.Y.Z`.
-
-Para crear un release:
-
-```sh
-task release
-```
-
-`task release` requiere un working tree limpio. Elimina `-SNAPSHOT`, crea commit y tag de esa versión final, luego incrementa la minor version al siguiente `vX.Y.0-SNAPSHOT`, crea otro commit y empuja `HEAD` más los tags a `origin`. Ejecutar esta tarea es el punto de decisión manual que hace oficial el release.
-
-Los tags que coinciden con `v*` publican binarios de GitHub Release para:
-
-- Linux amd64/arm64
-- macOS amd64/arm64
-- Windows amd64/arm64
-
-Los nombres de los archives de release incluyen platform y architecture. El ejecutable dentro de cada archive usa intencionalmente el nombre de comando estable: `llama-nodrama` en Linux/macOS y `llama-nodrama.exe` en Windows. Esto mantiene consistentes las instalaciones manuales y las de package managers.
-
-Los scripts de instalación consumen esos release assets. Los CI build artifacts de branch pushes son solo para validación. Las instalaciones públicas deben usar tagged releases. Normalmente no deberías compilar release binaries localmente; empuja el tag y deja que el release workflow los compile y los adjunte al GitHub Release.
-
-El release workflow también adjunta `HangryLabs.LlamaNodrama.winget.zip`, un bundle de manifests Winget para los portable zips de Windows amd64 y arm64. Para enviarlo a Winget, extrae ese bundle en el manifest path de `microsoft/winget-pkgs`, valídalo con `winget validate`, pruébalo con `winget install --manifest` y abre el PR al repositorio comunitario de Winget.
-
-Los binarios Windows de release incluyen application icon, manifest y file properties generados desde `nodrama/VERSION` por `go-winres`. Los PNG icon source assets están en `nodrama/winres/icons/`; el resource generator conserva esos archivos y solo crea fallback placeholders cuando falta un tamaño esperado. Los Windows binaries no se strippean para que los sistemas de reputación antivirus tengan metadata de debug más normal para inspeccionar.
-
-Los binarios Linux crudos no llevan desktop icons del mismo modo que los `.exe` de Windows. En Linux, los iconos normalmente los aporta el paquete (`.deb`, `.rpm`, AppImage, Flatpak, etc.) mediante un archivo `.desktop` y assets de iconos instalados. Los PNG source assets existentes se pueden reutilizar cuando se agregue packaging para Linux.
-
-El release workflow soporta Authenticode signing opcional. Agrega estos repository secrets para habilitarlo:
-
-- `WINDOWS_CODESIGN_PFX_BASE64`: certificado de firma `.pfx` codificado en base64
-- `WINDOWS_CODESIGN_PASSWORD`: contraseña del `.pfx`
-
-Sin esos secrets, los binarios Windows se compilan con icon/version resources pero siguen sin firma.
+[Historial y descargas publicadas](../../README.md#version-history) · [Guía de preparación y publicación de versiones (inglés)](../RELEASING.md).
 
 ## Licencia
 

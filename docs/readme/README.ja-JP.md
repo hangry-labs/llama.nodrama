@@ -4,6 +4,8 @@
 
 **他の言語で読む:** [🇺🇸 English](../../README.md) | [🇰🇷 한국어](README.ko-KR.md) | [🇯🇵 日本語](README.ja-JP.md) | [🇨🇳 简体中文](README.zh-CN.md) | [🇪🇸 Español](README.es-ES.md)
 
+開発バージョン: **v0.6.0-SNAPSHOT**。[バージョン履歴](../../README.md#version-history)。
+
 `llama.nodrama` は `llama.cpp` サーバーを運用するための小さな Go ダッシュボードです。複数スロットで `llama.cpp` を動かすときに、状態を推測だけで判断しなくて済むように作られています。目的は単純です。自分の llama サーバーを指定すると、わかりやすい視覚的な概要が表示され、運用中の余計な混乱を減らします。
 
 このダッシュボードは、生ログだけでは見えにくい情報に集中します。スロットの活動、クエリの流れ、キュー、トークン処理量、キャッシュ再利用、負荷中に値がどう変化したかを示すタイムラインを確認できます。ブラウザー UI と型付きバックエンド API を提供し、`llama.cpp` の metrics、slots、requests、suggestions、historical values を 1 つのライブビューに整理します。
@@ -91,40 +93,9 @@ go build -o llama-nodrama .
 
 ## リリース
 
-CI は `main` への push および pull request で、Go formatting、vet、tests、cross-platform builds を実行します。
+公開リリースには Linux、macOS、Windows 向けの amd64 / arm64 バイナリとチェックサムが含まれます。インストーラーは既定で最新の公開安定版を使用します。ブランチの CI アーティファクトは開発ビルドです。
 
-ソースのバージョンは `nodrama/VERSION` にあります。Snapshot builds は `vX.Y.Z-SNAPSHOT` を使い、release tags は finalized `vX.Y.Z` 形式を使います。
-
-リリースを作成するには:
-
-```sh
-task release
-```
-
-`task release` には clean working tree が必要です。このタスクは `-SNAPSHOT` を削除し、その finalized version を commit と tag にした後、minor version を次の `vX.Y.0-SNAPSHOT` に上げて commit し、`HEAD` と tags を `origin` に push します。このタスクを実行することが、リリースを公式にする手動の決定点です。
-
-`v*` に一致する tag は、次の GitHub Release binaries を公開します。
-
-- Linux amd64/arm64
-- macOS amd64/arm64
-- Windows amd64/arm64
-
-Release archive のファイル名には platform と architecture が含まれます。各 archive 内の executable は安定した command name を使います。Linux/macOS では `llama-nodrama`、Windows では `llama-nodrama.exe` です。これにより、手動インストールと package-manager インストールで一貫性が保たれます。
-
-インストールスクリプトはこれらの release assets を使用します。branch push からの CI build artifacts は検証専用です。公開インストールには tagged releases を使用してください。通常、release binaries をローカルでコンパイルする必要はありません。tag を push して、release workflow に GitHub Release へ添付させてください。
-
-release workflow は、Windows amd64 と arm64 portable zip 用の Winget manifest bundle `HangryLabs.LlamaNodrama.winget.zip` も添付します。Winget に提出するには、この bundle を `microsoft/winget-pkgs` manifest path に展開し、`winget validate` で検証し、`winget install --manifest` でテストしてから Winget community repository に PR を開きます。
-
-Windows release binaries には、`go-winres` が `nodrama/VERSION` から生成した application icon、manifest、file properties が含まれます。PNG icon source assets は `nodrama/winres/icons/` にあります。resource generator はこれらのファイルを保持し、必要なサイズがない場合だけ fallback placeholders を作成します。Windows binaries は、antivirus reputation system が通常の debug metadata を確認しやすいように strip されません。
-
-Raw Linux binaries は Windows `.exe` と同じ方法で desktop icons を保持しません。Linux icons は通常、package (`.deb`, `.rpm`, AppImage, Flatpak など) が `.desktop` file と installed icon assets を通して提供します。Linux packaging を追加するときは、既存の PNG source assets を再利用できます。
-
-Optional Authenticode signing は release workflow でサポートされています。有効にするには、以下の repository secrets を追加してください。
-
-- `WINDOWS_CODESIGN_PFX_BASE64`: base64-encoded `.pfx` signing certificate
-- `WINDOWS_CODESIGN_PASSWORD`: `.pfx` の password
-
-これらの secrets がない場合、Windows binaries は icon/version resources を含みますが unsigned のまま build されます。
+[バージョン履歴とダウンロード](../../README.md#version-history) · [リリース準備と公開ガイド (英語)](../RELEASING.md)。
 
 ## ライセンス
 

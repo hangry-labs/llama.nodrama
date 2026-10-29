@@ -4,6 +4,11 @@
 
 **Read this in:** [🇺🇸 English](README.md) | [🇰🇷 한국어](docs/readme/README.ko-KR.md) | [🇯🇵 日本語](docs/readme/README.ja-JP.md) | [🇨🇳 简体中文](docs/readme/README.zh-CN.md) | [🇪🇸 Español](docs/readme/README.es-ES.md)
 
+# llama.nodrama
+
+Development version **v0.6.0-SNAPSHOT**. See the [version history](#version-history).
+The latest published release is [v0.5.0](https://github.com/hangry-labs/llama.nodrama/releases/tag/v0.5.0).
+
 `llama.nodrama` is a small Go dashboard for operating `llama.cpp` servers. It
 exists because running `llama.cpp` with multiple slots should not feel like
 guesswork. The goal is simple: point it at your llama, get a clear visual
@@ -21,22 +26,22 @@ and memory, balancing slots, cache reuse, prompt processing, and generation spee
 requires visibility. `llama.nodrama` is meant to make that operational picture
 obvious without turning monitoring itself into another project.
 
-## UI Preview
+## Quick Start
 
-![llama.nodrama dashboard UI](docs/ui.webp)
-
-## Install
+Install published **v0.5.0**. The dashboard is a single binary for
+Linux, macOS and Windows; it connects to an existing `llama.cpp` server.
 
 Linux and macOS:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/hangry-labs/llama.nodrama/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/hangry-labs/llama.nodrama/v0.5.0/install.sh | LLAMA_NODRAMA_VERSION=v0.5.0 sh
 ```
 
 Windows PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/hangry-labs/llama.nodrama/main/install.ps1 | iex
+$env:LLAMA_NODRAMA_VERSION = "v0.5.0"
+irm https://raw.githubusercontent.com/hangry-labs/llama.nodrama/v0.5.0/install.ps1 | iex
 ```
 
 The Windows installer copies `llama-nodrama.exe` to a user-local install
@@ -44,15 +49,22 @@ directory and adds that directory to the user PATH. The current PowerShell
 session is updated too, so `llama-nodrama --help` should work immediately after
 install.
 
-Both installers use the newest GitHub Release by default. To pin a version:
+<details markdown="1">
+<summary><strong>Follow the newest published release</strong></summary>
+
+Omit the version override to let the installers select GitHub's latest stable
+release. This selection moves as new releases are published.
 
 ```sh
-LLAMA_NODRAMA_VERSION=v0.1.0 sh ./install.sh
+curl -fsSL https://raw.githubusercontent.com/hangry-labs/llama.nodrama/main/install.sh | sh
 ```
 
 ```powershell
-$env:LLAMA_NODRAMA_VERSION = "v0.1.0"; .\install.ps1
+Remove-Item Env:LLAMA_NODRAMA_VERSION -ErrorAction SilentlyContinue
+irm https://raw.githubusercontent.com/hangry-labs/llama.nodrama/main/install.ps1 | iex
 ```
+
+</details>
 
 ## Run
 
@@ -69,6 +81,15 @@ llama-nodrama --server http://127.0.0.1:8080 --listen :39080
 ```
 
 Open `http://127.0.0.1:39080`.
+
+The screenshot and feature descriptions below follow the development branch;
+check the [release notes](#version-history) for what is in a published binary.
+
+## Browser UI
+
+![llama.nodrama dashboard UI](docs/ui.webp)
+
+## Runtime Settings
 
 `llama.nodrama` does not auto-discover `llama.cpp` servers yet. Point it at the
 specific deployment you want to monitor with `--server`; if `llama-server` runs
@@ -219,67 +240,92 @@ to Hangry Labs. See [PRIVACY.md](PRIVACY.md) for the full privacy statement.
 
 ## Releases
 
-CI runs the development checks on Linux, Windows, and macOS, plus Go race tests
-and Chromium regressions on Linux, and six cross-platform builds on pushes and
-pull requests to `main`.
-Release builds run the same Go and UI checks before packaging.
+Install published binaries from [GitHub Releases](https://github.com/hangry-labs/llama.nodrama/releases).
+Each release has Linux, macOS and Windows archives for amd64 and arm64, plus
+`SHA256SUMS`. Branch CI artifacts are development builds. Creating a source
+tag alone does not establish that release downloads are available.
 
-The source version lives in `nodrama/VERSION`. Snapshot builds use
-`vX.Y.Z-SNAPSHOT`; release tags use the finalized `vX.Y.Z` form.
+The [release guide](docs/RELEASING.md) covers snapshot promotion, checks,
+publication, archive contents, Windows signing and Winget manifests. Release
+preparation belongs in the development workflow; GitHub Actions builds the
+distributable binaries after a release tag is pushed.
 
-To cut a release:
+## Version History
 
-```sh
-task release
-```
+<details open markdown="1">
+<summary><strong>v0.6.0-SNAPSHOT development notes</strong></summary>
 
-`task release` requires a clean working tree. It removes `-SNAPSHOT`, commits
-and tags that finalized version, then bumps the minor version to the next
-`vX.Y.0-SNAPSHOT`, commits that, and pushes `HEAD` plus tags to `origin`.
-Running this task is the manual decision point that makes the release official.
+### v0.6.0-SNAPSHOT
 
-Tags matching `v*` publish GitHub Release binaries for:
+Development after `v0.5.0`. These changes are on `main` and have not been
+published as a `v0.6.0` release. Build from source to try them.
 
-- Linux amd64/arm64
-- macOS amd64/arm64
-- Windows amd64/arm64
+- Keep all 15 statistics in a compact diagnostic overview, with live timelines
+  on the left, cumulative summaries on the right and server uptime in the top bar.
+- Show observed counter increases over 1m / 5m / 1h, with explicit partial
+  coverage, resets and gaps. Open historical views without charting every total.
+- Scroll live charts by sample timestamps so peaks retain their shape. Support
+  inspection, pause, reduced motion and narrow screens.
+- Persist runtime settings in the user's configuration folder, with explicit
+  CLI overrides and atomic saves. Keep chat and telemetry history in memory.
+- Expand prompt-cache diagnostics, restored-context information, cache reuse,
+  and links between cache entries, slots and queries. Surface log-source hints.
+- Improve chat stream parsing, stopped replies, retryable failures, reasoning
+  controls and deterministic conversation history for parallel requests.
+- Send up to eight parallel chat requests through Go over one browser stream,
+  keeping monitoring responsive while llama.cpp queues requests. Cancel queued
+  work with Stop and distinguish monitoring timeouts from deliberate aborts.
+- Add automated Go/UI checks and Chromium coverage for offline, demo, live
+  concurrency and responsive behavior. Make demo activity internally consistent.
+- Convert raster source artwork and icons to WebP; retain native Windows icon
+  resources. Document brand restrictions and bundled third-party notices.
 
-Release archive filenames include platform and architecture. The executable
-inside each archive intentionally uses the stable command name:
-`llama-nodrama` on Linux/macOS and `llama-nodrama.exe` on Windows. This keeps
-manual installs and package-manager installs consistent.
+</details>
 
-The install scripts consume those release assets. CI build artifacts from branch
-pushes are for validation only; public installs should use tagged releases.
-Normally you should not compile release binaries locally; push the tag and let
-the release workflow build and attach them to the GitHub Release.
+### v0.5.0
 
-The release workflow also attaches `HangryLabs.LlamaNodrama.winget.zip`, a
-Winget manifest bundle for the Windows amd64 and arm64 portable zips. To submit
-it to Winget, extract that bundle into the `microsoft/winget-pkgs` manifest
-path, validate it with `winget validate`, test it with `winget install
---manifest`, and open the PR to the Winget community repository.
+Published **2026-06-08**. [Release and downloads](https://github.com/hangry-labs/llama.nodrama/releases/tag/v0.5.0)
+· [Source tag](https://github.com/hangry-labs/llama.nodrama/tree/v0.5.0).
 
-Windows release binaries include an application icon, manifest, and file
-properties generated from `nodrama/VERSION` by `go-winres`. The PNG icon source
-assets live in `nodrama/winres/icons/`; the resource generator preserves those
-files and only creates fallback placeholders when an expected size is missing.
-Windows binaries are not stripped so antivirus reputation systems have more
-normal debug metadata to inspect.
+<details markdown="1">
+<summary><strong>v0.5.0 release notes</strong></summary>
 
-Raw Linux binaries do not carry desktop icons in the same way Windows `.exe`
-files do. Linux icons are normally supplied by packages (`.deb`, `.rpm`,
-AppImage, Flatpak, etc.) through a `.desktop` file and installed icon assets.
-The existing PNG source assets can be reused when Linux packaging is added.
+- Expand the web dashboard, context tracking and configuration help.
+- Improve slot/task mapping, cache-reuse tracking and offline handling.
+- Add chat thinking controls, pinned slots and additional history options.
+- Improve log filtering, idle-line handling, layout and scrolling.
+- Refine interface languages, LoRA controls and Windows installation behavior.
 
-Optional Authenticode signing is supported in the release workflow. Add these
-repository secrets to enable it:
+</details>
 
-- `WINDOWS_CODESIGN_PFX_BASE64`: base64-encoded `.pfx` signing certificate
-- `WINDOWS_CODESIGN_PASSWORD`: password for the `.pfx`
+<details markdown="1">
+<summary><strong>Earlier releases</strong></summary>
 
-Without those secrets, Windows binaries are built with icon/version resources
-but remain unsigned.
+### v0.4.0
+
+Published **2026-06-07**. [Release and downloads](https://github.com/hangry-labs/llama.nodrama/releases/tag/v0.4.0).
+Correct cross-platform build environment handling and refine Winget manifests
+and checksum generation.
+
+### v0.3.0
+
+Published **2026-06-07**. [Release and downloads](https://github.com/hangry-labs/llama.nodrama/releases/tag/v0.3.0).
+Use stable executable names inside platform archives, add Winget manifest
+generation and improve browser icons.
+
+### v0.2.0
+
+Published **2026-06-07**. [Release and downloads](https://github.com/hangry-labs/llama.nodrama/releases/tag/v0.2.0).
+Add release-update checks, local build tools, clearer runtime logging and
+release-task automation.
+
+### v0.1.0
+
+Published **2026-06-07**. [Release and downloads](https://github.com/hangry-labs/llama.nodrama/releases/tag/v0.1.0).
+Initial public release with standalone dashboard binaries for Linux, macOS and
+Windows on amd64 and arm64.
+
+</details>
 
 ## License
 

@@ -4,6 +4,8 @@
 
 **选择语言:** [🇺🇸 English](../../README.md) | [🇰🇷 한국어](README.ko-KR.md) | [🇯🇵 日本語](README.ja-JP.md) | [🇨🇳 简体中文](README.zh-CN.md) | [🇪🇸 Español](README.es-ES.md)
 
+开发版本：**v0.6.0-SNAPSHOT**。[版本历史](../../README.md#version-history)。
+
 `llama.nodrama` 是一个用于运维 `llama.cpp` 服务器的小型 Go 仪表盘。它的出发点很简单：当你用多个 slot 运行 `llama.cpp` 时，不应该靠猜来判断系统状态。把它指向你的 llama 服务器，就能得到清晰的可视化概览，减少运维中的混乱。
 
 这个仪表盘关注原始日志里很难直接看清的内容：slot 活动、query 流程、队列压力、token 吞吐、缓存复用，以及服务器在负载下各项数值如何变化的时间线。它提供浏览器 UI 和带类型的后端 API，把 `llama.cpp` 的 metrics、slots、requests、suggestions 和 historical values 整理到一个实时视图里。
@@ -91,40 +93,9 @@ go build -o llama-nodrama .
 
 ## 发布
 
-CI 会在推送和 pull request 到 `main` 时运行 Go formatting、vet、tests 和 cross-platform builds。
+公开发布包含 Linux、macOS 和 Windows 的 amd64 / arm64 二进制文件及校验和。安装脚本默认使用最新公开的稳定版本。分支 CI 构建产物属于开发版本。
 
-源码版本位于 `nodrama/VERSION`。Snapshot builds 使用 `vX.Y.Z-SNAPSHOT`，release tags 使用 finalized `vX.Y.Z` 格式。
-
-创建 release：
-
-```sh
-task release
-```
-
-`task release` 要求 working tree 是干净的。它会移除 `-SNAPSHOT`，提交并标记 finalized version，然后把 minor version 增加到下一个 `vX.Y.0-SNAPSHOT`，再次提交，并把 `HEAD` 和 tags 推送到 `origin`。运行这个任务就是正式发布 release 的人工决定点。
-
-匹配 `v*` 的 tag 会发布以下 GitHub Release binaries：
-
-- Linux amd64/arm64
-- macOS amd64/arm64
-- Windows amd64/arm64
-
-Release archive 文件名包含 platform 和 architecture。每个 archive 内部的 executable 使用稳定的命令名：Linux/macOS 为 `llama-nodrama`，Windows 为 `llama-nodrama.exe`。这样手动安装和 package-manager 安装保持一致。
-
-安装脚本会使用这些 release assets。分支 push 产生的 CI build artifacts 只用于验证。公开安装应使用 tagged releases。通常不需要在本地编译 release binaries；推送 tag，让 release workflow 构建并附加到 GitHub Release 即可。
-
-release workflow 还会附加 `HangryLabs.LlamaNodrama.winget.zip`，这是用于 Windows amd64 和 arm64 portable zips 的 Winget manifest bundle。提交到 Winget 时，把该 bundle 解压到 `microsoft/winget-pkgs` manifest path，使用 `winget validate` 验证，使用 `winget install --manifest` 测试，然后向 Winget community repository 提交 PR。
-
-Windows release binaries 包含 application icon、manifest 和 file properties，这些由 `go-winres` 根据 `nodrama/VERSION` 生成。PNG icon source assets 位于 `nodrama/winres/icons/`；resource generator 会保留这些文件，只在缺少预期尺寸时创建 fallback placeholders。Windows binaries 不会被 strip，以便 antivirus reputation systems 能检查更常见的 debug metadata。
-
-原始 Linux binaries 不像 Windows `.exe` 那样携带 desktop icons。Linux icons 通常由 package (`.deb`, `.rpm`, AppImage, Flatpak 等) 通过 `.desktop` file 和 installed icon assets 提供。以后添加 Linux packaging 时，可以复用现有 PNG source assets。
-
-release workflow 支持可选的 Authenticode signing。添加以下 repository secrets 即可启用：
-
-- `WINDOWS_CODESIGN_PFX_BASE64`: base64 编码的 `.pfx` signing certificate
-- `WINDOWS_CODESIGN_PASSWORD`: `.pfx` password
-
-如果没有这些 secrets，Windows binaries 会包含 icon/version resources，但仍然是 unsigned。
+[版本历史与下载](../../README.md#version-history) · [发布准备与发布指南（英文）](../RELEASING.md)。
 
 ## 许可证
 

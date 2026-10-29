@@ -4,6 +4,8 @@
 
 **다른 언어로 읽기:** [🇺🇸 English](../../README.md) | [🇰🇷 한국어](README.ko-KR.md) | [🇯🇵 日本語](README.ja-JP.md) | [🇨🇳 简体中文](README.zh-CN.md) | [🇪🇸 Español](README.es-ES.md)
 
+개발 버전: **v0.6.0-SNAPSHOT**. [버전 기록](../../README.md#version-history).
+
 `llama.nodrama`는 `llama.cpp` 서버를 운영하기 위한 작은 Go 대시보드입니다. 여러 슬롯으로 `llama.cpp`를 실행할 때 상태를 추측으로 판단하지 않아도 되도록 만들었습니다. 목표는 단순합니다. 사용하는 llama 서버를 지정하면 명확한 시각적 개요를 보여 주고, 운영 중 불필요한 혼란을 줄입니다.
 
 이 대시보드는 원시 로그만으로 보기 어려운 부분에 집중합니다. 슬롯 활동, 쿼리 흐름, 대기열, 토큰 처리량, 캐시 재사용, 부하가 걸린 동안 값이 어떻게 변했는지 보여 주는 타임라인을 한 화면에서 볼 수 있습니다. 브라우저 UI와 타입이 정의된 백엔드 API를 제공하며, `llama.cpp`의 metrics, slots, requests, suggestions, historical values를 하나의 실시간 뷰로 정리합니다.
@@ -91,40 +93,9 @@ go build -o llama-nodrama .
 
 ## 릴리스
 
-CI는 `main` 브랜치의 push와 pull request에서 Go formatting, vet, test, cross-platform build를 실행합니다.
+공개 릴리스는 Linux, macOS, Windows용 amd64 및 arm64 바이너리와 체크섬을 제공합니다. 설치 스크립트는 기본적으로 가장 최근에 공개된 안정 릴리스를 사용합니다. 브랜치 CI 아티팩트는 개발 빌드입니다.
 
-소스 버전은 `nodrama/VERSION`에 있습니다. Snapshot 빌드는 `vX.Y.Z-SNAPSHOT` 형식을 사용하고, 릴리스 태그는 finalized `vX.Y.Z` 형식을 사용합니다.
-
-릴리스를 만들려면:
-
-```sh
-task release
-```
-
-`task release`는 깨끗한 working tree가 필요합니다. 이 작업은 `-SNAPSHOT`을 제거하고 finalized 버전을 커밋 및 태그한 다음, minor 버전을 다음 `vX.Y.0-SNAPSHOT`으로 올리고 다시 커밋한 뒤 `HEAD`와 tags를 `origin`으로 push합니다. 이 작업을 실행하는 시점이 릴리스를 공식화하는 수동 결정 지점입니다.
-
-`v*`와 일치하는 태그는 다음 GitHub Release 바이너리를 게시합니다.
-
-- Linux amd64/arm64
-- macOS amd64/arm64
-- Windows amd64/arm64
-
-릴리스 archive 파일명에는 platform과 architecture가 포함됩니다. 각 archive 안의 실행 파일은 안정적인 명령 이름을 사용합니다. Linux/macOS에서는 `llama-nodrama`, Windows에서는 `llama-nodrama.exe`입니다. 이렇게 하면 수동 설치와 package manager 설치가 일관됩니다.
-
-설치 스크립트는 이 릴리스 asset을 사용합니다. 브랜치 push에서 생성되는 CI build artifact는 검증용입니다. 공개 설치는 tagged release를 사용해야 합니다. 일반적으로 릴리스 바이너리를 로컬에서 직접 컴파일하지 말고, 태그를 push한 뒤 release workflow가 GitHub Release에 빌드 결과를 첨부하도록 두는 것이 좋습니다.
-
-release workflow는 Windows amd64 및 arm64 portable zip용 Winget manifest bundle인 `HangryLabs.LlamaNodrama.winget.zip`도 첨부합니다. Winget에 제출하려면 이 bundle을 `microsoft/winget-pkgs` manifest path에 압축 해제하고, `winget validate`로 검증하고, `winget install --manifest`로 테스트한 뒤 Winget community repository에 PR을 열면 됩니다.
-
-Windows 릴리스 바이너리에는 `go-winres`가 `nodrama/VERSION`을 사용해 생성한 application icon, manifest, file properties가 포함됩니다. PNG icon source asset은 `nodrama/winres/icons/`에 있습니다. resource generator는 해당 파일을 보존하며 필요한 크기가 없을 때만 fallback placeholder를 생성합니다. Windows 바이너리는 antivirus reputation 시스템이 일반적인 debug metadata를 확인할 수 있도록 strip하지 않습니다.
-
-원시 Linux 바이너리는 Windows `.exe`와 같은 방식으로 desktop icon을 포함하지 않습니다. Linux icon은 일반적으로 package(`.deb`, `.rpm`, AppImage, Flatpak 등)가 `.desktop` 파일과 설치된 icon asset을 통해 제공합니다. Linux packaging을 추가할 때 기존 PNG source asset을 재사용할 수 있습니다.
-
-선택적 Authenticode signing은 release workflow에서 지원됩니다. 사용하려면 repository secret을 추가하세요.
-
-- `WINDOWS_CODESIGN_PFX_BASE64`: base64로 인코딩한 `.pfx` signing certificate
-- `WINDOWS_CODESIGN_PASSWORD`: `.pfx` password
-
-이 secret이 없으면 Windows 바이너리는 icon/version resource를 포함하지만 unsigned 상태로 빌드됩니다.
+[버전 기록 및 다운로드](../../README.md#version-history) · [릴리스 준비 및 게시 가이드 (영어)](../RELEASING.md).
 
 ## 라이선스
 
