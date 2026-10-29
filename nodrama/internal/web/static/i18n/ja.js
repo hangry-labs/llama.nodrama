@@ -83,6 +83,7 @@ I18N.ja = {
     "api_docs.intro":    "llama.nodrama が提供するエンドポイントです。ローカルスクリプト、監視、エージェントから利用できます。変更系 API はサーバー状態を変更する場合があります。",
     "api_docs.base_url": "ベース URL",
     "error.fetch_failed":     "リクエスト失敗",
+    "error.timeout":          "{seconds}秒でリクエストがタイムアウトしました",
     "error.parse_failed":     "レスポンスを解析できません",
     "error.metrics_disabled": "metrics エンドポイントが利用できません — llama-server を --metrics で起動してください",
     "error.slots_disabled":   "slots エンドポイントが利用できません — --no-slots を付けないでください",

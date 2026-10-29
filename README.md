@@ -176,6 +176,14 @@ Parallel stress requests use the first completed reply in request order for
 history and label that reply. Token statistics use server usage when available;
 otherwise the footer shows characters.
 
+Parallel chat launches up to eight upstream requests from Go and streams the
+indexed replies over one browser connection. This leaves monitoring responsive
+on HTTP/1 connections while llama.cpp queues requests beyond its slot count.
+**Stop** cancels both running and queued requests. The UI uses
+`POST /api/chat/completions/batch?count=2` (count 1–8, streaming JSON request,
+4 MiB body limit); its NDJSON frames carry a reply index and headers, base64
+data, completion, or error. Individual request failures leave other replies running.
+
 Raster artwork, documentation screenshots and browser icons use WebP. Windows
 builds decode the WebP icon sources into ignored `winres/generated/` PNG
 intermediates for native executable resources; no PNG/JPG source assets are

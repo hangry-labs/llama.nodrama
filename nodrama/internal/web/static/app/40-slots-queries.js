@@ -407,10 +407,11 @@ function startCorePollers() {
   ensureSlotsSection();
   ensureQueriesSection();
 
-  startPoller("snapshot", state.params.poll, async () => {
+  startPoller("snapshot", state.params.poll, async signal => {
     try {
-      await refreshSnapshot();
+      await refreshSnapshot({ signal });
     } catch (e) {
+      if (e.aborted) throw e;
       state.ui.snapshotStale = true;
       renderDiagnosticStatus();
       setStatus("error", "header.status.error");

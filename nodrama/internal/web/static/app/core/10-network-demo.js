@@ -207,10 +207,12 @@ async function fetchText(path, opts) {
 async function fetchEndpoint(path, opts, kind) {
   const o = opts || {};
   const ctrl = new AbortController();
+  let timedOut = false;
   const abort = () => ctrl.abort();
   if (o.signal?.aborted) abort();
   else o.signal?.addEventListener("abort", abort, { once: true });
-  const timer = setTimeout(abort, o.timeout || 8000);
+  const timeout = o.timeout || 8000;
+  const timer = setTimeout(() => { timedOut = true; abort(); }, timeout);
   try {
     const res = await fetch(endpoint(path, o.withModel !== false), {
       method: o.method || "GET",
@@ -239,6 +241,10 @@ async function fetchEndpoint(path, opts, kind) {
     return res;
   } catch (e) {
     if (e.name === "AbortError") {
+      if (timedOut) {
+        const error = new Error(t("error.timeout", { seconds: timeout / 1000 }));
+        error.name = "TimeoutError"; error.timedOut = true; throw error;
+      }
       const ae = new Error("aborted"); ae.aborted = true; throw ae;
     }
     throw e;

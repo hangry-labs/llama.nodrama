@@ -26,6 +26,7 @@ type chatRequestMetadata struct {
 
 func registerAPIProxies(mux *http.ServeMux, dashboard *Dashboard) error {
 	mux.Handle("POST /api/chat/completions", chatCompletionsHandler(dashboard))
+	mux.Handle("POST /api/chat/completions/batch", chatBatchHandler(dashboard))
 	mux.Handle("POST /api/models/load", fixedPathProxy(dashboard, "/api/models/load", "/models/load"))
 	mux.Handle("POST /api/models/unload", fixedPathProxy(dashboard, "/api/models/unload", "/models/unload"))
 	mux.Handle("POST /api/slots/{id}/save", slotActionProxy(dashboard, "save"))
@@ -93,13 +94,25 @@ func serveTrackedProxy(w http.ResponseWriter, r *http.Request, dashboard *Dashbo
 		proxyErr = err.Error()
 		http.Error(w, "upstream error: "+err.Error(), http.StatusBadGateway)
 	}
+	defer func() {
+		interrupted := recover()
+		if interrupted != nil {
+			proxyErr = "upstream response interrupted"
+		}
+		status := tracker.status
+		if status == 0 {
+			status = http.StatusOK
+		}
+		usage := tracker.usage.finish()
+		if r.Context().Err() != nil && !tracker.usage.complete {
+			proxyErr = r.Context().Err().Error()
+		}
+		dashboard.FinishRequest(requestID, status, tracker.bytes, usage, proxyErr)
+		if interrupted != nil {
+			panic(interrupted)
+		}
+	}()
 	proxy.ServeHTTP(tracker, r)
-
-	status := tracker.status
-	if status == 0 {
-		status = http.StatusOK
-	}
-	dashboard.FinishRequest(requestID, status, tracker.bytes, tracker.usage.finish(), proxyErr)
 }
 
 func reverseProxy(target *url.URL, upstreamPath, upstreamQuery string) *httputil.ReverseProxy {
@@ -195,9 +208,10 @@ func (w *trackingResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 }
 
 type usageAccumulator struct {
-	buf   []byte
-	usage TokenUsage
-	seen  bool
+	buf      []byte
+	usage    TokenUsage
+	seen     bool
+	complete bool
 }
 
 func (u *usageAccumulator) add(p []byte) {
@@ -239,7 +253,11 @@ func (u *usageAccumulator) parseLine(line string) {
 	}
 	if strings.HasPrefix(line, "data:") {
 		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-		if payload == "" || payload == "[DONE]" {
+		if payload == "[DONE]" {
+			u.complete = true
+			return
+		}
+		if payload == "" {
 			return
 		}
 		u.parseJSON([]byte(payload))
@@ -250,6 +268,9 @@ func (u *usageAccumulator) parseLine(line string) {
 
 func (u *usageAccumulator) parseJSON(payload []byte) {
 	var envelope struct {
+		Choices []struct {
+			FinishReason *string `json:"finish_reason"`
+		} `json:"choices"`
 		Usage struct {
 			PromptTokens     int `json:"prompt_tokens"`
 			CompletionTokens int `json:"completion_tokens"`
@@ -258,6 +279,11 @@ func (u *usageAccumulator) parseJSON(payload []byte) {
 	}
 	if err := json.Unmarshal(payload, &envelope); err != nil {
 		return
+	}
+	for _, choice := range envelope.Choices {
+		if choice.FinishReason != nil {
+			u.complete = true
+		}
 	}
 	if envelope.Usage.PromptTokens == 0 && envelope.Usage.CompletionTokens == 0 && envelope.Usage.TotalTokens == 0 {
 		return

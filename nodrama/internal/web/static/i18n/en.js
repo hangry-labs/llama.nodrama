@@ -88,6 +88,7 @@ I18N.en = {
     "api_docs.base_url": "Base URL",
 
     "error.fetch_failed":       "Request failed",
+    "error.timeout":            "Request timed out after {seconds}s",
     "error.parse_failed":       "Could not parse response",
     "error.metrics_disabled":   "metrics endpoint not available — start llama-server with --metrics",
     "error.slots_disabled":     "slots endpoint not available — start llama-server without --no-slots",

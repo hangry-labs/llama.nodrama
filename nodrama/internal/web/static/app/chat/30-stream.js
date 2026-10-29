@@ -18,6 +18,7 @@ async function sendChat() {
   const userTarget = appendChatMessage("user", text);
   const n = Math.max(1, Math.min(8, chat.params.fanout | 0));
   const targets = [];
+  let batch;
 
   try {
     for (let k = 0; k < n; k++) {
@@ -43,8 +44,9 @@ async function sendChat() {
 
     const url = endpoint("/api/chat/completions", false);
     const t0 = Date.now();
+    if (n > 1 && !state.params?.demo) batch = openChatBatch(url, payload, ctrl.signal, n);
     const results = await Promise.allSettled(targets.map((target, index) =>
-      streamOne(url, payload, ctrl.signal, target, t0, index, n)));
+      streamOne(url, payload, ctrl.signal, target, t0, index, n, batch?.responses[index])));
     // Fanout history is deterministic: prefer the lowest-index completed reply,
     // then a stopped partial reply. Failed/interrupted output stays out of history.
     let selectedIndex = results.findIndex(r => r.status === "fulfilled" && r.value.status === "complete");
@@ -78,6 +80,7 @@ async function sendChat() {
     if (userTarget) userTarget.stats.textContent = t("chat.excluded");
     setChatStats(t("chat.error") + ": " + error.message);
   } finally {
+    batch?.close();
     chat.inflight = null;
     setSendingUI(false);
     if (chat.open) ta.focus();
@@ -96,7 +99,7 @@ function chatStreamStats(reply, t0) {
   return elapsed + " · " + (reply.content.length + reply.reasoning.length) + " " + t("chat.chars");
 }
 
-async function streamOne(url, payload, signal, target, t0, index, total) {
+async function streamOne(url, payload, signal, target, t0, index, total, batchResponse) {
   let reply = { content: "", reasoning: "", usage: null };
   let timer = null;
   const prefix = total > 1 ? "#" + (index + 1) + "/" + total + " — " : "";
@@ -108,11 +111,11 @@ async function streamOne(url, payload, signal, target, t0, index, total) {
     scrollChatIfNearBottom();
   };
   try {
-    const response = await fetch(url, {
+    const response = await (batchResponse || fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
       body: JSON.stringify(payload), signal,
-    });
+    }));
     if (!response.ok) {
       const body = await response.text();
       throw new Error("HTTP " + response.status + (body ? ": " + body.slice(0, 200) : ""));

@@ -83,6 +83,7 @@ I18N.ko = {
     "api_docs.intro":    "llama.nodrama가 제공하는 엔드포인트입니다. 로컬 스크립트, 모니터, 에이전트에서 사용할 수 있으며 변경 API는 서버 상태를 바꿀 수 있습니다.",
     "api_docs.base_url": "기본 URL",
     "error.fetch_failed":     "요청 실패",
+    "error.timeout":          "{seconds}초 후 요청 시간이 초과되었습니다",
     "error.parse_failed":     "응답을 해석할 수 없음",
     "error.metrics_disabled": "metrics 엔드포인트를 사용할 수 없습니다 — llama-server를 --metrics 옵션으로 실행하세요",
     "error.slots_disabled":   "slots 엔드포인트를 사용할 수 없습니다 — --no-slots 없이 실행하세요",

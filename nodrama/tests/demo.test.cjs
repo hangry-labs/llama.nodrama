@@ -128,6 +128,7 @@ test('fetch timeout still applies while reading a body with a caller signal', { 
     AbortController, setTimeout, clearTimeout, URL,
     state: { mode: 'single' }, window: { location: { origin: 'http://localhost' } },
     external: new AbortController(),
+    t: (_key, values) => `Timed out after ${values.seconds}s`,
     fetch: async (_url, { signal }) => new Response(new ReadableStream({
       start(controller) {
         signal.addEventListener('abort', () => controller.error(new DOMException('Stopped', 'AbortError')));
@@ -136,6 +137,21 @@ test('fetch timeout still applies while reading a body with a caller signal', { 
   });
   vm.runInContext(fs.readFileSync(path.join(core, '10-network-demo.js'), 'utf8'), context);
   await assert.rejects(vm.runInContext('fetchJSON("/api/snapshot", { timeout: 15, signal: external.signal })', context),
-    error => error.aborted === true);
+    error => error.timedOut === true && !error.aborted && /Timed out/.test(error.message));
   assert.equal(context.external.signal.aborted, false);
+});
+
+test('caller cancellation remains distinct from a monitoring timeout', async () => {
+  const context = vm.createContext({
+    AbortController, setTimeout, clearTimeout, URL,
+    state: { mode: 'single' }, window: { location: { origin: 'http://localhost' } },
+    external: new AbortController(),
+    fetch: (_url, { signal }) => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new DOMException('Stopped', 'AbortError')));
+    }),
+  });
+  vm.runInContext(fs.readFileSync(path.join(core, '10-network-demo.js'), 'utf8'), context);
+  const pending = vm.runInContext('fetchJSON("/api/snapshot", { signal: external.signal })', context);
+  context.external.abort();
+  await assert.rejects(pending, error => error.aborted === true && !error.timedOut);
 });

@@ -15,9 +15,9 @@ function harness(fetchImpl) {
   const input = { value: '', style: {}, focus() {} };
   const targets = [], calls = [], headers = [];
   const context = vm.createContext({
-    TextDecoder, Response, ReadableStream, AbortController, DOMException,
+    TextDecoder, Response, ReadableStream, AbortController, DOMException, atob,
     setTimeout, clearTimeout, Date, console,
-    state: { selectedModel: 'synthetic-model', models: [], v1models: [] },
+    state: { params: { demo: '1' }, selectedModel: 'synthetic-model', models: [], v1models: [] },
     $: selector => selector === '#chat-input' ? input : null,
     t: key => key,
     endpoint: value => value,
@@ -259,4 +259,83 @@ test('only the selected stopped fanout reply is labelled as kept in history', as
   assert.match(h.targets[0].stats.textContent, /chat.partial_history/);
   assert.doesNotMatch(h.targets[1].stats.textContent, /chat.partial_history/);
   assert.match(h.targets[1].stats.textContent, /chat.excluded/);
+});
+
+const batchHeaders = (index, status = 200) => ({ index, type: 'headers', status, contentType: 'text/event-stream' });
+const batchData = (index, value) => ({ index, type: 'data', data: Buffer.from(value).toString('base64') });
+const batchDone = index => ({ index, type: 'done' });
+const batchResponse = frames => new Response(frames.map(frame => JSON.stringify(frame) + '\n').join(''),
+  { headers: { 'Content-Type': 'application/x-ndjson' } });
+
+test('real fanout shares one connection and isolates failures with deterministic history', async () => {
+  const h = harness(url => {
+    assert.equal(url, '/api/chat/completions/batch?count=3');
+    return batchResponse([
+      batchHeaders(2), batchData(2, delta('reply 2') + done), batchDone(2),
+      batchHeaders(0, 503), batchData(0, 'unavailable'), batchDone(0),
+      batchHeaders(1), batchData(1, delta('héllo 🦙') + done), batchDone(1),
+    ]);
+  });
+  h.context.state.params.demo = '';
+  h.chat.params.fanout = 3;
+  h.input.value = 'parallel';
+  await h.run('sendChat()');
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.chat.messages[1].content, 'héllo 🦙');
+  assert.match(h.targets[0].stats.textContent, /503/);
+  assert.match(h.targets[1].stats.textContent, /chat.history_reply/);
+});
+
+test('batch decoding preserves every UTF-8 byte boundary through interleaved streams', async () => {
+  const frames = [batchHeaders(0), batchHeaders(1)];
+  for (const byte of encode(delta('héllo 🦙') + done)) {
+    frames.push(batchData(0, Uint8Array.of(byte)), batchData(1, Uint8Array.of(byte)));
+  }
+  frames.push(batchDone(0), batchDone(1));
+  const bytes = encode(frames.map(frame => JSON.stringify(frame) + '\n').join(''));
+  const h = harness(() => new Response(body(Array.from(bytes, byte => Uint8Array.of(byte))),
+    { headers: { 'Content-Type': 'application/x-ndjson' } }));
+  h.context.state.params.demo = '';
+  h.chat.params.fanout = 2; h.input.value = 'test';
+  await h.run('sendChat()');
+  assert.equal(h.chat.messages[1].content, 'héllo 🦙');
+  assert.equal(h.targets[1].body.text, 'héllo 🦙');
+});
+
+test('batch truncation and malformed frames fail all unfinished replies and restore input', async t => {
+  for (const frames of [[], [batchHeaders(0), batchData(0, delta('partial'))],
+    [batchHeaders(0, 9999)], [{ index: 99, type: 'done' }]]) {
+    await t.test(JSON.stringify(frames), async () => {
+      const h = harness(() => batchResponse(frames));
+      h.context.state.params.demo = '';
+      h.chat.params.fanout = 2; h.input.value = 'retry';
+      await h.run('sendChat()');
+      assert.equal(h.input.value, 'retry');
+      assert.equal(h.chat.messages.length, 0);
+      assert.equal(h.chat.inflight, null);
+    });
+  }
+});
+
+test('stopping a batch cancels replies still waiting for upstream headers', async () => {
+  let ready, cancelled = false;
+  const started = new Promise(resolve => { ready = resolve; });
+  const h = harness((_url, options) => new Response(new ReadableStream({
+    start(controller) {
+      options.signal.addEventListener('abort', () => {
+        cancelled = true; controller.error(new DOMException('Stopped', 'AbortError'));
+      });
+      ready();
+    },
+  }), { headers: { 'Content-Type': 'application/x-ndjson' } }));
+  h.context.state.params.demo = '';
+  h.chat.params.fanout = 8; h.input.value = 'retry';
+  const pending = h.run('sendChat()');
+  await started;
+  h.run('stopChat()');
+  await pending;
+  assert.equal(cancelled, true);
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.input.value, 'retry');
+  assert.equal(h.chat.messages.length, 0);
 });

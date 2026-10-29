@@ -83,6 +83,7 @@ I18N["zh-CN"] = {
     "api_docs.intro":    "这些是 llama.nodrama 提供的端点，可供本地脚本、监控和代理使用；会修改状态的 API 可能改变服务器状态。",
     "api_docs.base_url": "基础 URL",
     "error.fetch_failed":     "请求失败",
+    "error.timeout":          "请求在 {seconds} 秒后超时",
     "error.parse_failed":     "无法解析响应",
     "error.metrics_disabled": "metrics 端点不可用 — 启动 llama-server 时请加 --metrics",
     "error.slots_disabled":   "slots 端点不可用 — 启动时请勿使用 --no-slots",

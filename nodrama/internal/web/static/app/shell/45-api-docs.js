@@ -27,6 +27,7 @@ const API_DOC_GROUPS = [
     title: "Tracked llama.cpp proxy API",
     items: [
       ["POST", "/api/chat/completions", "Proxy to llama.cpp /v1/chat/completions. Requests are tracked so they appear in Queries."],
+      ["POST", "/api/chat/completions/batch?count=2", "Launch 1–8 streaming requests over one browser connection. JSON body up to 4 MiB; NDJSON replies contain index, headers/data/done/error frames. Data is base64 encoded. Closing the connection cancels all requests."],
       ["POST", "/api/models/load", "Proxy to llama.cpp /models/load."],
       ["POST", "/api/models/unload", "Proxy to llama.cpp /models/unload."],
       ["POST", "/api/slots/{id}/save", "Proxy slot action=save for one slot."],

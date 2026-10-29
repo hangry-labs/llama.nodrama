@@ -83,6 +83,7 @@ I18N.es = {
     "api_docs.intro":    "Endpoints servidos por llama.nodrama. Úsalos desde scripts locales, monitores y agentes; los endpoints de modificación pueden cambiar el estado del servidor.",
     "api_docs.base_url": "URL base",
     "error.fetch_failed":     "La petición falló",
+    "error.timeout":          "La petición agotó el tiempo de espera tras {seconds}s",
     "error.parse_failed":     "No se pudo analizar la respuesta",
     "error.metrics_disabled": "El endpoint metrics no está disponible — inicia llama-server con --metrics",
     "error.slots_disabled":   "El endpoint slots no está disponible — inicia sin --no-slots",
