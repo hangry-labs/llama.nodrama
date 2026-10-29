@@ -57,6 +57,11 @@ function stopAllPollers() {
   state.pollers = [];
 }
 
+function stopPoller(name) {
+  for (const poller of state.pollers) if (poller.name === name) poller.stop();
+  state.pollers = state.pollers.filter(poller => poller.name !== name);
+}
+
 /* Pause / resume hook for keyboard shortcuts. */
 function setPaused(v) {
   state.paused = !!v;
@@ -71,10 +76,15 @@ function setPaused(v) {
   }
 }
 
-/* When the tab is hidden, abort in-flight requests and pause —
- * resume on visibility. Cheap battery / server-load saver. */
+/* Preserve a manual pause across tab changes. Pollers skip new work while hidden. */
+let resumeWhenVisible = false;
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) setPaused(true);
-  else setPaused(false);
+  if (document.hidden) {
+    resumeWhenVisible = !state.paused;
+    setPaused(true);
+  } else if (resumeWhenVisible) {
+    resumeWhenVisible = false;
+    setPaused(false);
+  }
 });
 

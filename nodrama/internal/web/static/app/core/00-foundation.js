@@ -135,6 +135,8 @@ function el(tag, attrs, children) {
       node.addEventListener(k.slice(2), attrs[k]);
     } else if (k === "data") {
       for (const dk in attrs.data) node.dataset[dk] = attrs.data[dk];
+    } else if (["hidden", "disabled", "checked", "selected", "readonly", "multiple"].includes(k)) {
+      if (attrs[k]) node.setAttribute(k, "");
     } else if (attrs[k] !== undefined && attrs[k] !== null) {
       node.setAttribute(k, attrs[k]);
     }

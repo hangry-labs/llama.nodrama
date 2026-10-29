@@ -154,6 +154,7 @@ function parseLaunchArgs(args) {
   if (!Array.isArray(args)) return out;
   for (let i = 0; i < args.length; i++) {
     const token = String(args[i]);
+    if (token === "--") break;
     if (!token.startsWith("-")) continue;
     let label = token;
     let value = true;
@@ -161,7 +162,8 @@ function parseLaunchArgs(args) {
     if (eq > 0) {
       label = token.slice(0, eq);
       value = token.slice(eq + 1);
-    } else if (i + 1 < args.length && !String(args[i + 1]).startsWith("-")) {
+    } else if (i + 1 < args.length && (!String(args[i + 1]).startsWith("-")
+        || /^-\d/.test(String(args[i + 1])) || args[i + 1] === "-")) {
       value = String(args[i + 1]);
       i++;
     }

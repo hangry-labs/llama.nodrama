@@ -366,7 +366,7 @@ function shortCacheKey(key) {
 
 /* Boot wiring → one backend snapshot poller. */
 function startCorePollers() {
-  stopAllPollers();
+  stopPoller("snapshot");
   ensureMetricCards();
   ensureSlotsSection();
   ensureQueriesSection();
@@ -386,6 +386,7 @@ function startCorePollers() {
  *  Keyboard shortcuts and last-update ticker.
  * ──────────────────────────────────────────────────────────────────── */
 document.addEventListener("keydown", (e) => {
+  if (e.target && e.target.closest && e.target.closest("input, textarea, select, button, a, summary, [role='button'], [role='dialog'], [contenteditable='true']")) return;
   /* don't steal keys when the user is typing in an input/select/etc. */
   const tag = (e.target && e.target.tagName) || "";
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag)) return;

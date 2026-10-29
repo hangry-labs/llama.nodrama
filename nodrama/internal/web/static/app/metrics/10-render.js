@@ -18,6 +18,7 @@ function ensureMetricCards() {
         openMetricHistory(c);
       },
       onkeydown: (e) => {
+        if (e.target && e.target.closest && e.target.closest("button")) return;
         if (e.key !== "Enter" && e.key !== " ") return;
         e.preventDefault();
         openMetricHistory(c);

@@ -93,7 +93,11 @@ func buildTarget(target target, version, commit, buildDate string, matrixName bo
 	}
 	out := filepath.Join("bin", name)
 
-	ldflags := fmt.Sprintf("-s -w -X main.version=%s -X main.commit=%s -X main.date=%s", version, commit, buildDate)
+	stripFlags := "-s -w"
+	if target.goos == "windows" {
+		stripFlags = ""
+	}
+	ldflags := fmt.Sprintf("%s -X main.version=%s -X main.commit=%s -X main.date=%s", stripFlags, version, commit, buildDate)
 	cmd := exec.Command("go", "build", "-trimpath", "-ldflags", ldflags, "-o", out, ".")
 	cmd.Env = append(os.Environ(),
 		"CGO_ENABLED=0",

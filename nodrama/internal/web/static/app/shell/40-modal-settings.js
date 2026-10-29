@@ -21,13 +21,17 @@ function onModelSelect(id) {
  *  We never call window.confirm so we can show formatted body and avoid
  *  the browser-native dialog blocking the event loop.
  * ──────────────────────────────────────────────────────────────────── */
+let modalSequence = 0;
 function showModal({ title, bodyNode, okLabel, onOk, mutating, wide }) {
-  const back = el("div", { class: "modal-backdrop", role: "dialog", "aria-modal": "true" });
+  const previousFocus = document.activeElement;
+  const titleId = "modal-title-" + (++modalSequence);
+  const back = el("div", { class: "modal-backdrop", role: "dialog", "aria-modal": "true", "aria-labelledby": titleId });
   let onKey;
   const errorNode = el("div", { class: "error", hidden: true }, "");
   const close = () => {
     back.remove();
     if (onKey) document.removeEventListener("keydown", onKey);
+    if (previousFocus && previousFocus.isConnected) previousFocus.focus();
   };
   const isAction = typeof onOk === "function";
   const ok = el("button", { class: isAction ? "primary" : "", onclick: async () => {
@@ -54,7 +58,7 @@ function showModal({ title, bodyNode, okLabel, onOk, mutating, wide }) {
         ? "modal.warn_router" : "modal.warn_server"))
     : null;
   const m = el("div", { class: wide ? "modal wide" : "modal" }, [
-    el("h3", null, title),
+    el("h3", { id: titleId }, title),
     el("div", { class: "body" }, bodyNode),
     warnNode,
     errorNode,
@@ -64,7 +68,16 @@ function showModal({ title, bodyNode, okLabel, onOk, mutating, wide }) {
   back.addEventListener("click", (e) => { if (e.target === back) close(); });
   document.body.appendChild(back);
   /* Esc closes — listen on document so focus position doesn't matter */
-  onKey = (e) => { if (e.key === "Escape") close(); };
+  onKey = (e) => {
+    if (e.key === "Escape") { e.preventDefault(); close(); }
+    if (e.key === "Tab") {
+      const items = Array.from(back.querySelectorAll("button, input, select, textarea, a[href], [tabindex='0']"))
+        .filter(node => !node.disabled && node.getClientRects().length > 0);
+      const first = items[0], last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  };
   document.addEventListener("keydown", onKey);
   ok.focus();
 }
@@ -88,6 +101,8 @@ async function openSettingsModal() {
     body.innerHTML = "";
     fields.server = el("input", { type: "url", value: loaded.server || "", placeholder: "http://127.0.0.1:8080" });
     fields.logPath = el("input", { type: "text", value: loaded.logPath || "", placeholder: "/path/to/llama.cpp.log" });
+    fields.server.disabled = !!state.params.demo;
+    fields.logPath.disabled = !!state.params.demo;
     fields.poll = el("input", { type: "number", min: "200", max: "60000", step: "50", value: String(loaded.pollIntervalMs || 1000) });
     fields.timeout = el("input", { type: "number", min: "250", max: "120000", step: "250", value: String(loaded.timeoutMs || 5000) });
     body.append(

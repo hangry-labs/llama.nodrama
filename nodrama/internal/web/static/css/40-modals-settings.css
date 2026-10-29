@@ -6,15 +6,17 @@
   }
   .modal {
     background: var(--bg-2); border: 1px solid var(--border);
-    border-radius: 10px; padding: 16px 18px; min-width: 280px;
+    border-radius: 10px; padding: 16px 18px; min-width: min(280px, 100%);
+    max-height: calc(100dvh - 40px);
     max-width: 480px; box-shadow: 0 10px 40px #000c;
     display: flex; flex-direction: column; gap: 10px;
   }
   .modal.wide { width: min(980px, calc(100vw - 40px)); max-width: none; }
-  .modal h3 { margin: 0; font-size: 14px; }
-  .modal .body { color: var(--fg-dim); font-size: 13px; line-height: 1.5; }
+  .modal h3 { margin: 0; font-size: 14px; overflow-wrap: anywhere; flex-shrink: 0; }
+  .modal .body { color: var(--fg-dim); font-size: 13px; line-height: 1.5;
+    min-height: 0; min-width: 0; overflow: auto; overflow-wrap: anywhere; }
   .modal .body code { color: var(--fg); }
-  .modal .actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .modal .actions { display: flex; gap: 8px; justify-content: flex-end; flex-shrink: 0; }
   .modal .actions button.primary { background: #1f4a7a; border-color: #2f6db1; color: #cfe3ff; }
   .modal .warn { color: var(--warn); font-size: 12px; }
   .modal .error { color: var(--bad); font-size: 12px; }

@@ -17,6 +17,16 @@ The dashboard intentionally uses plain browser scripts and CSS files loaded by
 Compatibility stubs such as `app.js`, `styles.css`, `i18n.js`, and
 `app/50-chat.js` remain only to avoid stale direct references serving old code.
 
+Chat loads `25-transport.js` before `30-stream.js`. The transport reader parses
+SSE events and completion/error markers independently of the DOM. Regression
+checks live in `nodrama/tests/` and use Node's built-in test runner with synthetic
+streams; run `task check` from the repository root for the full development check.
+
+`core/05-demo-data.js` produces normalized demo snapshots on an injectable clock.
+Keep demo fixtures consistent with the Go snapshot contract, including bounded
+histories and cache/query references. Chromium checks under `tests/browser/`
+exercise the actual embedded page; run `task check-browser` separately.
+
 ## CSS
 
 CSS is split by UI area and loaded in cascade order from `index.html`.

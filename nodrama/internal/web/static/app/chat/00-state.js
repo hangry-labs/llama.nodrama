@@ -32,14 +32,15 @@ const chat = {
   },
 };
 
-/* Keep the most recent turns. A turn is one user + one assistant message,
- * so we cap at 2 * CHAT_HISTORY_MAX_TURNS entries. Drop from the front so
- * the assistant still sees the most recent context. */
+/* Evict whole turns, including when the newest user is still awaiting a reply. */
 function trimChatHistory() {
-  const cap = CHAT_HISTORY_MAX_TURNS * 2;
-  if (chat.messages.length > cap) {
-    chat.messages.splice(0, chat.messages.length - cap);
-  }
+  const starts = [];
+  chat.messages.forEach((message, index) => {
+    if (message.role === "user") starts.push(index);
+  });
+  const first = starts[Math.max(0, starts.length - CHAT_HISTORY_MAX_TURNS)];
+  if (first === undefined) chat.messages = [];
+  else if (first > 0) chat.messages.splice(0, first);
 }
 
 function chatMaxTokenLimit() {

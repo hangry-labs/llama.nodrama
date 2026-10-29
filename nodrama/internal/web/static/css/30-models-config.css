@@ -7,7 +7,7 @@
   .kv-table .v { color: var(--fg); word-break: break-all; }
   .option-grid {
     display: grid; gap: 2px 18px;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
   }
   .option-card {
     border-bottom: 1px solid var(--border);
@@ -38,22 +38,18 @@
   }
   .option-card .option-value {
     font-family: var(--mono); font-size: 12px;
-    color: var(--fg); word-break: break-all;
+    color: var(--fg); min-width: 0; overflow-wrap: anywhere;
   }
   .option-card .option-source {
     display: none;
   }
-  @media (max-width: 1100px) {
-    .option-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  }
-  @media (max-width: 720px) {
-    .option-grid { grid-template-columns: 1fr; }
-  }
   .model-list {
     display: grid; gap: 8px;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+    align-items: start;
   }
   .model-card {
+    min-width: 0;
     background: var(--bg-3); border: 1px solid var(--border);
     border-radius: 8px; padding: 8px 10px;
     display: flex; flex-direction: column; gap: 6px;

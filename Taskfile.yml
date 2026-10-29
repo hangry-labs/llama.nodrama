@@ -1,6 +1,20 @@
 version: "3"
 
 tasks:
+  check-browser:
+    desc: Install browser test dependencies and run Chromium regressions
+    dir: nodrama
+    cmds:
+      - npm ci
+      - npx playwright install chromium
+      - npm run test:browser
+
+  check:
+    desc: Check Go formatting, vet, tests, and browser script regressions (requires Node.js 22+)
+    dir: nodrama
+    cmds:
+      - go run ./tools/check
+
   build:
     desc: Build local binary for the current OS/architecture into nodrama/bin
     dir: nodrama

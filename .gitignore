@@ -1,4 +1,5 @@
 # Local editor state
+.ai/
 AGENTS.md
 .idea/
 .vscode/
@@ -19,6 +20,9 @@ keys/
 *.pfx
 
 # Runtime output
+node_modules/
+test-results/
+playwright-report/
 logs/
 runtime/
 tmp/

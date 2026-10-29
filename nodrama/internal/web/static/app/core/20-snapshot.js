@@ -123,7 +123,8 @@ function applySnapshot(snapshot, opts) {
   const o = opts || {};
   state.snapshot = snapshot || null;
   state.mode = snapshot && snapshot.mode === "router" ? "router" : "single";
-  state.props = propsFromSnapshot(snapshot && snapshot.props);
+  const propsProbe = snapshot && snapshot.endpoints && snapshot.endpoints.props;
+  state.props = propsProbe && propsProbe.ok ? propsFromSnapshot(snapshot.props) : null;
   state.v1models = ((snapshot && snapshot.models) || []).map(modelFromSnapshot).filter(Boolean);
   state.models = state.mode === "router" && Array.isArray(snapshot && snapshot.routerModels)
     ? snapshot.routerModels

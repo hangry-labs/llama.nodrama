@@ -280,6 +280,9 @@ I18N["zh-CN"] = {
     "chat.tok":                "tok",
     "chat.tok_per_s":          "tok/s",
     "chat.chars":              "字符",
+    "chat.history_reply":      "用于对话历史",
+    "chat.partial_history":    "部分回复已保留在历史中",
+    "chat.excluded":           "不会作为对话历史发送",
 
     "footer.attribution": "llama.nodrama 仪表盘"
 };

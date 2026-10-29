@@ -11,19 +11,22 @@ function renderPromptCache(cache) {
         el("h2", null, t("cache.title")),
         el("span", { class: "sub", id: "cache-summary" }, t("cache.empty")),
       ]),
-      el("p", { class: "cache-trace-hint" }, t("cache.trace_hint")),
+      el("p", { class: "cache-trace-hint", id: "cache-trace-hint" }, t("cache.trace_hint")),
       el("div", { class: "cache-bar", id: "cache-bar" }),
     ]));
   }
 
   const summary = $("#cache-summary");
   const bar = $("#cache-bar");
+  const traceHint = $("#cache-trace-hint");
   if (!summary || !bar) return;
   clearRelationHighlightClasses();
   bar.innerHTML = "";
 
   if (!cache || !cache.available) {
     summary.textContent = t("cache.empty");
+    summary.title = "";
+    if (traceHint) traceHint.hidden = false;
     bar.hidden = true;
     return;
   }
@@ -38,6 +41,7 @@ function renderPromptCache(cache) {
   const detailsAvailable = cache.detailsAvailable === true ||
     (cache.detailsAvailable === undefined &&
       (used > 0 || limit > 0 || prompts > 0 || observed > 0 || cache.complete === true));
+  if (traceHint) traceHint.hidden = detailsAvailable;
   if (!detailsAvailable) {
     summary.textContent = t("cache.reuse_only", {
       reused: fmtTokensCompact(reused),

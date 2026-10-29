@@ -308,6 +308,9 @@ I18N.en = {
     "chat.tok":                "tok",
     "chat.tok_per_s":          "tok/s",
     "chat.chars":              "chars",
+    "chat.history_reply":      "Used in history",
+    "chat.partial_history":    "Partial reply kept in history",
+    "chat.excluded":           "Not sent in conversation history",
 
     "footer.attribution":          "llama.nodrama dashboard"
 };

@@ -280,6 +280,9 @@ I18N.es = {
     "chat.tok":                "tok",
     "chat.tok_per_s":          "tok/s",
     "chat.chars":              "caracteres",
+    "chat.history_reply":      "Usada en el historial",
+    "chat.partial_history":    "Respuesta parcial guardada en el historial",
+    "chat.excluded":           "No se envía en el historial de conversación",
 
     "footer.attribution": "Panel llama.nodrama"
 };

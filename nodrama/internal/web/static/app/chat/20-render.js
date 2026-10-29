@@ -40,7 +40,7 @@ function renderChatPanel() {
     rows: "1",
     "aria-label": t("chat.placeholder"),
     onkeydown: (e) => {
-      if (e.key === "Enter" && !e.shiftKey) {
+      if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
         e.preventDefault(); sendChat();
       }
     },
@@ -209,6 +209,7 @@ function applyChatOpenState() {
 function clearChat() {
   if (chat.inflight) return;  /* refuse while a request is in flight */
   chat.messages = [];
+  setChatStats("");
   const msgs = $("#chat-msgs");
   if (msgs) {
     chat.autoScroll = true;
@@ -231,8 +232,15 @@ function appendChatMessage(role, content, opts) {
                   [el("span", { class: "who" }, label),
                    body, stats]);
   msgs.appendChild(node);
-  chat.autoScroll = true;
-  msgs.scrollTop = msgs.scrollHeight;
+  if (role === "user") {
+    const users = msgs.querySelectorAll(".chat-msg.user");
+    if (users.length > CHAT_HISTORY_MAX_TURNS) {
+      const first = users[users.length - CHAT_HISTORY_MAX_TURNS];
+      while (msgs.firstChild && msgs.firstChild !== first) msgs.firstChild.remove();
+    }
+    chat.autoScroll = true;
+  }
+  scrollChatIfNearBottom();
   return { body, stats, node };
 }
 

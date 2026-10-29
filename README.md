@@ -88,6 +88,43 @@ go test ./...
 go build -o llama-nodrama .
 ```
 
+For development, run `task check` from the repository root, or:
+
+```sh
+cd nodrama
+go run ./tools/check
+```
+
+This requires Go 1.25 and Node.js 22 or newer. It checks Go formatting, vet,
+Go tests, browser script syntax and loading order, translation keys, and chat
+stream/history regressions. No npm packages, GPU, or running model are needed.
+To run just the chat regressions: `node --test tests/chat.test.cjs` from `nodrama`.
+
+For browser regression tests, run `task check-browser`, or from `nodrama`:
+
+```sh
+npm ci
+npx playwright install chromium
+npm run test:browser
+```
+
+These launch a temporary local dashboard and check offline mode, demo charts,
+cache/slot/query links, launch-option layouts, model/settings actions and chat
+at phone, tablet and desktop widths. CI runs them in Chromium. Browser testing
+uses development dependencies only; distributed binaries still need no Node.js.
+
+For a manual preview without llama.cpp, open `/?demo=1` or `/?demo=router` on
+the local dashboard. Demo activity, histories, cache, logs and model/slot actions
+are synthetic and stay in the browser. Demo server/log settings are read-only;
+polling and timeout controls apply to the preview.
+
+Chat keeps up to 40 turns in memory; reloading clears the conversation. Stopped
+partial replies are labelled and retained in history. Failed or interrupted
+turns are excluded from outgoing history and the input is restored for retry.
+Parallel stress requests use the first completed reply in request order for
+history and label that reply. Token statistics use server usage when available;
+otherwise the footer shows characters.
+
 Useful flags:
 
 ```text
@@ -115,8 +152,10 @@ to Hangry Labs. See [PRIVACY.md](PRIVACY.md) for the full privacy statement.
 
 ## Releases
 
-CI runs Go formatting, vet, tests, and cross-platform builds on pushes and pull
-requests to `main`.
+CI runs the development checks on Linux, Windows, and macOS, plus Go race tests
+and Chromium regressions on Linux, and six cross-platform builds on pushes and
+pull requests to `main`.
+Release builds run the same Go and UI checks before packaging.
 
 The source version lives in `nodrama/VERSION`. Snapshot builds use
 `vX.Y.Z-SNAPSHOT`; release tags use the finalized `vX.Y.Z` form.

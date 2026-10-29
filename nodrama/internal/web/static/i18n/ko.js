@@ -280,6 +280,9 @@ I18N.ko = {
     "chat.tok":                "tok",
     "chat.tok_per_s":          "tok/s",
     "chat.chars":              "글자",
+    "chat.history_reply":      "대화 기록에 사용됨",
+    "chat.partial_history":    "부분 응답이 대화 기록에 유지됨",
+    "chat.excluded":           "대화 기록으로 전송되지 않음",
 
     "footer.attribution": "llama.nodrama 대시보드"
 };

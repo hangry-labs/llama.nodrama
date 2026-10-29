@@ -280,6 +280,9 @@ I18N.ja = {
     "chat.tok":                "tok",
     "chat.tok_per_s":          "tok/s",
     "chat.chars":              "文字",
+    "chat.history_reply":      "履歴に使用",
+    "chat.partial_history":    "途中の応答を履歴に保持",
+    "chat.excluded":           "会話履歴には送信されません",
 
     "footer.attribution": "llama.nodrama ダッシュボード"
 };

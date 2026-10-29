@@ -17,6 +17,8 @@
     --radius: 10px;
   }
   * { box-sizing: border-box; }
+  /* Component display rules must not override native visibility state. */
+  [hidden] { display: none !important; }
   html, body {
     margin: 0; padding: 0;
     background: var(--bg);
