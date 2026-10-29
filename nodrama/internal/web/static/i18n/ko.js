@@ -1,6 +1,12 @@
 "use strict";
 
 I18N.ko = {
+    "diagnostics.requests": "요청 부하",
+    "diagnostics.capacity": "컨텍스트 및 리소스",
+    "chat.description": "모델을 테스트하며 실시간 진단을 확인하세요.",
+    "settings.storage": "이 서버의 설정 저장 위치",
+    "settings.storage_disabled": "이 인스턴스에서는 설정 저장이 비활성화되어 있습니다.",
+    "settings.storage_demo": "데모 설정은 이 미리보기에만 적용됩니다.",
     "header.status.demo": "데모",
     "app.title": "llama.nodrama",
     "diagnostics.navigation_overview": "개요",

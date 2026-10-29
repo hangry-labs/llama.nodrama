@@ -1,6 +1,12 @@
 "use strict";
 
 I18N.es = {
+    "diagnostics.requests": "Carga de solicitudes",
+    "diagnostics.capacity": "Contexto y recursos",
+    "chat.description": "Prueba tu modelo y observa los diagnósticos en vivo.",
+    "settings.storage": "Ajustes guardados en este servidor",
+    "settings.storage_disabled": "La persistencia está desactivada en esta instancia.",
+    "settings.storage_demo": "Los ajustes de demostración solo se aplican a esta vista previa.",
     "header.status.demo": "Demo",
     "app.title": "llama.nodrama",
     "diagnostics.navigation_overview": "Resumen",

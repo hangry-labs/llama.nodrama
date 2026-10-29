@@ -80,6 +80,29 @@ server URL, log path, backend poll interval, and upstream timeout. Changing the
 server or log path resets collected dashboard history so old and new targets do
 not mix. The listen address and raw proxy routes are startup-only settings.
 
+Settings now persist across restarts in `settings.json` under the current user's
+configuration folder:
+
+| Platform | Default folder |
+| --- | --- |
+| Windows | `%APPDATA%\llama-nodrama` |
+| Linux | `$XDG_CONFIG_HOME/llama-nodrama`, or `~/.config/llama-nodrama` |
+| macOS | `~/Library/Application Support/llama-nodrama` |
+
+Use `--config-dir <folder>` to choose another location, such as a mounted volume
+for a container, or `--config-dir none` for an ephemeral instance. The Settings
+dialog shows the actual file location. Startup loads defaults, then saved
+settings, then explicitly supplied flags; the effective settings are saved at
+startup and whenever you save in the UI. Explicit service/CLI flags continue to
+override saved values on each restart. To use saved operator defaults, start the
+service with only `--config-dir` after its initial configuration.
+
+Settings files contain server/listen addresses, log path, proxy preference and
+timing controls. They belong outside the checkout and may contain private
+deployment details. Chat content and metric histories remain in memory. Invalid
+settings and failed writes report errors; a failed UI save leaves the active
+configuration unchanged.
+
 ## Build From Source
 
 ```sh
@@ -120,15 +143,19 @@ polling and timeout controls apply to the preview.
 Section navigation lives in the top bar. Its status badge shows **Demo** for
 synthetic previews and the current connection state for a real server.
 
-The compact diagnostic overview shows all 15 statistics, including throughput,
-queue pressure, context estimates, cumulative totals and resources. Previews
+The compact diagnostic overview groups all 15 statistics into generation,
+prompt processing, request pressure, and context/resources. Each column starts
+with its main live statistic, with related counters below it. Previews
 retain 5-minute/all-time peaks and show their actual observed
 window; click a metric title for a larger chart with 1h/6h/24h selection,
 axis labels and sample statistics. Inspect points by pointer, touch, or the
-arrow/Home/End keys when a chart has focus. **Pause updates** freezes the view
-without stopping work on llama.cpp. Collection gaps remain gaps in the charts,
+arrow/Home/End keys when a chart has focus. Live charts move samples by their
+timestamps, keeping peak shapes intact as the window scrolls. Motion follows
+the update cadence and respects reduced-motion preferences. **Pause updates**
+freezes the view without stopping work on llama.cpp. Collection gaps remain gaps in the charts,
 and unknown token limits show no percentage rather than a false zero.
 
+The highlighted **Chat** link opens the chat panel and focuses its input.
 Chat keeps up to 40 turns in memory; reloading clears the conversation. Stopped
 partial replies are labelled and retained in history. Failed or interrupted
 turns are excluded from outgoing history and the input is restored for retry.
@@ -145,6 +172,8 @@ Useful flags:
 --poll       polling interval, default 1s
 --raw-proxy  expose selected raw llama.cpp proxy routes for debugging
 --timeout    upstream request timeout, default 5s
+--config-dir settings folder, default OS user configuration folder/llama-nodrama
+             use "none" to disable persistence
 --update     print repository and latest release links, then exit
 --version    print build version and exit
 ```

@@ -45,7 +45,10 @@ main { max-width: 1700px; margin: 0 auto; padding: 12px 16px; gap: 10px; grid-te
 .diagnostics-nav a { white-space: nowrap; text-decoration: none; color: var(--fg-mute); font-size: 12px; padding: 6px 9px; border-radius: 5px; }
 .diagnostics-nav a:hover, .diagnostics-nav a:focus-visible { background: var(--bg-3); color: var(--fg); }
 #metrics-section { display: grid; gap: 14px; min-width: 0; }
-.metrics-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.metrics-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; align-items: start; }
+.metric-group { display: grid; gap: 6px; min-width: 0; }
+.metric-related-group { display: grid; gap: 6px; min-width: 0; }
+.metric-group-label { display: none; margin: 2px 0; font-size: 11px; font-weight: 500; color: var(--fg-mute); }
 .metric-card { --chart-color: #78a8ea; display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); align-content: start; gap: 4px 8px; padding: 9px 11px; background: #131c28; border-color: #263447; }
 .metric-card[data-tone="teal"] { --chart-color: #4dceb2; }
 .metric-card[data-tone="violet"] { --chart-color: #b3a0f0; }
@@ -73,6 +76,29 @@ main { max-width: 1700px; margin: 0 auto; padding: 12px 16px; gap: 10px; grid-te
 .metric-card:hover .metric-history-link, .metric-card:focus-within .metric-history-link { opacity: 1; }
 .metric-card.disabled { border-top-color: var(--border); }
 .metric-card.disabled .spark { opacity: 0.45; }
+.metric-related, .metric-related.metric-featured { padding: 6px 10px; gap: 2px 8px; background: #101923; }
+.metric-related .value, .metric-related.metric-featured .value { font-size: 19px; }
+.metric-related .row { min-height: 28px; }
+.metric-related svg { height: 20px; }
+.metric-related .metric-scale { min-height: 12px; }
+.metric-primary { border-top: 2px solid var(--chart-color); }
+.metric-primary .metric-title h2 { color: var(--fg); font-weight: 600; }
+.metric-primary .metric-note { min-height: 32px; }
+.diagnostics-nav .nav-chat { color: #b8d8ff; background: #1c3551; border: 1px solid #365b82; padding: 5px 12px; }
+.diagnostics-nav .nav-chat:hover { background: #284968; }
+.card.chat-card { padding: 0; border: 1px solid #4573a2; box-shadow: inset 3px 0 var(--accent); }
+.chat-card .chat-head { background: linear-gradient(100deg, #1d3650, #142235); padding: 11px 14px; border-bottom-color: #365575; }
+.chat-head:hover { background: #213c58; }
+.chat-mark { color: #b8d8ff; background: #12253a; border: 1px solid #45698e; border-radius: 6px; padding: 5px 8px; font: 17px var(--mono); }
+.chat-head .chat-heading { min-width: 0; }
+.chat-head .chat-heading h2 { color: #d9eaff; font-size: 14px; text-transform: none; letter-spacing: 0; }
+.chat-description { display: block; margin-top: 3px; font-size: 11px; color: #b3c7dc; }
+.chat-head .pill { margin-left: auto; background: #284c73; border-color: #527da6; color: #e0efff; padding: 4px 10px; white-space: nowrap; }
+.chat-head .grow { display: none; }
+.chat-head .chat-typing:empty { display: none; }
+.chat-input-row textarea:focus { border-color: var(--accent); }
+.settings-storage { display: grid; gap: 5px; padding: 10px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 6px; font-size: 12px; }
+.settings-storage code { white-space: normal; overflow-wrap: anywhere; color: var(--fg-dim); }
 #metrics-section.is-stale .spark { opacity: 0.5; }
 .spark-area { fill: var(--chart-color, var(--accent)); fill-opacity: 0.09; }
 .spark-line { stroke: var(--chart-color, var(--accent)); stroke-width: 1.6; stroke-linejoin: round; }
@@ -131,7 +157,11 @@ main { max-width: 1700px; margin: 0 auto; padding: 12px 16px; gap: 10px; grid-te
 .log-card .log-view { background: #0b121b; border-color: var(--border); }
 @media (max-width: 1150px) {
   header.app .diagnostics-nav { order: 10; flex-basis: 100%; }
-  .metrics-grid { grid-template-columns: repeat(4,minmax(0,1fr)); }
+  .metrics-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .metric-group { display: contents; }
+  .metric-primary { order: -1; }
+  .metric-related-group { align-self: start; }
+  .metric-group-label { display: block; }
 }
 @media (max-width: 760px) {
   header.app { padding: 9px 12px; gap: 8px; }
@@ -163,6 +193,12 @@ main { max-width: 1700px; margin: 0 auto; padding: 12px 16px; gap: 10px; grid-te
   .metric-card .metric-title .info-btn { width: 26px; height: 26px; line-height: 24px; }
   .metric-card .metric-note { font-size: 10px; }
   .metric-card.metric-featured { gap: 3px; }
+  .metric-related, .metric-related.metric-featured { padding: 7px 8px; }
+  .metric-primary .value { font-size: 23px; }
+  .chat-head { flex-wrap: wrap; gap: 8px; }
+  .chat-head .chat-heading { flex: 1; }
+  .chat-head .chat-typing { flex-basis: 100%; }
+  .chat-description { max-width: 180px; }
   .metric-scale { font-size: 10px; }
   .metric-history-link { display: none; }
   .metric-card .row { gap: 4px; }

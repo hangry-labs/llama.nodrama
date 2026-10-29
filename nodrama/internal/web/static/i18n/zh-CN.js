@@ -1,6 +1,12 @@
 "use strict";
 
 I18N["zh-CN"] = {
+    "diagnostics.requests": "请求压力",
+    "diagnostics.capacity": "上下文与资源",
+    "chat.description": "测试模型，同时查看实时诊断。",
+    "settings.storage": "此服务器上的设置保存位置",
+    "settings.storage_disabled": "此实例已禁用设置持久化。",
+    "settings.storage_demo": "演示设置仅在此预览中生效。",
     "header.status.demo": "演示",
     "app.title": "llama.nodrama",
     "diagnostics.navigation_overview": "概览",

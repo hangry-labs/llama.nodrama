@@ -35,6 +35,14 @@ func Run(ctx context.Context, cfg Config, info BuildInfo) error {
 	if err != nil {
 		return fmt.Errorf("configure llama.cpp client: %w", err)
 	}
+	listener, err := net.Listen("tcp", cfg.Listen)
+	if err != nil {
+		return err
+	}
+	defer listener.Close()
+	if err := SaveSettings(cfg); err != nil {
+		return err
+	}
 
 	dashboard := NewDashboard(client, cfg, info)
 	dashboard.Start(ctx)
@@ -133,7 +141,7 @@ func Run(ctx context.Context, cfg Config, info BuildInfo) error {
 	go func() {
 		logStartup(cfg, info)
 		go logEndpointDiagnostics(ctx, dashboard)
-		errc <- server.ListenAndServe()
+		errc <- server.Serve(listener)
 	}()
 
 	select {

@@ -7,31 +7,40 @@ function ensureMetricCards() {
   const grid = el("div", { class: "metrics-grid" });
   section.replaceChildren(grid);
   const tones = { predicted_tps: "teal", prompt_tps: "blue", deferred: "amber", context_used: "violet" };
-  for (const metric of METRIC_CARDS) {
-    const featured = Object.hasOwn(tones, metric.id);
-    const open = () => openMetricHistory(metric);
-    const card = el("div", {
-      class: "card metric-card" + (featured ? " metric-featured" : ""), id: "metric-" + metric.id,
-      role: "group", "aria-label": t(metric.titleKey), data: { tone: tones[metric.id] || "blue" },
-      onclick: event => { if (!event.target.closest("button, svg")) open(); },
-    }, [
-      el("div", { class: "metric-title" }, [
-        el("h2", null, el("button", { class: "metric-open", onclick: open, title: t("metrics.history_hint") }, t(metric.titleKey))),
-        el("button", { class: "info-btn", type: "button", title: metricHelp(metric),
-          "aria-label": t(metric.titleKey) + ": " + metricHelp(metric), onclick: () => showMetricHelp(metric) }, "?"),
-      ]),
-      el("div", { class: "row" }, [
-        el("div", { class: "value", id: "metric-" + metric.id + "-value" }, "—"),
-        el("div", { class: "unit", id: "metric-" + metric.id + "-unit" }, metric.unit || ""),
-      ]),
-      el("div", { class: "metric-note", id: "metric-" + metric.id + "-note" }),
-      el("div", { class: "spark", id: "metric-" + metric.id + "-spark" }),
-      el("div", { class: "metric-scale" }, [
-        el("span", { id: "metric-" + metric.id + "-scale" }),
-        el("span", { class: "metric-history-link" }, t("diagnostics.history") + " ↗"),
-      ]),
+  for (const group of METRIC_GROUPS) {
+    const column = el("div", { class: "metric-group", role: "group", "aria-label": t(group.labelKey) });
+    const related = el("div", { class: "metric-related-group" }, [
+      el("h3", { class: "metric-group-label" }, t(group.labelKey)),
     ]);
-    grid.appendChild(card);
+    grid.appendChild(column);
+    for (const [index, id] of group.ids.entries()) {
+      const metric = METRIC_CARDS.find(card => card.id === id);
+      const featured = Object.hasOwn(tones, metric.id);
+      const open = () => openMetricHistory(metric);
+      const card = el("div", {
+        class: "card metric-card" + (featured ? " metric-featured" : "") + (index ? " metric-related" : " metric-primary"), id: "metric-" + metric.id,
+        role: "group", "aria-label": t(metric.titleKey), data: { tone: tones[metric.id] || "blue" },
+        onclick: event => { if (!event.target.closest("button, svg")) open(); },
+      }, [
+        el("div", { class: "metric-title" }, [
+          el("h2", null, el("button", { class: "metric-open", onclick: open, title: t("metrics.history_hint") }, t(metric.titleKey))),
+          el("button", { class: "info-btn", type: "button", title: metricHelp(metric),
+            "aria-label": t(metric.titleKey) + ": " + metricHelp(metric), onclick: () => showMetricHelp(metric) }, "?"),
+        ]),
+        el("div", { class: "row" }, [
+          el("div", { class: "value", id: "metric-" + metric.id + "-value" }, "—"),
+          el("div", { class: "unit", id: "metric-" + metric.id + "-unit" }, metric.unit || ""),
+        ]),
+        el("div", { class: "metric-note", id: "metric-" + metric.id + "-note" }),
+        el("div", { class: "spark", id: "metric-" + metric.id + "-spark" }),
+        el("div", { class: "metric-scale" }, [
+          el("span", { id: "metric-" + metric.id + "-scale" }),
+          el("span", { class: "metric-history-link" }, t("diagnostics.history") + " ↗"),
+        ]),
+      ]);
+      (index ? related : column).appendChild(card);
+    }
+    column.appendChild(related);
   }
 }
 

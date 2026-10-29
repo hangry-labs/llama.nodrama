@@ -120,6 +120,11 @@ async function openSettingsModal() {
       ]),
       el("div", { class: "sub" }, t("settings.note"))
     );
+    body.appendChild(el("div", { class: "settings-storage" }, state.params.demo
+      ? t("settings.storage_demo")
+      : loaded.settingsPath
+        ? [el("strong", null, t("settings.storage")), el("code", null, loaded.settingsPath)]
+        : t("settings.storage_disabled")));
   };
 
   showModal({

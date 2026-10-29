@@ -9,7 +9,7 @@ module.exports = defineConfig({
   reporter: 'list',
   use: { baseURL: 'http://127.0.0.1:39190', browserName: 'chromium', trace: 'retain-on-failure' },
   webServer: {
-    command: 'go run . --server http://127.0.0.1:1 --listen 127.0.0.1:39190',
+    command: 'go run . --config-dir none --server http://127.0.0.1:1 --listen 127.0.0.1:39190',
     url: 'http://127.0.0.1:39190/api/health',
     timeout: 120000,
     reuseExistingServer: false,

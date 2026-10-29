@@ -1,46 +1,57 @@
 "use strict";
 
+let sparklineSequence = 0;
+
 function sparkline(data, options = {}) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("preserveAspectRatio", "none");
-  const part = (tag, className) => {
+  const part = (tag, className, parent = svg) => {
     const node = document.createElementNS(svg.namespaceURI, tag);
-    node.setAttribute("class", className); svg.appendChild(node); return node;
+    node.setAttribute("class", className); parent.appendChild(node); return node;
   };
   const grid = part("path", "spark-grid");
-  const area = part("path", "spark-area");
-  const line = part("path", "spark-line");
+  const defs = part("defs", "spark-defs");
+  const clip = part("clipPath", "spark-clip", defs);
+  clip.id = "spark-clip-" + (++sparklineSequence);
+  const clipRect = part("rect", "spark-clip-rect", clip);
+  clipRect.setAttribute("x", "5"); clipRect.setAttribute("width", "390");
+  const trace = part("g", "spark-trace");
+  trace.setAttribute("clip-path", "url(#" + clip.id + ")");
+  const area = part("path", "spark-area", trace);
+  const line = part("path", "spark-line", trace);
   const latest = part("circle", "spark-latest");
   latest.setAttribute("r", "2.5");
   const markerLine = part("path", "spark-marker-line");
   const marker = part("ellipse", "spark-marker");
-  const model = svg.chartModel = { grid, area, line, latest, markerLine, marker, frame: null, selectedTime: null };
+  const model = svg.chartModel = { grid, area, line, latest, markerLine, marker, clipRect, frame: null, selectedTime: null };
   const hide = () => {
     model.selectedTime = null; model.pointer = null;
     marker.setAttribute("hidden", ""); markerLine.setAttribute("hidden", ""); hideSparkTooltip();
   };
   const inspect = (index, pointer) => {
-    const point = model.geometry.data[index], vertex = model.geometry.vertices[index];
+    const point = model.geometry.data[index];
+    const vertex = point && model.drawn.find(vertex => vertex.t === point.t);
     if (!point || !vertex) return;
     model.selectedTime = point.t;
     const bounds = svg.getBoundingClientRect();
-    marker.setAttribute("cx", vertex.x); marker.setAttribute("cy", vertex.y);
+    const x = Math.max(5, Math.min(395, vertex.x));
+    marker.setAttribute("cx", x); marker.setAttribute("cy", vertex.y);
     marker.setAttribute("rx", 4 * 400 / Math.max(1, bounds.width));
     marker.setAttribute("ry", 4 * model.geometry.height / Math.max(1, bounds.height));
-    markerLine.setAttribute("d", "M" + vertex.x + ",5 V" + (model.geometry.height - 5));
+    markerLine.setAttribute("d", "M" + x + ",5 V" + (model.geometry.height - 5));
     marker.removeAttribute("hidden"); markerLine.removeAttribute("hidden");
     const text = (model.options.formatTime || fmtTime)(point.t) + " · " + (model.options.formatValue || fmtNumber)(point.v);
     svg.setAttribute("aria-valuenow", index); svg.setAttribute("aria-valuetext", text);
-    showSparkTooltip(text, pointer?.x ?? bounds.left + vertex.x / 400 * bounds.width,
+    showSparkTooltip(text, pointer?.x ?? bounds.left + x / 400 * bounds.width,
       pointer?.y ?? bounds.top + vertex.y / model.geometry.height * bounds.height);
   };
   model.refreshInspection = () => {
     if (model.pointer) {
       const bounds = svg.getBoundingClientRect();
-      const fraction = Math.max(0, Math.min(1, (model.pointer.x - bounds.left) / Math.max(1, bounds.width)));
+      const fraction = Math.max(0, Math.min(1, ((model.pointer.x - bounds.left) / Math.max(1, bounds.width) * 400 - 5) / 390));
       const points = model.geometry.data;
       if (!points.length) return hide();
-      const target = points[0].t + fraction * (points[points.length - 1].t - points[0].t);
+      const target = model.view.start + fraction * (model.view.end - model.view.start);
       const nearest = nearestHistoryPoint(points, target);
       inspect(points.indexOf(nearest), model.pointer);
     } else if (model.selectedTime !== null) {
@@ -84,7 +95,8 @@ function updateSparkline(host, data, options = {}) {
 
 function updateSparklineSVG(svg, data, options) {
   const model = svg.chartModel;
-  const old = model.drawn;
+  const previous = model.geometry;
+  const previousStep = model.options?.step;
   const geometry = chartGeometry(data, options);
   model.geometry = geometry; model.options = options;
   svg.setAttribute("viewBox", "0 0 400 " + geometry.height);
@@ -100,32 +112,55 @@ function updateSparklineSVG(svg, data, options) {
     svg.setAttribute("aria-valuetext", latest ? (options.formatTime || fmtTime)(latest.t) + " · " + (options.formatValue || fmtNumber)(latest.v) : t("metrics.no_data"));
   }
   model.grid.setAttribute("d", [5, geometry.height / 2, geometry.height - 5].map(y => "M5," + y + " H395").join(" "));
-  const draw = vertices => {
+  model.clipRect.setAttribute("height", geometry.height);
+  const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const reducedMotion = () => motionPreference.matches;
+  // A repeated snapshot must not cancel/restart a transition in progress.
+  if (sameChartGeometry(previous, geometry) && previousStep === options.step && !reducedMotion()) {
+    if (model.selectedTime !== null || model.pointer) model.refreshInspection();
+    return;
+  }
+  const draw = (vertices, view) => {
     const paths = chartPaths(vertices, geometry.height, options.step);
     model.line.setAttribute("d", paths.line); model.area.setAttribute("d", paths.area);
-    model.drawn = vertices;
-    const last = vertices[vertices.length - 1];
+    model.drawn = vertices; model.view = view;
+    const last = chartRightEdge(vertices, options.step);
     if (last) { model.latest.setAttribute("cx", last.x); model.latest.setAttribute("cy", last.y); model.latest.removeAttribute("hidden"); }
     else model.latest.setAttribute("hidden", "");
+    if (model.selectedTime !== null || model.pointer) model.refreshInspection();
   };
   if (model.frame !== null) cancelAnimationFrame(model.frame);
+  model.finish = () => {
+    if (model.frame !== null) cancelAnimationFrame(model.frame);
+    model.frame = null;
+    draw(geometry.vertices, geometry);
+  };
   const rect = svg.getBoundingClientRect();
-  const animate = old && old.length === geometry.vertices.length && old.every((point, i) => point.start === geometry.vertices[i].start)
-    && !window.matchMedia("(prefers-reduced-motion: reduce)").matches && rect.bottom > 0 && rect.top < innerHeight;
-  if (animate && geometry.vertices.length) {
+  const transition = previous && previousStep === options.step
+    && chartTransition(previous, geometry, model.drawn, model.view);
+  const animate = transition && !reducedMotion() && !document.hidden && rect.bottom > 0 && rect.top < innerHeight;
+  const now = performance.now();
+  // Linear motion over the observed update interval avoids the old 220ms
+  // burst-and-stop on every poll. Late updates have a bounded catch-up time.
+  const duration = Math.max(80, Math.min(1500, now - (model.changedAt ?? now)));
+  model.changedAt = now;
+  if (animate) {
     const started = performance.now();
-    const tick = now => {
-      const fraction = Math.min(1, (now - started) / 220);
-      const ease = 1 - Math.pow(1 - fraction, 3);
-      draw(geometry.vertices.map((point, i) => ({ ...point,
-        x: old[i].x + (point.x - old[i].x) * ease, y: old[i].y + (point.y - old[i].y) * ease })));
-      if (fraction < 1 && svg.isConnected) model.frame = requestAnimationFrame(tick);
-      else model.frame = null;
+    const tick = time => {
+      const fraction = Math.max(0, Math.min(1, (time - started) / duration));
+      if (fraction >= 1 || !svg.isConnected || document.hidden || reducedMotion()) { model.finish(); return; }
+      const frame = transition(fraction);
+      draw(frame.vertices, frame.view);
+      model.frame = requestAnimationFrame(tick);
     };
     model.frame = requestAnimationFrame(tick);
-  } else { draw(geometry.vertices); model.frame = null; }
+  } else model.finish();
   if (model.selectedTime !== null || model.pointer) model.refreshInspection();
   else { model.marker.setAttribute("hidden", ""); model.markerLine.setAttribute("hidden", ""); }
+}
+
+function finishSparklineAnimations() {
+  for (const svg of $$("svg")) svg.chartModel?.finish?.();
 }
 
 function nearestHistoryPoint(data, target) {

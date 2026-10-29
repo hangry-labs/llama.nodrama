@@ -10,6 +10,7 @@ function renderChatPanel() {
 
   const head = el("div", { class: "chat-head", role: "button",
                             "aria-expanded": String(chat.open),
+                            "aria-controls": "chat-body",
                             onclick: toggleChat,
                             onkeydown: (e) => {
                               if (e.key === "Enter" || e.key === " ") {
@@ -17,7 +18,11 @@ function renderChatPanel() {
                               }
                             },
                             tabindex: "0" }, [
-    el("h2", null, t("chat.title")),
+    el("span", { class: "chat-mark", "aria-hidden": "true" }, "›_"),
+    el("div", { class: "chat-heading" }, [
+      el("h2", null, t("chat.title")),
+      el("span", { class: "chat-description" }, t("chat.description")),
+    ]),
     el("span", { class: "pill", id: "chat-toggle-pill" },
        chat.open ? t("chat.collapse") : t("chat.expand")),
     el("span", { class: "grow" }),

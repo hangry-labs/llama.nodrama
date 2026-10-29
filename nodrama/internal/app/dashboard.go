@@ -402,6 +402,7 @@ func runtimeSettingsFromConfig(cfg Config) RuntimeSettings {
 		RawProxy:     cfg.RawProxy,
 		PollInterval: cfg.PollInterval.Milliseconds(),
 		Timeout:      cfg.Timeout.Milliseconds(),
+		SettingsPath: cfg.SettingsPath,
 	}
 }
 
@@ -430,6 +431,10 @@ func (m *Dashboard) UpdateSettings(update RuntimeSettingsUpdate) (RuntimeSetting
 	}
 	client, err := llamacpp.NewClient(cfg.Server, cfg.Timeout)
 	if err != nil {
+		m.runtimeMu.Unlock()
+		return RuntimeSettings{}, err
+	}
+	if err := SaveSettings(cfg); err != nil {
 		m.runtimeMu.Unlock()
 		return RuntimeSettings{}, err
 	}

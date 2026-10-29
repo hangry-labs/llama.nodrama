@@ -58,10 +58,11 @@ function ensureRootScaffold() {
   navigation.setAttribute("aria-label", t("diagnostics.overview"));
   for (const [id, label] of [["metrics", "diagnostics.navigation_overview"], ["slots", "slots.title"], ["queries", "queries.title"],
     ["chat", "chat.title"], ["models", "diagnostics.system"], ["log", "log.title"]]) {
-    navigation.appendChild(el("a", { href: "#" + id + "-section", onclick: event => {
+    navigation.appendChild(el("a", { href: "#" + id + "-section", class: id === "chat" ? "nav-chat" : "", onclick: event => {
       event.preventDefault();
       const section = $("#" + id + "-section");
       if (id === "log" && !section?.firstElementChild) { showLogHelp(); return; }
+      if (id === "chat" && !chat.open) { chat.open = true; applyChatOpenState(); }
       const target = section?.firstElementChild || section;
       target?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
     } }, t(label)));

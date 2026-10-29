@@ -16,7 +16,7 @@ function summarizeMetricHistory(points) {
 function chartGeometry(points, options = {}) {
   const data = (points || []).filter(point => Number.isFinite(point.t) && Number.isFinite(point.v))
     .slice().sort((a, b) => a.t - b.t);
-  const width = 400, height = options.height || 64, pad = 5;
+  const width = 400, height = options.height || 64;
   const values = data.map(point => point.v);
   const min = Number.isFinite(options.min) ? options.min : (values.length ? Math.min(...values) : 0);
   const max = Number.isFinite(options.max) ? options.max : (values.length ? Math.max(...values) : 1);
@@ -24,12 +24,56 @@ function chartGeometry(points, options = {}) {
   const start = data[0]?.t || 0, end = data[data.length - 1]?.t || start;
   const intervals = data.slice(1).map((point, index) => point.t - data[index].t).filter(value => value > 0).sort((a, b) => a - b);
   const cadence = intervals[Math.floor(intervals.length / 2)] || 1000;
-  const vertices = data.map((point, index) => ({
-    x: pad + (point.t - start) / Math.max(1, end - start) * (width - pad * 2),
-    y: height - pad - Math.max(0, Math.min(1, (point.v - min) / (ceiling - min))) * (height - pad * 2),
+  const view = { start, end, height, min, max: ceiling };
+  const vertices = chartVertices(data, view, cadence);
+  return { data, vertices, width, ...view, cadence };
+}
+
+function chartVertices(data, view, cadence) {
+  return data.map((point, index) => ({
+    t: point.t, v: point.v,
+    x: 5 + (point.t - view.start) / Math.max(1, view.end - view.start) * 390,
+    y: view.height - 5 - Math.max(0, Math.min(1, (point.v - view.min) / (view.max - view.min))) * (view.height - 10),
     start: index === 0 || point.t - data[index - 1].t > cadence * 3,
   }));
-  return { data, vertices, width, height, min, max: ceiling };
+}
+
+function sameChartGeometry(a, b) {
+  return a && a.height === b.height && a.min === b.min && a.max === b.max && a.cadence === b.cadence
+    && a.data.length === b.data.length && a.data.every((point, index) => point.t === b.data[index].t && point.v === b.data[index].v);
+}
+
+// Retain sample identity while the time window moves. Outgoing samples stay
+// until clipped off the left; incoming samples enter from the right. Matching
+// array indexes would change historical values and flatten/rebuild every peak.
+function chartTransition(from, to, drawn, view = from) {
+  if (!from || from.data.length < 2 || to.data.length < 2 || from.height !== to.height
+      || to.start < from.start || to.end < from.end) return null;
+  const previous = new Map(drawn.map(point => [point.t, point]));
+  if (!to.data.some(point => previous.has(point.t))) return null;
+  const firstVisible = drawn.findIndex(point => point.x >= 5);
+  const outgoing = drawn.slice(Math.max(0, firstVisible - 1)).filter(point => point.t < to.start);
+  const points = outgoing.map(point => ({ t: point.t, from: point.v, to: point.v }));
+  for (const point of to.data) points.push({ t: point.t, from: previous.get(point.t)?.v ?? point.v, to: point.v });
+  return fraction => {
+    const current = {};
+    for (const key of ["start", "end", "height", "min", "max"]) current[key] = view[key] + (to[key] - view[key]) * fraction;
+    const samples = points.map(point => ({ t: point.t, v: point.from + (point.to - point.from) * fraction }));
+    return { view: current, vertices: chartVertices(samples, current, to.cadence) };
+  };
+}
+
+function chartRightEdge(vertices, step) {
+  let previous = null;
+  for (const point of vertices) {
+    if (point.x > 395) {
+      if (!previous || point.start) return previous;
+      const fraction = (395 - previous.x) / (point.x - previous.x);
+      return { x: 395, y: step ? previous.y : previous.y + (point.y - previous.y) * fraction };
+    }
+    if (point.x >= 5) previous = point;
+  }
+  return previous;
 }
 
 function chartPaths(vertices, height, step = false) {

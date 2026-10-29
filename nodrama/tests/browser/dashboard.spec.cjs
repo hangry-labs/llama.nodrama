@@ -24,6 +24,21 @@ for (const mode of ['1', 'router']) {
       await expect(page.locator('#status-text')).toHaveAttribute('title', /synthetic/);
       await expect(page.locator('#metric-predicted_tps .spark-line')).toHaveCount(1);
       await expect(page.locator('.metric-card:visible')).toHaveCount(15);
+      const groups = await page.locator('.metric-group').evaluateAll(nodes => nodes.map(node =>
+        [...node.querySelectorAll('.metric-card')].map(card => card.id.replace('metric-', ''))));
+      expect(groups).toEqual([
+        ['predicted_tps', 'predicted_total', 'predicted_seconds_total', 'decode_total'],
+        ['prompt_tps', 'prompt_total', 'prompt_seconds_total', 'prompt_cached_total'],
+        ['processing', 'deferred', 'busy_slots'],
+        ['context_used', 'n_tokens_max', 'container_cpu', 'server_uptime'],
+      ]);
+      if (width < 1150) {
+        const hierarchy = await page.evaluate(() => ({
+          primaryBottom: Math.max(...[...document.querySelectorAll('.metric-primary')].map(n => n.getBoundingClientRect().bottom)),
+          relatedTop: Math.min(...[...document.querySelectorAll('.metric-related')].map(n => n.getBoundingClientRect().top)),
+        }));
+        expect(hierarchy.primaryBottom).toBeLessThanOrEqual(hierarchy.relatedTop);
+      }
       await expect(page.locator('#metric-predicted_tps .metric-note')).toContainText('5m');
       if (width === 1440) {
         const overview = await page.locator('#metrics-section').boundingBox();
@@ -59,6 +74,29 @@ test('chart history and help dialogs work with mouse and keyboard', async ({ pag
   await page.keyboard.press('Enter');
   await expect(page.locator('[role=dialog]')).toHaveCount(1);
   await expect(page.locator('[role=dialog] .metric-history-chart')).toHaveCount(0);
+});
+
+test('highlighted Chat link opens the panel and focuses its composer', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/?demo=router');
+  await expect(page.locator('#chat-body')).toBeHidden();
+  await page.locator('header.app .nav-chat').click();
+  await expect(page.locator('#chat-body')).toBeVisible();
+  await expect(page.locator('#chat-input')).toBeFocused();
+  await expect(page.locator('.chat-description')).toContainText('diagnostics');
+  await page.locator('#settings-button').click();
+  await expect(page.locator('.settings-storage')).toContainText('Demo settings');
+});
+
+test('settings show the server storage path without making it editable', async ({ page }) => {
+  await page.route('**/api/settings', route => route.fulfill({ json: {
+    server: 'http://127.0.0.1:8080', listen: ':39080', logPath: '', rawProxy: false,
+    pollIntervalMs: 1000, timeoutMs: 5000, settingsPath: '/example/config/llama-nodrama/settings.json',
+  } }));
+  await page.goto('/');
+  await page.locator('#settings-button').click();
+  await expect(page.locator('.settings-storage code')).toHaveText('/example/config/llama-nodrama/settings.json');
+  await expect(page.locator('.settings-storage input')).toHaveCount(0);
 });
 
 test('cache segments highlight linked slots and queries; erase/restore updates occupancy', async ({ page }) => {
@@ -198,6 +236,86 @@ test('chart, cache and query focus survive telemetry updates', async ({ page }) 
   const third = await page.evaluate(() => state.lastUpdate);
   await expect.poll(() => page.evaluate(() => state.lastUpdate)).not.toBe(third);
   expect(await page.evaluate(() => document.activeElement === window.testQuery)).toBe(true);
+});
+
+test('live chart peaks scroll steadily without rebuilding their shape', async ({ page }) => {
+  await page.goto('/?demo=1');
+  await page.clock.install();
+  await page.evaluate(() => stopAllPollers());
+  await page.clock.pauseAt(await page.evaluate(() => new Date(Date.now() + 1000).toISOString()));
+  await page.evaluate(() => {
+    stopAllPollers();
+    window.motionHost = el('div', { style: 'position:fixed;top:140px;left:20px;width:400px;height:80px;z-index:99' });
+    document.body.appendChild(window.motionHost);
+    window.motionOptions = { min: 0, max: 10, height: 80, interactive: true };
+    // Four 250ms backend samples arrive together on a 1s browser poll.
+    const samples = start => Array.from({ length: 9 }, (_, index) => ({
+      t: start + index * 250, v: start + index * 250 === 2000 ? 10 : 0,
+    }));
+    window.motionData = samples(2000);
+    updateSparkline(window.motionHost, samples(1000), window.motionOptions);
+    window.motionSVG = window.motionHost.querySelector('svg');
+    window.motionSVG.chartModel.changedAt = performance.now() - 1000;
+    updateSparkline(window.motionHost, window.motionData, window.motionOptions);
+    window.motionSVG.focus();
+  });
+  const peak = () => page.evaluate(() => {
+    const model = window.motionSVG.chartModel;
+    const vertex = model.drawn.find(point => point.t === 2000);
+    return { x: vertex.x, y: vertex.y, v: vertex.v, active: model.frame !== null,
+      marker: Number(model.marker.getAttribute('cx')) };
+  });
+  await page.keyboard.press('Home');
+  await page.clock.runFor(250);
+  const first = await peak();
+  await page.clock.runFor(250);
+  const second = await peak();
+  await page.clock.runFor(250);
+  const third = await peak();
+  for (const frame of [first, second, third]) {
+    expect(frame.y).toBe(5);
+    expect(frame.v).toBe(10);
+    expect(frame.active).toBe(true);
+    expect(frame.marker).toBeCloseTo(frame.x, 5);
+  }
+  expect(first.x).toBeGreaterThan(second.x);
+  expect(second.x).toBeGreaterThan(third.x);
+  expect(Math.abs((first.x - second.x) - (second.x - third.x))).toBeLessThan(5);
+  expect(await page.evaluate(() => {
+    const frame = window.motionSVG.chartModel.frame;
+    updateSparkline(window.motionHost, window.motionData, window.motionOptions);
+    return frame === window.motionSVG.chartModel.frame && window.motionSVG === window.motionHost.querySelector('svg');
+  })).toBe(true);
+  await page.getByRole('button', { name: 'Pause updates', exact: true }).click();
+  expect(await page.evaluate(() => window.motionSVG.chartModel.frame)).toBe(null);
+  const paused = await page.evaluate(() => window.motionSVG.chartModel.line.getAttribute('d'));
+  await page.clock.runFor(1000);
+  expect(await page.evaluate(() => window.motionSVG.chartModel.line.getAttribute('d'))).toBe(paused);
+});
+
+test('switching to reduced motion settles an active chart immediately', async ({ page }) => {
+  await page.goto('/?demo=1');
+  await page.clock.install();
+  await page.evaluate(() => stopAllPollers());
+  await page.clock.pauseAt(await page.evaluate(() => new Date(Date.now() + 1000).toISOString()));
+  await page.evaluate(() => {
+    stopAllPollers();
+    window.motionHost = el('div', { style: 'position:fixed;top:140px;left:20px;width:400px;height:80px;z-index:99' });
+    document.body.appendChild(window.motionHost);
+    const points = [{ t: 1000, v: 0 }, { t: 2000, v: 10 }, { t: 3000, v: 0 }];
+    updateSparkline(window.motionHost, points, { min: 0 });
+    window.motionSVG = window.motionHost.querySelector('svg');
+    window.motionSVG.chartModel.changedAt = performance.now() - 1000;
+    updateSparkline(window.motionHost, [...points, { t: 4000, v: 2 }], { min: 0 });
+  });
+  await page.clock.runFor(250);
+  expect(await page.evaluate(() => window.motionSVG.chartModel.frame !== null)).toBe(true);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.clock.runFor(20);
+  expect(await page.evaluate(() => {
+    const model = window.motionSVG.chartModel;
+    return model.frame === null && JSON.stringify(model.drawn) === JSON.stringify(model.geometry.vertices);
+  })).toBe(true);
 });
 
 test('history windows, sample statistics and keyboard inspection are usable', async ({ page }) => {

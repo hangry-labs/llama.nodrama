@@ -1,6 +1,12 @@
 "use strict";
 
 I18N.en = {
+    "diagnostics.requests": "Request pressure",
+    "diagnostics.capacity": "Context & resources",
+    "chat.description": "Test your model and watch the diagnostics live.",
+    "settings.storage": "Settings saved on this server",
+    "settings.storage_disabled": "Persistence is disabled for this instance.",
+    "settings.storage_demo": "Demo settings stay in this preview.",
     "header.status.demo": "Demo",
     "app.title": "llama.nodrama",
     "diagnostics.navigation_overview": "Overview",

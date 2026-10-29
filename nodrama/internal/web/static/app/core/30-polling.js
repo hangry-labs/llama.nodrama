@@ -67,6 +67,7 @@ function setPaused(v) {
   state.paused = !!v;
   if (typeof renderDiagnosticStatus === "function") renderDiagnosticStatus();
   if (state.paused) {
+    if (typeof finishSparklineAnimations === "function") finishSparklineAnimations();
     setStatus("warn", "common.pause");
   } else if (state.ui.snapshotStale) {
     setStatus("error", "header.status.error");

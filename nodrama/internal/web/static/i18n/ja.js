@@ -1,6 +1,12 @@
 "use strict";
 
 I18N.ja = {
+    "diagnostics.requests": "リクエスト負荷",
+    "diagnostics.capacity": "コンテキストとリソース",
+    "chat.description": "モデルを試しながら診断情報をリアルタイムで確認。",
+    "settings.storage": "設定の保存先（このサーバー）",
+    "settings.storage_disabled": "このインスタンスでは設定の永続化が無効です。",
+    "settings.storage_demo": "デモ設定はこのプレビュー内でのみ適用されます。",
     "header.status.demo": "デモ",
     "app.title": "llama.nodrama",
     "diagnostics.navigation_overview": "概要",

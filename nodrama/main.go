@@ -28,6 +28,7 @@ func main() {
 	var cfg app.Config
 	var showVersion bool
 	var showUpdate bool
+	var configDir string
 
 	flag.Usage = func() {
 		out := flag.CommandLine.Output()
@@ -51,6 +52,7 @@ func main() {
 	flag.BoolVar(&cfg.RawProxy, "raw-proxy", false, "expose selected raw llama.cpp proxy routes for debugging")
 	flag.DurationVar(&cfg.PollInterval, "poll", time.Second, "llama.cpp polling interval")
 	flag.DurationVar(&cfg.Timeout, "timeout", 5*time.Second, "upstream request timeout")
+	flag.StringVar(&configDir, "config-dir", "", "settings directory (default: OS user config directory/llama-nodrama; none disables persistence)")
 	flag.BoolVar(&showUpdate, "update", false, "print repository and latest release links, then exit")
 	flag.BoolVar(&showVersion, "version", false, "print version and exit")
 	flag.Parse()
@@ -68,6 +70,14 @@ func main() {
 		return
 	}
 
+	explicit := make(map[string]bool)
+	flag.Visit(func(f *flag.Flag) { explicit[f.Name] = true })
+	var err error
+	cfg, err = app.LoadSettings(cfg, configDir, explicit)
+	if err != nil {
+		log.Printf("ERROR settings_load_failed error=%q", err)
+		os.Exit(1)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

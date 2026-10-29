@@ -17,6 +17,7 @@ type Config struct {
 	RawProxy     bool
 	PollInterval time.Duration
 	Timeout      time.Duration
+	SettingsPath string
 }
 
 type RuntimeSettings struct {
@@ -26,6 +27,7 @@ type RuntimeSettings struct {
 	RawProxy     bool   `json:"rawProxy"`
 	PollInterval int64  `json:"pollIntervalMs"`
 	Timeout      int64  `json:"timeoutMs"`
+	SettingsPath string `json:"settingsPath,omitempty"`
 }
 
 type RuntimeSettingsUpdate struct {
