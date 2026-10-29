@@ -65,8 +65,11 @@ function stopPoller(name) {
 /* Pause / resume hook for keyboard shortcuts. */
 function setPaused(v) {
   state.paused = !!v;
+  if (typeof renderDiagnosticStatus === "function") renderDiagnosticStatus();
   if (state.paused) {
     setStatus("warn", "common.pause");
+  } else if (state.ui.snapshotStale) {
+    setStatus("error", "header.status.error");
   } else if (state.healthy) {
     setStatus("online", "header.status.online");
   } else if (state.ui.bootDone) {

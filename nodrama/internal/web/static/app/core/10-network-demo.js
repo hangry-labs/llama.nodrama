@@ -195,16 +195,7 @@ function installDemoShim(mode) {
     return Promise.resolve(notFound());
   };
 
-  /* Surface the demo state to the user. Banner uses i18n key. */
-  const showDemoBanner = () => {
-    const wrap = $("#banners");
-    if (!wrap) return;
-    const key = mode === "router" ? "demo.banner_router" : "demo.banner_single";
-    const node = el("div", { class: "banner", data: { id: "demo-mode" } }, t(key));
-    wrap.appendChild(node);
-  };
-  /* applyI18n hasn't run yet — defer to next microtask */
-  Promise.resolve().then(showDemoBanner);
+
 }
 
 async function fetchJSON(path, opts) {

@@ -22,13 +22,15 @@ function onModelSelect(id) {
  *  the browser-native dialog blocking the event loop.
  * ──────────────────────────────────────────────────────────────────── */
 let modalSequence = 0;
-function showModal({ title, bodyNode, okLabel, onOk, mutating, wide }) {
+function showModal({ title, bodyNode, okLabel, onOk, onClose, mutating, wide }) {
   const previousFocus = document.activeElement;
   const titleId = "modal-title-" + (++modalSequence);
   const back = el("div", { class: "modal-backdrop", role: "dialog", "aria-modal": "true", "aria-labelledby": titleId });
   let onKey;
   const errorNode = el("div", { class: "error", hidden: true }, "");
   const close = () => {
+    if (onClose) onClose();
+    hideSparkTooltip();
     back.remove();
     if (onKey) document.removeEventListener("keydown", onKey);
     if (previousFocus && previousFocus.isConnected) previousFocus.focus();

@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="/static/css/40-modals-settings.css">
 <link rel="stylesheet" href="/static/css/50-logs-guidance-footer.css">
 <link rel="stylesheet" href="/static/css/60-chat.css">
+<link rel="stylesheet" href="/static/css/70-diagnostics.css">
 </head>
 <body>
 
@@ -22,6 +23,7 @@
   <span class="brand">llama<span class="dot">·</span>nodrama</span>
   <span id="status-led" class="led" aria-hidden="true"></span>
   <span id="status-text" class="status-pill" role="status" aria-live="polite" data-i18n="header.status.connecting">…</span>
+  <nav id="top-navigation" class="diagnostics-nav" aria-label="Sections"></nav>
   <span id="last-update" class="last-update" aria-live="polite"></span>
   <span class="grow"></span>
   <a id="version-display" class="version-display" href="https://github.com/hangry-labs/llama.nodrama" target="_blank" rel="noopener noreferrer" title=""></a>
@@ -74,6 +76,7 @@
 <script src="/static/app/history/00-points.js"></script>
 <script src="/static/app/history/10-sparkline.js"></script>
 <script src="/static/app/metrics/00-catalog-format.js"></script>
+<script src="/static/app/metrics/05-summary.js"></script>
 <script src="/static/app/metrics/10-render.js"></script>
 <script src="/static/app/cache/00-render.js"></script>
 <script src="/static/app/40-slots-queries.js"></script>

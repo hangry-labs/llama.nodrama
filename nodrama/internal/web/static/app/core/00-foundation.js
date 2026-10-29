@@ -193,14 +193,20 @@ function initHeader() {
   });
   document.documentElement.lang = state.lang;
   applyI18n();
+  const header = document.querySelector("header.app");
+  if (typeof ResizeObserver !== "undefined" && header) {
+    new ResizeObserver(() => {
+      document.documentElement.style.setProperty("--app-header-height", Math.ceil(header.getBoundingClientRect().height) + "px");
+    }).observe(header);
+  }
 }
 
 /* Status LED: 'connecting' | 'online' | 'warn' | 'offline' | 'error' */
 function setStatus(state_, textKey) {
   const led = $("#status-led");
   const txt = $("#status-text");
-  led.classList.remove("on", "warn", "bad");
-  txt.classList.remove("online", "warn", "offline", "error");
+  led.classList.remove("on", "warn", "bad", "demo");
+  txt.classList.remove("online", "warn", "offline", "error", "demo");
   if (state_ === "online")  led.classList.add("on");
   if (state_ === "warn")    led.classList.add("warn");
   if (state_ === "offline") led.classList.add("bad");
@@ -208,8 +214,11 @@ function setStatus(state_, textKey) {
   if (state_ === "online" || state_ === "warn" || state_ === "offline" || state_ === "error") {
     txt.classList.add(state_);
   }
-  txt.dataset.i18n = textKey;
-  txt.textContent = t(textKey);
+  const demo = !!state.params.demo;
+  if (demo) { txt.classList.add("demo"); led.classList.add("demo"); }
+  txt.dataset.i18n = demo ? "header.status.demo" : textKey;
+  txt.textContent = t(txt.dataset.i18n);
+  txt.title = demo ? t(state.params.demo === "router" ? "demo.banner_router" : "demo.banner_single") + " · " + t(textKey) : t(textKey);
 }
 
 /* Push / clear an error banner. id de-duplicates. */

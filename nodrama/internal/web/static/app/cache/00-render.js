@@ -21,9 +21,9 @@ function renderPromptCache(cache) {
   const traceHint = $("#cache-trace-hint");
   if (!summary || !bar) return;
   clearRelationHighlightClasses();
-  bar.innerHTML = "";
 
   if (!cache || !cache.available) {
+    bar.replaceChildren();
     summary.textContent = t("cache.empty");
     summary.title = "";
     if (traceHint) traceHint.hidden = false;
@@ -43,6 +43,7 @@ function renderPromptCache(cache) {
       (used > 0 || limit > 0 || prompts > 0 || observed > 0 || cache.complete === true));
   if (traceHint) traceHint.hidden = detailsAvailable;
   if (!detailsAvailable) {
+    bar.replaceChildren();
     summary.textContent = t("cache.reuse_only", {
       reused: fmtTokensCompact(reused),
     });
@@ -70,31 +71,35 @@ function renderPromptCache(cache) {
   const denom = limit > 0 ? limit : Math.max(used, cacheEntryMiBSum(cache));
   const segments = promptCacheSegments(cache, denom);
   if (!segments.length) {
+    bar.replaceChildren();
     bar.hidden = true;
     return;
   }
 
-  for (const segment of segments) {
-    const attrs = {
-      class: "cache-segment " + segment.kind,
-      title: segment.title,
-      style: "width: " + Math.max(0.75, segment.percent * 100).toFixed(2) + "%",
-    };
-    if (segment.slotId !== undefined || segment.cacheKey) {
-      attrs.tabindex = "0";
-      attrs.data = {};
-      if (segment.slotId !== undefined) attrs.data.slotId = String(segment.slotId);
-      if (segment.cacheKey) attrs.data.cacheKey = segment.cacheKey;
-    }
-    const node = el("div", attrs, segment.label);
-    if (segment.slotId !== undefined || segment.cacheKey) {
-      node.addEventListener("mouseenter", () => highlightPromptCacheSegmentRefs(segment));
+  const existing = new Map(Array.from(bar.children).map(node => [node.dataset.segmentKey, node]));
+  segments.forEach((segment, index) => {
+    const key = segment.kind + ":" + (segment.cacheKey || segment.slotId || segment.name || index);
+    let node = existing.get(key);
+    if (!node) {
+      node = el("div", { class: "cache-segment " + segment.kind, data: { segmentKey: key } });
+      node.addEventListener("mouseenter", () => highlightPromptCacheSegmentRefs(node.cacheSegment));
       node.addEventListener("mouseleave", clearRelationHighlights);
-      node.addEventListener("focus", () => highlightPromptCacheSegmentRefs(segment));
+      node.addEventListener("focus", () => highlightPromptCacheSegmentRefs(node.cacheSegment));
       node.addEventListener("blur", clearRelationHighlights);
     }
-    bar.appendChild(node);
-  }
+    existing.delete(key);
+    node.cacheSegment = segment;
+    node.title = segment.title;
+    let label = node.querySelector(".cache-label");
+    if (!label) { label = el("span", { class: "cache-label" }); node.replaceChildren(label); }
+    label.textContent = segment.label;
+    node.style.width = Math.max(0.75, segment.percent * 100).toFixed(2) + "%";
+    node.tabIndex = segment.slotId !== undefined || segment.cacheKey ? 0 : -1;
+    if (segment.slotId !== undefined) node.dataset.slotId = String(segment.slotId); else delete node.dataset.slotId;
+    if (segment.cacheKey) node.dataset.cacheKey = segment.cacheKey; else delete node.dataset.cacheKey;
+    if (bar.children[index] !== node) bar.insertBefore(node, bar.children[index] || null);
+  });
+  for (const node of existing.values()) node.remove();
   restoreRelationHighlights();
 }
 

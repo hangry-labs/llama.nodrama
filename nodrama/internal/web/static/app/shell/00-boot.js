@@ -46,8 +46,27 @@ async function boot() {
 function ensureRootScaffold() {
   const root = $("#root");
   root.innerHTML = "";
-  root.appendChild(el("div", { id: "metrics-section", class: "full",
-                               style: "display: contents;" }));
+  root.appendChild(el("div", { class: "diagnostics-heading full" }, [
+    el("div", null, [el("h1", null, t("diagnostics.overview")), el("p", null, t("diagnostics.subtitle"))]),
+    el("div", { class: "diagnostics-controls" }, [
+      el("span", { id: "diagnostics-state", class: "telemetry-state" }),
+      el("button", { id: "diagnostics-pause", onclick: () => setPaused(!state.paused) }, t("diagnostics.pause")),
+    ]),
+  ]));
+  const navigation = $("#top-navigation");
+  navigation.replaceChildren();
+  navigation.setAttribute("aria-label", t("diagnostics.overview"));
+  for (const [id, label] of [["metrics", "diagnostics.navigation_overview"], ["slots", "slots.title"], ["queries", "queries.title"],
+    ["chat", "chat.title"], ["models", "diagnostics.system"], ["log", "log.title"]]) {
+    navigation.appendChild(el("a", { href: "#" + id + "-section", onclick: event => {
+      event.preventDefault();
+      const section = $("#" + id + "-section");
+      if (id === "log" && !section?.firstElementChild) { showLogHelp(); return; }
+      const target = section?.firstElementChild || section;
+      target?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
+    } }, t(label)));
+  }
+  root.appendChild(el("section", { id: "metrics-section", class: "full", "aria-label": t("diagnostics.overview") }));
   root.appendChild(el("div", { id: "cache-section", class: "full",
                                style: "display: contents;" }));
   root.appendChild(el("div", { id: "slots-section", class: "full",
@@ -66,6 +85,19 @@ function ensureRootScaffold() {
                                style: "display: contents;" }));
   root.appendChild(el("div", { id: "guidance-section", class: "full",
                                style: "display: contents;" }));
+}
+
+function renderDiagnosticStatus() {
+  const indicator = $("#diagnostics-state"), pause = $("#diagnostics-pause");
+  if (!indicator || !pause) return;
+  indicator.textContent = t(state.paused ? "diagnostics.paused" : state.ui.snapshotStale ? "diagnostics.stale" : state.healthy ? "diagnostics.live" : "header.status.offline");
+  indicator.classList.toggle("is-live", state.healthy && !state.paused && !state.ui.snapshotStale);
+  $("#metrics-section")?.classList.toggle("is-stale", !!state.ui.snapshotStale);
+  if (state.ui.snapshotStale) {
+    for (const note of $$(".metric-note")) note.textContent = t("diagnostics.observed") + " " + fmtTime(state.lastUpdate);
+  }
+  pause.textContent = t(state.paused ? "diagnostics.resume" : "diagnostics.pause");
+  pause.setAttribute("aria-pressed", String(state.paused));
 }
 
 /* Render Models, Server config, and LoRA cards. Re-callable; on each call

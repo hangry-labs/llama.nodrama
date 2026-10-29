@@ -155,6 +155,7 @@ function applySnapshot(snapshot, opts) {
   }
 
   state.healthy = !!(snapshot && snapshot.overview && snapshot.overview.online);
+  state.ui.snapshotStale = false;
   state.lastUpdate = Date.parse(snapshot && snapshot.updatedAt) || Date.now();
   clearBanner("snapshot");
   clearBanner("metrics-disabled");

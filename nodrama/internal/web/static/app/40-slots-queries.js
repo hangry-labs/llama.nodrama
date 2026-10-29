@@ -91,7 +91,7 @@ function renderSlots(slots) {
   /* sort slots by id ascending so the layout is stable */
   const items = $$('[data-slot]', grid)
     .sort((a, b) => Number(a.dataset.slot) - Number(b.dataset.slot));
-  for (const n of items) grid.appendChild(n);
+  items.forEach((node, index) => { if (grid.children[index] !== node) grid.insertBefore(node, grid.children[index] || null); });
   state.slots = slots;
   restoreRelationHighlights();
   bumpGuidance();
@@ -111,6 +111,13 @@ function makeSlotNode(s) {
       el("div", { "data-role": "ratio" }, "—"),
     ]),
     el("div", { class: "sub", "data-role": "ctx" }, "—"),
+    el("div", { class: "slot-phase-meters", "data-role": "phase-meters" }, ["prompt", "generation"].map(phase =>
+      el("div", { class: "slot-phase" }, [
+        el("span", null, t("diagnostics." + phase)),
+        el("div", { class: "pct-bar", "data-phase": phase, role: "progressbar",
+          "aria-label": t("diagnostics." + phase), "aria-valuemin": "0", "aria-valuemax": "100" }, el("span")),
+        el("span", { "data-phase-value": phase }, "—"),
+      ]))),
     el("div", { class: "spark", "data-role": "slot-history" }),
     el("div", { class: "slot-actions", "data-role": "actions" }, []),
     el("details", null, [
@@ -162,7 +169,7 @@ function updateSlotNode(node, s) {
   const pct = contextCapacity > 0 ? Math.max(0, Math.min(100, (contextEstimate / contextCapacity) * 100)) : 0;
   pctSpan.style.width = pct.toFixed(1) + "%";
   node.querySelector('[data-role="ratio"]').textContent =
-    isActive ? (t("slots.context_bar") + ": " + contextEstimate + " / " + (contextCapacity || "?") + " (" + pct.toFixed(1) + "%)") : "—";
+    isActive ? (t("diagnostics.context_estimate") + ": " + fmtTokensCompact(contextEstimate) + " / " + (contextCapacity ? fmtTokensCompact(contextCapacity) : "?") + " (" + pct.toFixed(1) + "%)") : "—";
 
   const ctx = node.querySelector('[data-role="ctx"]');
   ctx.textContent = isActive
@@ -171,10 +178,23 @@ function updateSlotNode(node, s) {
     : (t("slots.context_used") + ": " + (contextCapacity || "?"));
 
   const historyHost = node.querySelector('[data-role="slot-history"]');
+  node.querySelector('[data-role="phase-meters"]').hidden = !isActive;
+  const remaining = slotRemainingTokens(s);
+  const phases = {
+    prompt: Number.isFinite(s.promptProgress) && (s.promptProgress > 0 || promptTokens > 0) ? s.promptProgress : promptTokens > 0 ? promptProcessed / promptTokens : null,
+    generation: Number.isFinite(s.generationProgress) && (s.generationProgress > 0 || Number.isFinite(remaining) && remaining >= 0) ? s.generationProgress
+      : Number.isFinite(remaining) && remaining >= 0 && nDecoded + remaining > 0 ? nDecoded / (nDecoded + remaining) : null,
+  };
+  for (const [phase, value] of Object.entries(phases)) {
+    const bar = node.querySelector('[data-phase="' + phase + '"]');
+    const percent = value === null ? null : Math.max(0, Math.min(100, value * 100));
+    bar.firstElementChild.style.width = (percent || 0) + "%";
+    if (percent === null) bar.removeAttribute("aria-valuenow"); else bar.setAttribute("aria-valuenow", percent.toFixed(0));
+    node.querySelector('[data-phase-value="' + phase + '"]').textContent = percent === null ? "—" : percent.toFixed(0) + "%";
+  }
   if (historyHost) {
     const points = normalizeSlotHistoryPoints(historyPoints);
-    historyHost.innerHTML = "";
-    historyHost.appendChild(sparkline(points, { min: 0 }));
+    updateSparkline(historyHost, points, { min: 0, label: t("metrics.gen_tps") });
   }
 
   /* params expander — re-render only when open or first time, since it's
@@ -265,11 +285,24 @@ function renderQueries(queries) {
   const empty = $("#queries-empty");
   const grid = $("#query-grid");
   if (!grid || !empty) return;
-  grid.innerHTML = "";
+  const previous = new Map(Array.from(grid.children).map(node => [node.dataset.queryKey, node]));
   empty.style.display = list.length ? "none" : "";
-  for (const q of list) {
-    grid.appendChild(renderQueryCard(q));
-  }
+  list.forEach((query, index) => {
+    const key = String(query.id || queryRelationKey(query) || index);
+    const fresh = renderQueryCard(query);
+    let node = previous.get(key);
+    if (node) {
+      node.className = fresh.className; node.title = fresh.title; node.tabIndex = fresh.tabIndex;
+      for (const name of Object.keys(node.dataset)) delete node.dataset[name];
+      Object.assign(node.dataset, fresh.dataset);
+      node.queryRelation = fresh.queryRelation;
+      node.replaceChildren(...fresh.childNodes);
+    } else node = fresh;
+    node.dataset.queryKey = key;
+    previous.delete(key);
+    if (grid.children[index] !== node) grid.insertBefore(node, grid.children[index] || null);
+  });
+  for (const node of previous.values()) node.remove();
   restoreRelationHighlights();
 }
 
@@ -340,11 +373,14 @@ function renderQueryCard(q) {
     ]),
   ]);
   if (q.cacheKey || slotIds.length || queryRelationId) {
-    node.addEventListener("mouseenter", () => highlightQueryRelations(slotIds, q.cacheKey, queryRelationId));
+    node.queryRelation = { slots: slotIds, cache: q.cacheKey, id: queryRelationId };
+    const highlight = () => highlightQueryRelations(node.queryRelation.slots, node.queryRelation.cache, node.queryRelation.id);
+    node.addEventListener("mouseenter", highlight);
     node.addEventListener("mouseleave", clearRelationHighlights);
-    node.addEventListener("focus", () => highlightQueryRelations(slotIds, q.cacheKey, queryRelationId));
+    node.addEventListener("focus", highlight);
     node.addEventListener("blur", clearRelationHighlights);
   }
+  for (const value of node.querySelectorAll(".query-details .v")) value.title = value.textContent;
   return node;
 }
 
@@ -375,6 +411,8 @@ function startCorePollers() {
     try {
       await refreshSnapshot();
     } catch (e) {
+      state.ui.snapshotStale = true;
+      renderDiagnosticStatus();
       setStatus("error", "header.status.error");
       showBanner("snapshot", t("error.fetch_failed") + ": /api/snapshot — " + e.message);
       throw e;
@@ -386,7 +424,7 @@ function startCorePollers() {
  *  Keyboard shortcuts and last-update ticker.
  * ──────────────────────────────────────────────────────────────────── */
 document.addEventListener("keydown", (e) => {
-  if (e.target && e.target.closest && e.target.closest("input, textarea, select, button, a, summary, [role='button'], [role='dialog'], [contenteditable='true']")) return;
+  if (e.target && e.target.closest && e.target.closest("input, textarea, select, button, a, summary, [role='button'], [role='slider'], [role='dialog'], [contenteditable='true']")) return;
   /* don't steal keys when the user is typing in an input/select/etc. */
   const tag = (e.target && e.target.tagName) || "";
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag)) return;

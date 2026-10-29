@@ -117,6 +117,17 @@ For a manual preview without llama.cpp, open `/?demo=1` or `/?demo=router` on
 the local dashboard. Demo activity, histories, cache, logs and model/slot actions
 are synthetic and stay in the browser. Demo server/log settings are read-only;
 polling and timeout controls apply to the preview.
+Section navigation lives in the top bar. Its status badge shows **Demo** for
+synthetic previews and the current connection state for a real server.
+
+The compact diagnostic overview shows all 15 statistics, including throughput,
+queue pressure, context estimates, cumulative totals and resources. Previews
+retain 5-minute/all-time peaks and show their actual observed
+window; click a metric title for a larger chart with 1h/6h/24h selection,
+axis labels and sample statistics. Inspect points by pointer, touch, or the
+arrow/Home/End keys when a chart has focus. **Pause updates** freezes the view
+without stopping work on llama.cpp. Collection gaps remain gaps in the charts,
+and unknown token limits show no percentage rather than a false zero.
 
 Chat keeps up to 40 turns in memory; reloading clears the conversation. Stopped
 partial replies are labelled and retained in history. Failed or interrupted
