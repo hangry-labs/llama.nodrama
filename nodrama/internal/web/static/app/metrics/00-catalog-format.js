@@ -74,12 +74,11 @@ const METRIC_CARDS = [
     helpKey: "metrics.help.predicted_seconds_total" },
 ];
 
-// Each column starts with its live diagnostic; related counters stay below it.
+// Live timelines stay together on the left; cumulative summaries on the right.
+// Uptime is rendered in the global header, with its history still available.
 const METRIC_GROUPS = [
-  { labelKey: "diagnostics.generation", ids: ["predicted_tps", "predicted_total", "predicted_seconds_total", "decode_total"] },
-  { labelKey: "diagnostics.prompt", ids: ["prompt_tps", "prompt_total", "prompt_seconds_total", "prompt_cached_total"] },
-  { labelKey: "diagnostics.requests", ids: ["processing", "deferred", "busy_slots"] },
-  { labelKey: "diagnostics.capacity", ids: ["context_used", "n_tokens_max", "container_cpu", "server_uptime"] },
+  { id: "timelines", labelKey: "diagnostics.timelines", ids: ["predicted_tps", "prompt_tps", "processing", "context_used", "n_tokens_max", "container_cpu", "deferred", "busy_slots"] },
+  { id: "totals", labelKey: "diagnostics.totals", ids: ["predicted_total", "prompt_total", "predicted_seconds_total", "prompt_seconds_total", "decode_total", "prompt_cached_total"] },
 ];
 
 function metricHelp(card) {
@@ -164,6 +163,13 @@ function formatMetricValue(card, value) {
   if (card.percent) return fmtNumber(value, { percent: true }) + "%";
   const formatted = fmtNumber(value);
   return card.unit ? (formatted + " " + card.unit) : formatted;
+}
+
+function formatMetricHistoryValue(card, value, withUnit = true) {
+  if (!card.cumulative && !card.uptime) return formatMetricValue(card, value);
+  if (!Number.isFinite(value)) return "—";
+  const number = value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  return number + (card.duration ? " s" : withUnit && card.unit ? " " + card.unit : "");
 }
 
 function metricPeakNote(card, fact) {

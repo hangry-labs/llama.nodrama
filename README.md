@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/llama-nodrama_logo.png" alt="llama.nodrama by HangryLabs" width="720">
+  <img src="assets/llama-nodrama_logo.webp" alt="llama.nodrama by HangryLabs" width="720">
 </p>
 
 **Read this in:** [🇺🇸 English](README.md) | [🇰🇷 한국어](docs/readme/README.ko-KR.md) | [🇯🇵 日本語](docs/readme/README.ja-JP.md) | [🇨🇳 简体中文](docs/readme/README.zh-CN.md) | [🇪🇸 Español](docs/readme/README.es-ES.md)
@@ -23,7 +23,7 @@ obvious without turning monitoring itself into another project.
 
 ## UI Preview
 
-![llama.nodrama dashboard UI](docs/ui.jpg)
+![llama.nodrama dashboard UI](docs/ui.webp)
 
 ## Install
 
@@ -143,9 +143,22 @@ polling and timeout controls apply to the preview.
 Section navigation lives in the top bar. Its status badge shows **Demo** for
 synthetic previews and the current connection state for a real server.
 
-The compact diagnostic overview groups all 15 statistics into generation,
-prompt processing, request pressure, and context/resources. Each column starts
-with its main live statistic, with related counters below it. Previews
+The compact overview keeps all 15 statistics accessible: server uptime lives
+beside the connection status in the top bar, with start time/source in its tooltip
+and history on click. The eight live timeline cards sit on the left at equal size,
+including Tokens max and Container CPU; the six cumulative summaries sit on the
+right. On narrow screens, timelines appear above the summaries. Cumulative totals show the
+current value and observed increases over **1m / 5m / 1h**. A label such as
+`2m / 5m` means only two minutes of that five-minute window have been observed;
+the increase is not extrapolated. Resets and collection gaps show an unknown
+increase, and quiet covered intervals show `+0`. Click a total title or the uptime
+control to open its historical
+overview; totals show observed increase and coverage rather than average/peak.
+The detailed view scales to the observed range and uses full numbers so small
+changes remain visible. Changes follow the counters llama.cpp publishes, which
+can round large totals.
+
+Timeline previews
 retain 5-minute/all-time peaks and show their actual observed
 window; click a metric title for a larger chart with 1h/6h/24h selection,
 axis labels and sample statistics. Inspect points by pointer, touch, or the
@@ -162,6 +175,12 @@ turns are excluded from outgoing history and the input is restored for retry.
 Parallel stress requests use the first completed reply in request order for
 history and label that reply. Token statistics use server usage when available;
 otherwise the footer shows characters.
+
+Raster artwork, documentation screenshots and browser icons use WebP. Windows
+builds decode the WebP icon sources into ignored `winres/generated/` PNG
+intermediates for native executable resources; no PNG/JPG source assets are
+required. The decoder is a build-tool dependency, and the dashboard still ships
+as a single Go binary.
 
 Useful flags:
 

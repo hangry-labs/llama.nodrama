@@ -1,6 +1,17 @@
 "use strict";
 
 I18N.es = {
+    "header.uptime": "Actividad",
+    "diagnostics.timelines": "Gráficas en vivo",
+    "diagnostics.totals": "Totales e intervalos",
+    "metrics.counter_coverage": "Duración observada",
+    "metrics.counter_increase": "Aumento observado",
+    "metrics.server_started_label": "Inicio",
+    "metrics.counter_reset_short": "Reinicio",
+    "metrics.counter_gap_short": "Sin datos",
+    "metrics.counter_partial": "{observed} observados de {window}",
+    "metrics.counter_gap": "Interrupción de datos; aumento desconocido",
+    "metrics.counter_observed": "{duration} observados",
     "diagnostics.requests": "Carga de solicitudes",
     "diagnostics.capacity": "Contexto y recursos",
     "chat.description": "Prueba tu modelo y observa los diagnósticos en vivo.",

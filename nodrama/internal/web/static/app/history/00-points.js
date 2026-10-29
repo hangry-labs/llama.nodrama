@@ -12,7 +12,7 @@ function normalizeHistoryPoints(points) {
     const t = typeof p.t === "number" ? p.t : Date.parse(p.t);
     const v = Number(p.v);
     if (!isFinite(t) || !isFinite(v)) continue;
-    out.push({ t, v });
+    out.push({ t, v, ...(Number.isFinite(p.resetAt) && p.resetAt > 0 ? { resetAt: p.resetAt } : {}) });
   }
   return out;
 }

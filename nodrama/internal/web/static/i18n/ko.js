@@ -1,6 +1,17 @@
 "use strict";
 
 I18N.ko = {
+    "header.uptime": "가동 시간",
+    "diagnostics.timelines": "실시간 추이",
+    "diagnostics.totals": "누적 및 구간별 증가",
+    "metrics.counter_coverage": "관측 기간",
+    "metrics.counter_increase": "관측된 증가량",
+    "metrics.server_started_label": "시작",
+    "metrics.counter_reset_short": "초기화",
+    "metrics.counter_gap_short": "누락",
+    "metrics.counter_partial": "{window} 중 {observed} 관측",
+    "metrics.counter_gap": "수집 누락으로 증가량을 알 수 없습니다",
+    "metrics.counter_observed": "{duration} 관측",
     "diagnostics.requests": "요청 부하",
     "diagnostics.capacity": "컨텍스트 및 리소스",
     "chat.description": "모델을 테스트하며 실시간 진단을 확인하세요.",

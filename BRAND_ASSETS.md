@@ -3,10 +3,13 @@
 The following files are brand assets and are **not** licensed under the MIT
 License that applies to the `llama.nodrama` source code and documentation:
 
-- `assets/*.png`
-- `docs/llama-nodrama.png`
-- `nodrama/internal/web/static/favicon.png`
-- `nodrama/winres/icons/*.png`
+- `assets/*.webp`
+- `docs/llama-nodrama.webp`
+- `nodrama/internal/web/static/favicon.webp`
+- `nodrama/winres/icons/*.webp`
+
+Windows icon resources generated from these WebP sources carry the same
+restrictions. PNG intermediates are build output and are not source assets.
 
 Copyright (c) 2026 Hangry Labs. All rights reserved.
 

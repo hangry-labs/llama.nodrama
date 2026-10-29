@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="../../assets/llama-nodrama_logo.png" alt="llama.nodrama by HangryLabs" width="720">
+  <img src="../../assets/llama-nodrama_logo.webp" alt="llama.nodrama by HangryLabs" width="720">
 </p>
 
 **다른 언어로 읽기:** [🇺🇸 English](../../README.md) | [🇰🇷 한국어](README.ko-KR.md) | [🇯🇵 日本語](README.ja-JP.md) | [🇨🇳 简体中文](README.zh-CN.md) | [🇪🇸 Español](README.es-ES.md)
@@ -12,7 +12,7 @@
 
 ## UI 미리보기
 
-![llama.nodrama dashboard UI](../ui.jpg)
+![llama.nodrama dashboard UI](../ui.webp)
 
 ## 설치
 

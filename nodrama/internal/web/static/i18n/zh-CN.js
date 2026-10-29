@@ -1,6 +1,17 @@
 "use strict";
 
 I18N["zh-CN"] = {
+    "header.uptime": "运行时长",
+    "diagnostics.timelines": "实时曲线",
+    "diagnostics.totals": "总量与区间增量",
+    "metrics.counter_coverage": "观测时长",
+    "metrics.counter_increase": "观测增量",
+    "metrics.server_started_label": "启动时间",
+    "metrics.counter_reset_short": "已重置",
+    "metrics.counter_gap_short": "缺失",
+    "metrics.counter_partial": "已观测 {observed}，目标 {window}",
+    "metrics.counter_gap": "采集存在缺口，增量未知",
+    "metrics.counter_observed": "已观测 {duration}",
     "diagnostics.requests": "请求压力",
     "diagnostics.capacity": "上下文与资源",
     "chat.description": "测试模型，同时查看实时诊断。",

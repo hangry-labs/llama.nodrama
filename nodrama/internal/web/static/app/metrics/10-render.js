@@ -8,22 +8,25 @@ function ensureMetricCards() {
   section.replaceChildren(grid);
   const tones = { predicted_tps: "teal", prompt_tps: "blue", deferred: "amber", context_used: "violet" };
   for (const group of METRIC_GROUPS) {
-    const column = el("div", { class: "metric-group", role: "group", "aria-label": t(group.labelKey) });
-    const related = el("div", { class: "metric-related-group" }, [
-      el("h3", { class: "metric-group-label" }, t(group.labelKey)),
-    ]);
+    const column = el("div", { class: "metric-group metric-" + group.id, role: "group", "aria-label": t(group.labelKey) });
+    const cells = el("div", { class: "metric-group-grid" });
+    column.append(el("h2", { class: "metric-group-label" }, t(group.labelKey)), cells);
     grid.appendChild(column);
-    for (const [index, id] of group.ids.entries()) {
+    for (const id of group.ids) {
       const metric = METRIC_CARDS.find(card => card.id === id);
       const featured = Object.hasOwn(tones, metric.id);
+      const summaryCard = metric.cumulative || metric.uptime;
       const open = () => openMetricHistory(metric);
       const card = el("div", {
-        class: "card metric-card" + (featured ? " metric-featured" : "") + (index ? " metric-related" : " metric-primary"), id: "metric-" + metric.id,
+        class: "card metric-card" + (featured ? " metric-featured" : "") + (metric.cumulative ? " metric-related" : " metric-primary")
+          + (metric.cumulative ? " metric-counter" : metric.uptime ? " metric-uptime" : ""), id: "metric-" + metric.id,
         role: "group", "aria-label": t(metric.titleKey), data: { tone: tones[metric.id] || "blue" },
         onclick: event => { if (!event.target.closest("button, svg")) open(); },
       }, [
         el("div", { class: "metric-title" }, [
-          el("h2", null, el("button", { class: "metric-open", onclick: open, title: t("metrics.history_hint") }, t(metric.titleKey))),
+          el("h2", null, el("button", { class: "metric-open", onclick: open, title: t("metrics.history_hint") }, [
+            t(metric.titleKey), summaryCard ? el("span", { class: "metric-open-arrow", "aria-hidden": "true" }, " ↗") : null,
+          ].filter(Boolean))),
           el("button", { class: "info-btn", type: "button", title: metricHelp(metric),
             "aria-label": t(metric.titleKey) + ": " + metricHelp(metric), onclick: () => showMetricHelp(metric) }, "?"),
         ]),
@@ -32,15 +35,18 @@ function ensureMetricCards() {
           el("div", { class: "unit", id: "metric-" + metric.id + "-unit" }, metric.unit || ""),
         ]),
         el("div", { class: "metric-note", id: "metric-" + metric.id + "-note" }),
-        el("div", { class: "spark", id: "metric-" + metric.id + "-spark" }),
+        metric.cumulative ? el("div", { class: "counter-intervals" }, [60, 300, 3600].map(seconds =>
+          el("div", { class: "counter-interval", data: { seconds } }, [
+            el("span", { class: "counter-window" }, fmtDuration(seconds)), el("strong", null, "—"),
+          ]))) : null,
+        ...(!summaryCard ? [el("div", { class: "spark", id: "metric-" + metric.id + "-spark" }),
         el("div", { class: "metric-scale" }, [
           el("span", { id: "metric-" + metric.id + "-scale" }),
           el("span", { class: "metric-history-link" }, t("diagnostics.history") + " ↗"),
-        ]),
-      ]);
-      (index ? related : column).appendChild(card);
+        ])] : []),
+      ].filter(Boolean));
+      cells.appendChild(card);
     }
-    column.appendChild(related);
   }
 }
 
@@ -50,7 +56,8 @@ function showMetricHelp(metric) {
 
 function openMetricHistory(metric) {
   let controller = null, closed = false;
-  const body = el("div", { class: "metric-history-modal" });
+  const summaryMetric = metric.cumulative || metric.uptime;
+  const body = el("div", { class: "metric-history-modal" + (summaryMetric ? " metric-history-counter" : "") });
   const chart = el("div", { class: "metric-history-chart" });
   const yAxis = el("div", { class: "history-y-axis", "aria-hidden": "true" });
   const plot = el("div", { class: "history-plot" }, [yAxis, chart]);
@@ -81,21 +88,31 @@ function openMetricHistory(metric) {
       const stats = summarizeMetricHistory(points);
       summary.replaceChildren(); axis.replaceChildren(); yAxis.replaceChildren();
       if (!stats) { chart.replaceChildren(); status.textContent = t("metrics.no_data"); return; }
-      for (const [label, value] of [["metrics.history_latest", formatMetricValue(metric, stats.latest.v)],
-        ["diagnostics.average", formatMetricValue(metric, stats.average)], ["diagnostics.peak", formatMetricValue(metric, stats.max)]]) {
+      const change = payload?.change;
+      const increase = change ? change.delta : stats.delta === null || points.some(p => p.resetAt > stats.first.t) ? null : stats.delta;
+      const summaries = metric.cumulative ? [["diagnostics.latest", formatMetricHistoryValue(metric, change?.to ? change.current : stats.latest.v)],
+        ["metrics.counter_increase", increase === null ? t(change?.status === "gap" ? "metrics.counter_gap"
+          : change?.status === "collecting" ? "diagnostics.collecting" : "diagnostics.counter_reset")
+          : "+" + formatMetricHistoryValue(metric, increase)],
+        ["metrics.counter_coverage", fmtDuration(change ? change.observedMs / 1000 : stats.duration)]]
+        : metric.uptime ? [["diagnostics.latest", fmtDuration(stats.latest.v)], ["metrics.counter_coverage", fmtDuration(stats.duration)],
+          ["metrics.server_started_label", state.snapshot?.overview?.serverStartedAt ? fmtDateTime(state.snapshot.overview.serverStartedAt) : "—"]]
+        : [["diagnostics.latest", formatMetricValue(metric, stats.latest.v)],
+          ["diagnostics.average", formatMetricValue(metric, stats.average)], ["diagnostics.peak", formatMetricValue(metric, stats.max)]];
+      for (const [label, value] of summaries) {
         summary.appendChild(el("div", { class: "history-stat" }, [
-          el("span", null, label === "metrics.history_latest" ? t("diagnostics.latest") : t(label)), el("strong", null, value),
+          el("span", null, t(label)), el("strong", null, value),
         ]));
       }
-      updateSparkline(chart, points, { min: metric.min, max: metric.max, step: metric.step, height: 180, interactive: true,
-        label: t(metric.titleKey) + ". " + t("diagnostics.chart_hint"), formatValue: value => formatMetricValue(metric, value) });
+      updateSparkline(chart, points, { min: summaryMetric ? undefined : metric.min, max: metric.max, step: metric.step, height: 180, interactive: true,
+        label: t(metric.titleKey) + ". " + t("diagnostics.chart_hint"), formatValue: value => formatMetricHistoryValue(metric, value) });
       const geometry = chart.querySelector("svg").chartModel.geometry;
       for (const value of [geometry.max, (geometry.max + geometry.min) / 2, geometry.min]) {
-        yAxis.appendChild(el("span", null, metric.duration ? fmtDuration(value) : fmtNumber(value)));
+        yAxis.appendChild(el("span", null, summaryMetric ? formatMetricHistoryValue(metric, value, false) : metric.duration ? fmtDuration(value) : fmtNumber(value)));
       }
       axis.append(el("span", null, fmtDateTime(stats.first.t)), el("span", null, fmtDateTime(stats.latest.t)));
       status.textContent = t("diagnostics.samples", { count: stats.count }) + " · " + t("diagnostics.range") + ": "
-        + formatMetricValue(metric, stats.min) + " – " + formatMetricValue(metric, stats.max)
+        + formatMetricHistoryValue(metric, stats.min) + " – " + formatMetricHistoryValue(metric, stats.max)
         + " · " + t("diagnostics.window") + ": " + fmtDuration(stats.duration);
     } catch (error) {
       if (!closed && request === controller && !request.signal.aborted) status.textContent = t("error.fetch_failed") + ": " + error.message;
@@ -114,11 +131,59 @@ function renderMetricsDisabled() {
   showBanner("metrics-disabled", t("error.metrics_disabled"), "warn");
 }
 
+function renderHeaderUptime(parsed = state.metrics || {}) {
+  const button = $("#server-uptime"), valueNode = $("#server-uptime-value");
+  if (!button || !valueNode) return;
+  const metric = METRIC_CARDS.find(metric => metric.uptime);
+  const value = parsed[metric.metric], available = Number.isFinite(value);
+  const overview = state.snapshot?.overview || {};
+  const stale = state.ui.snapshotStale || !state.healthy;
+  const duration = available ? fmtDuration(value) : "—";
+  valueNode.textContent = duration;
+  button.disabled = !available && !state.history?.metrics?.[metric.metric]?.length;
+  button.dataset.state = !available ? "unavailable" : stale ? "stale" : state.paused ? "paused" : "live";
+  const details = [t(metric.titleKey) + ": " + duration];
+  if (!available) details.push(t("metrics.no_data"));
+  if (overview.serverStartedAt) details.push(t("metrics.server_started", { time: fmtDateTime(overview.serverStartedAt) }));
+  if (overview.serverUptimeSource) details.push(t("metrics.server_uptime_source", { source: overview.serverUptimeSource }));
+  if (stale && state.lastUpdate) details.push(t("diagnostics.observed") + " " + fmtTime(state.lastUpdate));
+  if (state.paused) details.push(t("diagnostics.paused"));
+  details.push(t("metrics.history_hint"));
+  button.title = details.join(" · ");
+  button.setAttribute("aria-label", button.title);
+}
+
+function renderCounterSummary(card, metric, changes, available) {
+  for (const cell of card.querySelectorAll(".counter-interval")) {
+    const seconds = Number(cell.dataset.seconds), change = changes.find(item => item.windowSeconds === seconds);
+    const status = available ? change?.status || "collecting" : "unavailable";
+    cell.dataset.status = status;
+    const window = fmtDuration(seconds);
+    const duration = (change?.observedMs || 0) / 1000;
+    const coverage = duration < 60 ? Math.floor(duration) + "s" : Math.floor(duration / 60) + "m";
+    cell.querySelector(".counter-window").textContent = status === "partial" ? coverage + " / " + window : window;
+    cell.querySelector("strong").textContent = status === "reset" ? t("metrics.counter_reset_short")
+      : status === "gap" ? t("metrics.counter_gap_short")
+      : available && Number.isFinite(change?.delta) ? "+" + (metric.duration
+        ? change.delta > 0 && change.delta < 1 ? fmtNumber(change.delta * 1000) + "ms"
+          : change.delta < 60 ? fmtNumber(change.delta) + "s" : fmtDuration(change.delta)
+        : fmtNumber(change.delta)) : "—";
+    const description = status === "partial" ? t("metrics.counter_partial", { observed: fmtDuration(duration), window })
+      : status === "reset" ? t("diagnostics.counter_reset") : status === "gap" ? t("metrics.counter_gap")
+      : status === "collecting" ? t("diagnostics.collecting") : status === "unavailable" ? t("metrics.no_data") : t("metrics.counter_increase");
+    cell.title = window + " · " + description + (Number.isFinite(change?.delta) ? " · +" + formatMetricHistoryValue(metric, change.delta) : "")
+      + (change?.observedMs ? " · " + fmtDateTime(change.from) + " → " + fmtDateTime(change.to) : "");
+    cell.setAttribute("aria-label", cell.title);
+  }
+}
+
 function renderMetrics(parsed, metricHistory, metricFacts = {}) {
   ensureMetricCards();
   clearBanner("metrics-disabled");
   renderDiagnosticStatus();
+  renderHeaderUptime(parsed);
   for (const metric of METRIC_CARDS) {
+    if (metric.uptime) continue;
     const value = parsed[metric.metric];
     const available = Number.isFinite(value);
     const ratio = metric.ratioMetric ? parsed[metric.ratioMetric] || 0 : value;
@@ -137,16 +202,17 @@ function renderMetrics(parsed, metricHistory, metricFacts = {}) {
     const note = $("#metric-" + metric.id + "-note");
     const fact = metricFacts[metric.metric];
     note.title = "";
+    if (metric.cumulative) {
+      const changes = fact?.changes || summarizeCounterChanges(points);
+      const observed = Math.max(0, ...changes.map(change => change.observedMs || 0)) / 1000;
+      renderCounterSummary(card, metric, changes, available);
+      note.textContent = !available ? t("metrics.no_data") : observed ? t("metrics.counter_observed", { duration: fmtDuration(observed) }) : t("diagnostics.collecting");
+      if (state.ui.snapshotStale && stats) note.textContent = t("diagnostics.observed") + " " + fmtTime(stats.latest.t);
+      continue;
+    }
     if (!stats) note.textContent = t(available ? "diagnostics.collecting" : "metrics.no_data");
     else if (!available || state.ui.snapshotStale) note.textContent = t("diagnostics.observed") + " " + fmtTime(stats.latest.t);
-    else if (metric.cumulative) note.textContent = stats.delta === null ? t("diagnostics.counter_reset")
-      : t("diagnostics.change", { value: "+" + formatMetricValue(metric, stats.delta), duration: fmtDuration(stats.duration) });
-    else if (metric.uptime) {
-      const overview = state.snapshot?.overview || {};
-      note.replaceChildren(el("span", null, overview.serverStartedAt ? fmtTime(overview.serverStartedAt) : t("diagnostics.since_start")),
-        el("span", null, overview.serverUptimeSource ? t("metrics.server_uptime_source", { source: overview.serverUptimeSource }) : ""));
-      note.title = overview.serverStartedAt ? t("metrics.server_started", { time: fmtDateTime(overview.serverStartedAt) }) : "";
-    } else if (metric.peakNote && fact && (fact.peak5mAt || fact.peakAt)) {
+    else if (metric.peakNote && fact && (fact.peak5mAt || fact.peakAt)) {
       const peaks = [];
       if (fact.peak5mAt) peaks.push(el("span", null, "5m " + t("diagnostics.max") + " " + formatMetricValue(metric, fact.peak5mValue ?? 0)));
       if (fact.peakAt) peaks.push(el("span", null, t("diagnostics.max") + " " + formatMetricValue(metric, fact.peakValue ?? 0)));

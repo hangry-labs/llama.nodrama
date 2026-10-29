@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="../../assets/llama-nodrama_logo.png" alt="llama.nodrama by HangryLabs" width="720">
+  <img src="../../assets/llama-nodrama_logo.webp" alt="llama.nodrama by HangryLabs" width="720">
 </p>
 
 **Read this in:** [🇺🇸 English](../../README.md) | [🇰🇷 한국어](README.ko-KR.md) | [🇯🇵 日本語](README.ja-JP.md) | [🇨🇳 简体中文](README.zh-CN.md) | [🇪🇸 Español](README.es-ES.md)
@@ -12,7 +12,7 @@ This is especially useful when running on a budget machine where concurrency and
 
 ## UI Preview
 
-![llama.nodrama dashboard UI](../ui.jpg)
+![llama.nodrama dashboard UI](../ui.webp)
 
 ## Install
 

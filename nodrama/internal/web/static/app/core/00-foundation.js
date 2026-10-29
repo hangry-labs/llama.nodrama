@@ -172,6 +172,7 @@ function initHeader() {
   $("#server-display").title = state.serverBase;
   setBuildDisplay(null, null);
   const settingsButton = $("#settings-button");
+  $("#server-uptime")?.addEventListener("click", () => openMetricHistory(METRIC_CARDS.find(metric => metric.uptime)));
   if (settingsButton) {
     settingsButton.title = t("header.settings");
     settingsButton.setAttribute("aria-label", t("header.settings"));

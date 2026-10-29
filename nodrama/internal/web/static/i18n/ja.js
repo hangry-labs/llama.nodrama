@@ -1,6 +1,17 @@
 "use strict";
 
 I18N.ja = {
+    "header.uptime": "稼働時間",
+    "diagnostics.timelines": "ライブ時系列",
+    "diagnostics.totals": "合計と期間別増加",
+    "metrics.counter_coverage": "観測期間",
+    "metrics.counter_increase": "観測された増加",
+    "metrics.server_started_label": "開始",
+    "metrics.counter_reset_short": "リセット",
+    "metrics.counter_gap_short": "欠測",
+    "metrics.counter_partial": "{window} 中 {observed} を観測",
+    "metrics.counter_gap": "収集に欠測があるため増加量は不明です",
+    "metrics.counter_observed": "{duration} を観測",
     "diagnostics.requests": "リクエスト負荷",
     "diagnostics.capacity": "コンテキストとリソース",
     "chat.description": "モデルを試しながら診断情報をリアルタイムで確認。",

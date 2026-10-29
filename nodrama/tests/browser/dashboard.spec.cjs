@@ -23,21 +23,25 @@ for (const mode of ['1', 'router']) {
       await expect(page.locator('[data-id="demo-mode"]')).toHaveCount(0);
       await expect(page.locator('#status-text')).toHaveAttribute('title', /synthetic/);
       await expect(page.locator('#metric-predicted_tps .spark-line')).toHaveCount(1);
-      await expect(page.locator('.metric-card:visible')).toHaveCount(15);
+      await expect(page.locator('.metric-card:visible')).toHaveCount(14);
+      await expect(page.locator('header.app #server-uptime')).toBeVisible();
       const groups = await page.locator('.metric-group').evaluateAll(nodes => nodes.map(node =>
         [...node.querySelectorAll('.metric-card')].map(card => card.id.replace('metric-', ''))));
       expect(groups).toEqual([
-        ['predicted_tps', 'predicted_total', 'predicted_seconds_total', 'decode_total'],
-        ['prompt_tps', 'prompt_total', 'prompt_seconds_total', 'prompt_cached_total'],
-        ['processing', 'deferred', 'busy_slots'],
-        ['context_used', 'n_tokens_max', 'container_cpu', 'server_uptime'],
+        ['predicted_tps', 'prompt_tps', 'processing', 'context_used', 'n_tokens_max', 'container_cpu', 'deferred', 'busy_slots'],
+        ['predicted_total', 'prompt_total', 'predicted_seconds_total', 'prompt_seconds_total', 'decode_total', 'prompt_cached_total'],
       ]);
-      if (width < 1150) {
-        const hierarchy = await page.evaluate(() => ({
-          primaryBottom: Math.max(...[...document.querySelectorAll('.metric-primary')].map(n => n.getBoundingClientRect().bottom)),
-          relatedTop: Math.min(...[...document.querySelectorAll('.metric-related')].map(n => n.getBoundingClientRect().top)),
-        }));
-        expect(hierarchy.primaryBottom).toBeLessThanOrEqual(hierarchy.relatedTop);
+      const charts=await page.locator('.metric-timelines').boundingBox();
+      const totals=await page.locator('.metric-totals').boundingBox();
+      if(width>760) expect(charts.x+charts.width).toBeLessThanOrEqual(totals.x);
+      else expect(charts.y+charts.height).toBeLessThanOrEqual(totals.y);
+      await expect(page.locator('.metric-timelines .metric-counter, .metric-totals svg')).toHaveCount(0);
+      const sizes=await page.locator('#metric-predicted_tps,#metric-n_tokens_max,#metric-container_cpu').evaluateAll(nodes=>nodes.map(node=>({
+        width:node.getBoundingClientRect().width,height:node.getBoundingClientRect().height,
+      })));
+      for (const size of sizes) {
+        expect(Math.abs(size.width-sizes[0].width)).toBeLessThan(1);
+        expect(Math.abs(size.height-sizes[0].height)).toBeLessThan(1);
       }
       await expect(page.locator('#metric-predicted_tps .metric-note')).toContainText('5m');
       if (width === 1440) {
@@ -74,6 +78,84 @@ test('chart history and help dialogs work with mouse and keyboard', async ({ pag
   await page.keyboard.press('Enter');
   await expect(page.locator('[role=dialog]')).toHaveCount(1);
   await expect(page.locator('[role=dialog] .metric-history-chart')).toHaveCount(0);
+});
+
+test('totals show interval summaries and open history; uptime uses run details', async ({ page }) => {
+  await page.goto('/?demo=router');
+  await expect(page.locator('.metric-card svg')).toHaveCount(8);
+  await expect(page.locator('.metric-counter')).toHaveCount(6);
+  await expect(page.locator('.metric-counter svg, #metric-server_uptime')).toHaveCount(0);
+  const total=page.locator('#metric-predicted_total');
+  await expect(total.locator('.counter-interval')).toHaveCount(3);
+  await expect(total.locator('[data-seconds="60"] strong')).toHaveText(/^\+/);
+  await expect(total.locator('[data-seconds="3600"]')).toHaveAttribute('data-status','partial');
+  await expect(total.locator('[data-seconds="3600"]')).toHaveAttribute('title',/observed of 1h/);
+  await expect(page.locator('#server-uptime')).toHaveAttribute('title',/source: demo/);
+  await expect(page.locator('#server-uptime')).toHaveAttribute('title',/started/i);
+  await total.locator('.metric-open').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('dialog').locator('.history-stat').nth(1)).toContainText('Observed increase');
+  await expect(page.getByRole('dialog').locator('.spark-line')).toHaveCount(1);
+  expect(await page.getByRole('dialog').locator('svg').evaluate(n=>n.chartModel.geometry.min)).toBeGreaterThan(0);
+  const labels=await page.getByRole('dialog').locator('.history-y-axis span').allTextContents();
+  expect(new Set(labels).size).toBe(3);
+  expect(labels.join(' ')).not.toMatch(/[kMG]/);
+  await page.setViewportSize({width:320,height:720});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(total.locator('.metric-open')).toBeFocused();
+});
+
+test('top-bar uptime opens history and reports stale, paused and missing data', async ({ page }) => {
+  await page.goto('/?demo=router');
+  const uptime=page.locator('#server-uptime');
+  await expect(uptime).toBeEnabled();
+  await uptime.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('dialog').locator('.history-stat').first()).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(uptime).toBeFocused();
+  await page.getByRole('button',{name:'Pause updates',exact:true}).click();
+  await expect(uptime).toHaveAttribute('data-state','paused');
+  const value=await page.locator('#server-uptime-value').innerText();
+  await page.waitForTimeout(1100);
+  await expect(page.locator('#server-uptime-value')).toHaveText(value);
+  await page.evaluate(()=>{state.ui.snapshotStale=true;renderDiagnosticStatus();});
+  await expect(uptime).toHaveAttribute('data-state','stale');
+  await expect(uptime).toHaveAttribute('title',/Last observed/);
+  await page.goto('/');
+  await expect(uptime).toBeDisabled();
+  await expect(page.locator('#server-uptime-value')).toHaveText('—');
+});
+
+test('counter reset, gap and quiet interval summaries stay distinct', async ({ page }) => {
+  await page.goto('/?demo=router');
+  await page.evaluate(() => {
+    setPaused(true);
+    const metric=METRIC_CARDS.find(m=>m.id==='predicted_total');
+    renderCounterSummary(document.querySelector('#metric-predicted_total'),metric,[
+      {windowSeconds:60,status:'complete',delta:0,observedMs:60000},
+      {windowSeconds:300,status:'reset',delta:null},
+      {windowSeconds:3600,status:'gap',delta:null},
+    ],true);
+  });
+  const total=page.locator('#metric-predicted_total');
+  await expect(total.locator('[data-seconds="60"] strong')).toHaveText('+0');
+  await expect(total.locator('[data-seconds="300"] strong')).toHaveText('Reset');
+  await expect(total.locator('[data-seconds="3600"] strong')).toHaveText('Gap');
+});
+
+test('favicon uses WebP in the page and compatibility route', async ({ page, request }) => {
+  await page.goto('/?demo=1');
+  await expect(page.locator('link[rel=icon]')).toHaveAttribute('type','image/webp');
+  for (const path of ['/static/favicon.webp','/favicon.ico']) {
+    const response=await request.get(path);
+    expect(response.status()).toBe(200);
+    expect(response.headers()['content-type']).toBe('image/webp');
+    const bytes=await response.body();
+    expect(bytes.toString('ascii',0,4)).toBe('RIFF');
+    expect(bytes.toString('ascii',8,12)).toBe('WEBP');
+  }
 });
 
 test('highlighted Chat link opens the panel and focuses its composer', async ({ page }) => {

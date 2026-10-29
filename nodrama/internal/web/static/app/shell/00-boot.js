@@ -89,6 +89,7 @@ function ensureRootScaffold() {
 }
 
 function renderDiagnosticStatus() {
+  if (typeof renderHeaderUptime === "function") renderHeaderUptime();
   const indicator = $("#diagnostics-state"), pause = $("#diagnostics-pause");
   if (!indicator || !pause) return;
   indicator.textContent = t(state.paused ? "diagnostics.paused" : state.ui.snapshotStale ? "diagnostics.stale" : state.healthy ? "diagnostics.live" : "header.status.offline");

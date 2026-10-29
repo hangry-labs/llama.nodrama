@@ -22,6 +22,26 @@ test('counter resets do not become misleading net-work deltas', () => {
   assert.equal(run('summarizeMetricHistory([])'), null);
 });
 
+test('counter intervals report actual coverage without inventing a full hour', () => {
+  const changes = run('summarizeCounterChanges(Array.from({length:121},(_,i)=>({t:i*1000,v:i*2})))');
+  assert.equal(changes[0].status, 'complete');
+  assert.equal(changes[0].delta, 120);
+  assert.equal(changes[1].status, 'partial');
+  assert.equal(changes[1].delta, 240);
+  assert.equal(changes[2].observedMs, 120000);
+  assert.equal(changes[2].status, 'partial');
+  assert.equal(run('summarizeCounterChanges([{t:0,v:5},{t:1000,v:5}])[0].delta'), 0);
+  assert.equal(run('summarizeCounterChanges([{t:0,v:5}])[0].delta'), null);
+});
+
+test('counter intervals distinguish resets and collection gaps from zero work', () => {
+  assert.equal(run('summarizeCounterChanges([{t:0,v:100},{t:1000,v:0},{t:2000,v:200}])[0].status'), 'reset');
+  assert.equal(run('summarizeCounterChanges([{t:0,v:100},{t:1000,v:200,resetAt:500}])[0].delta'), null);
+  const change=run('summarizeCounterChanges([{t:0,v:0},{t:1000,v:1},{t:2000,v:2},{t:20000,v:20}])[0]');
+  assert.equal(change.status,'gap');
+  assert.equal(change.delta,null);
+});
+
 test('constant and empty series produce finite bounded chart geometry', () => {
   for (const input of ['[]', '[{t:0,v:0},{t:1,v:0}]', '[{t:0,v:5},{t:1,v:5}]']) {
     const chart = run('chartGeometry(' + input + ')');

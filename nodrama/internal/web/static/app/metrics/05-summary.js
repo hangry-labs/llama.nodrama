@@ -13,6 +13,26 @@ function summarizeMetricHistory(points) {
     delta: values.some((value, index) => index > 0 && value < values[index - 1]) ? null : values[values.length - 1] - values[0] };
 }
 
+// Older servers and the synthetic preview have only their short observed
+// history. Keep partial intervals explicit rather than extrapolating them.
+function summarizeCounterChanges(points) {
+  const data = (points || []).filter(p => Number.isFinite(p.t) && Number.isFinite(p.v)).slice().sort((a, b) => a.t - b.t);
+  const intervals = data.slice(1).map((p, i) => p.t - data[i].t).filter(n => n > 0).sort((a, b) => a - b);
+  const maxGap = Math.max(1000, 3 * (intervals[Math.floor(intervals.length / 2)] || 1000));
+  return [60, 300, 3600].map(windowSeconds => {
+    const to = data.at(-1)?.t || 0, cutoff = to - windowSeconds * 1000;
+    let index = data.findIndex(p => p.t >= cutoff);
+    if (index > 0 && data[index].t !== cutoff) index--;
+    const selected = index >= 0 ? data.slice(index) : [];
+    const from = selected[0]?.t ?? to;
+    let status = selected.length < 2 ? "collecting" : from > cutoff ? "partial" : "complete";
+    if (selected.some((p, i) => (p.resetAt > cutoff && p.resetAt <= to) || (i && p.v < selected[i - 1].v))) status = "reset";
+    else if (selected.some((p, i) => i && p.t - selected[i - 1].t > maxGap)) status = "gap";
+    return { windowSeconds, from, to, observedMs: to - from, status,
+      delta: ["complete", "partial"].includes(status) ? selected.at(-1).v - selected[0].v : null };
+  });
+}
+
 function chartGeometry(points, options = {}) {
   const data = (points || []).filter(point => Number.isFinite(point.t) && Number.isFinite(point.v))
     .slice().sort((a, b) => a.t - b.t);

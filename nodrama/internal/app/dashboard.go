@@ -52,15 +52,17 @@ type SnapshotHistory struct {
 }
 
 type HistoryPoint struct {
-	T int64   `json:"t"`
-	V float64 `json:"v"`
+	T       int64   `json:"t"`
+	V       float64 `json:"v"`
+	ResetAt int64   `json:"resetAt,omitempty"`
 }
 
 type MetricFact struct {
-	PeakValue   float64    `json:"peakValue,omitempty"`
-	PeakAt      *time.Time `json:"peakAt,omitempty"`
-	Peak5mValue float64    `json:"peak5mValue,omitempty"`
-	Peak5mAt    *time.Time `json:"peak5mAt,omitempty"`
+	PeakValue   float64         `json:"peakValue,omitempty"`
+	PeakAt      *time.Time      `json:"peakAt,omitempty"`
+	Peak5mValue float64         `json:"peak5mValue,omitempty"`
+	Peak5mAt    *time.Time      `json:"peak5mAt,omitempty"`
+	Changes     []CounterChange `json:"changes,omitempty"`
 }
 
 type ContextUsage struct {
@@ -651,7 +653,7 @@ func (m *Dashboard) recordMetricHistory(now time.Time, metrics map[string]float6
 		m.metricHistory[name] = points
 
 		recent := append(m.metricRecent[name], HistoryPoint{T: t, V: value})
-		recent = trimHistoryPoints(recent, recentCutoff)
+		recent = trimCounterHistory(name, recent, recentCutoff)
 		if len(recent) > maxMetricRecentSize {
 			recent = recent[len(recent)-maxMetricRecentSize:]
 		}
@@ -669,7 +671,7 @@ func (m *Dashboard) recordMetricHistory(now time.Time, metrics map[string]float6
 		m.metricHistory[name] = points
 	}
 	for name, points := range m.metricRecent {
-		points = trimHistoryPoints(points, recentCutoff)
+		points = trimCounterHistory(name, points, recentCutoff)
 		if len(points) == 0 {
 			delete(m.metricRecent, name)
 			continue
@@ -698,6 +700,15 @@ func (m *Dashboard) recordLongMetricHistoryLocked(name string, t int64, value fl
 		last := &points[len(points)-1]
 		lastBucket := (last.T / metricLongInterval.Milliseconds()) * metricLongInterval.Milliseconds()
 		if lastBucket == bucket {
+			if isCounterMetric(name) {
+				if value < last.V {
+					last.ResetAt = t
+				}
+				last.T = t
+				last.V = value
+				m.metricLong[name] = points
+				return
+			}
 			// Keep the highest value within each bucket so short spikes are not flattened away.
 			if value >= last.V {
 				last.T = t
@@ -707,7 +718,11 @@ func (m *Dashboard) recordLongMetricHistoryLocked(name string, t int64, value fl
 			return
 		}
 	}
-	points = append(points, HistoryPoint{T: t, V: value})
+	point := HistoryPoint{T: t, V: value}
+	if isCounterMetric(name) && len(points) > 0 && value < points[len(points)-1].V {
+		point.ResetAt = t
+	}
+	points = append(points, point)
 	if len(points) > maxMetricLongSize {
 		points = points[len(points)-maxMetricLongSize:]
 	}
@@ -715,6 +730,7 @@ func (m *Dashboard) recordLongMetricHistoryLocked(name string, t int64, value fl
 }
 
 func (m *Dashboard) copyMetricFacts() map[string]MetricFact {
+	poll := m.runtimeConfig().PollInterval
 	m.historyMu.Lock()
 	defer m.historyMu.Unlock()
 
@@ -728,6 +744,16 @@ func (m *Dashboard) copyMetricFacts() map[string]MetricFact {
 			peakAt := time.UnixMilli(peak.T)
 			copied.Peak5mValue = peak.V
 			copied.Peak5mAt = &peakAt
+		}
+		if isCounterMetric(name) {
+			for _, window := range []time.Duration{time.Minute, 5 * time.Minute, time.Hour} {
+				points, cadence := m.metricRecent[name], poll
+				if window > metricRecentWindow {
+					points = m.metricLong[name]
+					cadence = max(poll, metricLongInterval)
+				}
+				copied.Changes = append(copied.Changes, counterChange(points, window, max(3*cadence, time.Second)))
+			}
 		}
 		out[name] = copied
 	}

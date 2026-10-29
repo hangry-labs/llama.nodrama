@@ -22,7 +22,7 @@ func ServeIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func ServeFavicon(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Content-Type", "image/webp")
 	w.Header().Set("Cache-Control", "public, max-age=86400")
-	http.ServeFileFS(w, r, staticFiles, "static/favicon.png")
+	http.ServeFileFS(w, r, staticFiles, "static/favicon.webp")
 }

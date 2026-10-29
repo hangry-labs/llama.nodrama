@@ -22,6 +22,11 @@ header.app .version-display { font-size: 11px; }
 header.app .grow { display: none; }
 header.app .version-display { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 header.app .server { max-width: 180px; }
+.header-uptime { display: inline-flex; align-items: baseline; gap: 6px; flex: 0 0 auto; padding: 3px 7px; background: transparent; border-color: #304458; white-space: nowrap; }
+.header-uptime > span { font-size: 10px; color: var(--fg-mute); }
+.header-uptime strong { font: 12px var(--mono); color: var(--fg-dim); }
+.header-uptime[data-state="stale"] { border-color: #77603f; }
+.header-uptime[data-state="paused"] strong { color: var(--fg-mute); }
 .status-pill.demo:not(.error):not(.offline):not(.warn) { color: var(--accent-2); background: #1a3048; border-color: #3a5b7e; }
 .led.demo:not(.bad):not(.warn) { background: var(--accent); color: var(--accent); box-shadow: 0 0 6px #79adff55; }
 .led.demo::after { animation: none; }
@@ -45,10 +50,12 @@ main { max-width: 1700px; margin: 0 auto; padding: 12px 16px; gap: 10px; grid-te
 .diagnostics-nav a { white-space: nowrap; text-decoration: none; color: var(--fg-mute); font-size: 12px; padding: 6px 9px; border-radius: 5px; }
 .diagnostics-nav a:hover, .diagnostics-nav a:focus-visible { background: var(--bg-3); color: var(--fg); }
 #metrics-section { display: grid; gap: 14px; min-width: 0; }
-.metrics-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; align-items: start; }
-.metric-group { display: grid; gap: 6px; min-width: 0; }
-.metric-related-group { display: grid; gap: 6px; min-width: 0; }
-.metric-group-label { display: none; margin: 2px 0; font-size: 11px; font-weight: 500; color: var(--fg-mute); }
+.metrics-grid { display: grid; grid-template-columns: minmax(0,3fr) minmax(0,2fr); gap: 14px; align-items: start; }
+.metric-group { display: grid; gap: 7px; min-width: 0; }
+.metric-group-grid { display: grid; gap: 8px; min-width: 0; }
+.metric-timelines .metric-group-grid { grid-template-columns: repeat(3,minmax(0,1fr)); grid-auto-rows: 1fr; }
+.metric-totals .metric-group-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.metric-group-label { margin: 0; font-size: 11px; font-weight: 500; color: var(--fg-mute); }
 .metric-card { --chart-color: #78a8ea; display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); align-content: start; gap: 4px 8px; padding: 9px 11px; background: #131c28; border-color: #263447; }
 .metric-card[data-tone="teal"] { --chart-color: #4dceb2; }
 .metric-card[data-tone="violet"] { --chart-color: #b3a0f0; }
@@ -84,6 +91,16 @@ main { max-width: 1700px; margin: 0 auto; padding: 12px 16px; gap: 10px; grid-te
 .metric-primary { border-top: 2px solid var(--chart-color); }
 .metric-primary .metric-title h2 { color: var(--fg); font-weight: 600; }
 .metric-primary .metric-note { min-height: 32px; }
+.metric-primary .value { font-size: 24px; }
+.metric-open-arrow { color: var(--accent); font-size: 11px; }
+.counter-intervals { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; padding-top: 5px; border-top: 1px solid var(--border); }
+.counter-interval { min-width: 0; display: grid; gap: 2px; }
+.counter-interval + .counter-interval { padding-left: 8px; border-left: 1px solid var(--border); }
+.counter-window { font-size: 10px; color: var(--fg-mute); white-space: nowrap; }
+.counter-interval strong { font: 12px var(--mono); color: var(--fg-dim); white-space: nowrap; }
+.counter-interval[data-status="partial"] .counter-window { color: var(--warn); }
+.counter-interval:is([data-status="reset"],[data-status="gap"]) strong { color: var(--warn); font-family: inherit; font-size: 11px; }
+#metrics-section.is-stale .counter-intervals { opacity: .5; }
 .diagnostics-nav .nav-chat { color: #b8d8ff; background: #1c3551; border: 1px solid #365b82; padding: 5px 12px; }
 .diagnostics-nav .nav-chat:hover { background: #284968; }
 .card.chat-card { padding: 0; border: 1px solid #4573a2; box-shadow: inset 3px 0 var(--accent); }
@@ -148,6 +165,9 @@ main { max-width: 1700px; margin: 0 auto; padding: 12px 16px; gap: 10px; grid-te
 .history-stat { display: flex; flex-direction: column; gap: 4px; }
 .history-stat > span { color: var(--fg-mute); font: 12px system-ui,sans-serif; }
 .history-stat strong { color: var(--fg); font: 22px var(--mono); }
+.history-stat { min-width: 0; }
+.history-stat strong { overflow-wrap: anywhere; }
+.metric-history-counter .history-plot { grid-template-columns: 84px minmax(0,1fr); }
 .metric-history-chart { background: #0e1723; padding: 12px 4px; }
 .history-plot { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 6px; min-width: 0; }
 .history-y-axis { display: flex; flex-direction: column; align-items: end; justify-content: space-between; padding: 14px 0; color: var(--fg-mute); font: 10px var(--mono); }
@@ -157,11 +177,9 @@ main { max-width: 1700px; margin: 0 auto; padding: 12px 16px; gap: 10px; grid-te
 .log-card .log-view { background: #0b121b; border-color: var(--border); }
 @media (max-width: 1150px) {
   header.app .diagnostics-nav { order: 10; flex-basis: 100%; }
-  .metrics-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
-  .metric-group { display: contents; }
-  .metric-primary { order: -1; }
-  .metric-related-group { align-self: start; }
-  .metric-group-label { display: block; }
+  .metrics-grid { grid-template-columns: minmax(0,2fr) minmax(0,1fr); }
+  .metric-timelines .metric-group-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .metric-totals .metric-group-grid { grid-template-columns: minmax(0,1fr); }
 }
 @media (max-width: 760px) {
   header.app { padding: 9px 12px; gap: 8px; }
@@ -169,8 +187,10 @@ main { max-width: 1700px; margin: 0 auto; padding: 12px 16px; gap: 10px; grid-te
   header.app .led { order: 1; flex-shrink: 0; }
   #status-text { order: 2; }
   #lang-select { order: 3; max-width: 88px; }
-  header.app .server { order: 4; flex: 1 1 90px; padding: 0; max-width: none; font-size: 11px; }
-  #version-display { order: 5; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .header-uptime { order: 4; }
+  .header-uptime > span { display: none; }
+  header.app .server { order: 4; flex: 1 1 60px; padding: 0; max-width: none; font-size: 11px; }
+  #version-display { order: 5; max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #api-docs-button { order: 6; }
   #settings-button { order: 7; }
   header.app .grow, #last-update { display: none; }
@@ -182,7 +202,8 @@ main { max-width: 1700px; margin: 0 auto; padding: 12px 16px; gap: 10px; grid-te
   .diagnostics-controls { width: 100%; justify-content: space-between; }
   .diagnostics-nav { gap: 0; }
   .diagnostics-nav a { padding: 9px 10px; }
-  .metrics-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+  .metrics-grid { grid-template-columns: minmax(0,1fr); gap: 12px; }
+  .metric-totals .metric-group-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .metric-card { grid-template-columns: minmax(0,1fr); padding: 8px; gap: 3px; }
   .metric-card .row, .metric-card .metric-note { grid-column: 1; }
   .metric-card .metric-note { text-align: left; }
@@ -195,6 +216,10 @@ main { max-width: 1700px; margin: 0 auto; padding: 12px 16px; gap: 10px; grid-te
   .metric-card.metric-featured { gap: 3px; }
   .metric-related, .metric-related.metric-featured { padding: 7px 8px; }
   .metric-primary .value { font-size: 23px; }
+  .counter-intervals { gap: 3px; }
+  .counter-interval + .counter-interval { padding-left: 4px; }
+  .counter-window { font-size: 9px; }
+  .counter-interval strong { font-size: 11px; }
   .chat-head { flex-wrap: wrap; gap: 8px; }
   .chat-head .chat-heading { flex: 1; }
   .chat-head .chat-typing { flex-basis: 100%; }
@@ -205,6 +230,8 @@ main { max-width: 1700px; margin: 0 auto; padding: 12px 16px; gap: 10px; grid-te
   .card, .diagnostics-heading { scroll-margin-top: 0; }
   .slot-actions button, .row-actions button { min-height: 36px; }
   .history-stat strong { font-size: 16px; }
+  .metric-history-counter .metric-history-summary { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+  .metric-history-counter .history-stat:first-child { grid-column: 1 / -1; }
   .history-axis { font-size: 10px; flex-wrap: wrap; }
   .metric-history-chart svg { height: 180px; }
 }

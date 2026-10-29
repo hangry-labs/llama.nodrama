@@ -1,6 +1,17 @@
 "use strict";
 
 I18N.en = {
+    "header.uptime": "Uptime",
+    "diagnostics.timelines": "Live timelines",
+    "diagnostics.totals": "Totals & intervals",
+    "metrics.counter_coverage": "Observed duration",
+    "metrics.counter_increase": "Observed increase",
+    "metrics.server_started_label": "Started",
+    "metrics.counter_reset_short": "Reset",
+    "metrics.counter_gap_short": "Gap",
+    "metrics.counter_partial": "{observed} observed of {window}",
+    "metrics.counter_gap": "Collection gap; increase unknown",
+    "metrics.counter_observed": "{duration} observed",
     "diagnostics.requests": "Request pressure",
     "diagnostics.capacity": "Context & resources",
     "chat.description": "Test your model and watch the diagnostics live.",

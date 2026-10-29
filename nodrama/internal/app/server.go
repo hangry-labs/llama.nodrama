@@ -101,13 +101,17 @@ func Run(ctx context.Context, cfg Config, info BuildInfo) error {
 		maxPoints := clampInt(queryInt(r, "max", 2000), 100, maxMetricLongSize)
 		since := time.Now().Add(-time.Duration(hours) * time.Hour)
 		points := dashboard.MetricHistory(metric, since, maxPoints)
-		writeJSON(w, map[string]any{
+		payload := map[string]any{
 			"metric":   metric,
 			"hours":    hours,
 			"max":      maxPoints,
 			"points":   points,
 			"pointSec": int(metricLongInterval.Seconds()),
-		})
+		}
+		if change := dashboard.CounterHistoryChange(metric, time.Duration(hours)*time.Hour); change != nil {
+			payload["change"] = change
+		}
+		writeJSON(w, payload)
 	})
 	mux.HandleFunc("GET /api/settings", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, dashboard.Settings())
