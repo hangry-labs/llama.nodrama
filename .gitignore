@@ -20,6 +20,8 @@ keys/
 *.pfx
 
 # Runtime output
+__pycache__/
+*.pyc
 node_modules/
 test-results/
 playwright-report/

@@ -33,6 +33,9 @@ jobs:
           node-version: "22"
       - name: Check Go and UI
         run: go run ./tools/check
+      - name: Check release staging and manifests
+        if: runner.os == 'Linux'
+        run: python3 -m unittest discover -s ../scripts -p 'test_*.py'
       - name: Race tests
         if: runner.os == 'Linux'
         run: go test -race ./...
@@ -145,19 +148,25 @@ jobs:
         env:
           BUILD_COMMIT: ${{ github.sha }}
         run: python3 scripts/preview_manifest.py preview
-      - name: Publish rolling preview assets
+      - name: Publish immutable tested preview
         env:
           GH_TOKEN: ${{ github.token }}
           BUILD_COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
-          # An older, slower workflow must never replace a newer main preview.
+          # Do not promote an older, slower workflow over current main.
           latest="$(gh api repos/$GITHUB_REPOSITORY/commits/main --jq .sha)"
           if [ "$latest" != "$BUILD_COMMIT" ]; then exit 0; fi
-          if ! gh release view preview >/dev/null 2>&1; then
-            gh release create preview --target "$BUILD_COMMIT" --prerelease --latest=false --title "Latest tested preview" --notes "Rolling build from main. Settings persist; restarting resets in-memory telemetry history."
+          tag="preview-$BUILD_COMMIT"
+          if draft="$(gh release view "$tag" --json isDraft --jq .isDraft)"; then
+            if [ "$draft" != "true" ]; then
+              echo "Already published $tag; leaving its tag and assets unchanged."
+              exit 0
+            fi
+          else
+            gh release create "$tag" --draft --target "$BUILD_COMMIT" --prerelease --latest=false --title "Tested preview ${BUILD_COMMIT:0:12}" --notes "Tested main build $BUILD_COMMIT. Settings persist; restarting resets in-memory telemetry history."
           fi
-          # Publish immutable build filenames before changing the rolling feed.
-          gh release upload preview preview/llama-nodrama-* preview/SHA256SUMS preview/LICENSE preview/BRAND_ASSETS.md preview/THIRD_PARTY_NOTICES.md --clobber
-          gh release upload preview preview/update.json --clobber
-          gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/preview" -f sha="$BUILD_COMMIT" -F force=true
+          # Only drafts may be resumed. Publishing locks the complete asset set.
+          test "$(gh release view "$tag" --json isDraft --jq .isDraft)" = true
+          gh release upload "$tag" preview/* --clobber
+          gh release edit "$tag" --draft=false --prerelease --latest=false

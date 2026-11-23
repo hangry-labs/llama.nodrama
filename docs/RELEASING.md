@@ -8,29 +8,40 @@ source version. Keep this project's `vX.Y.Z-SNAPSHOT` / `vX.Y.Z` format.
 
 | Source | Meaning | Installation |
 | --- | --- | --- |
-| `main`, `vX.Y.Z-SNAPSHOT` | Moving development source | Build from source; branch CI artifacts are for validation |
+| `main`, `vX.Y.Z-SNAPSHOT` | Moving development source | Build from source or install a tested preview |
+| `preview-<full commit>` | Immutable tested build from `main` | Select **Latest tested preview** in Updates |
 | Stable `vX.Y.Z` tag | Release source passed to the publishing workflow | Use its GitHub Release after downloads are published and verified |
 | GitHub Releases `latest` | Newest published stable release selected by GitHub | Default used by the install scripts; it is a moving selection |
 
 Stable tags publish release archives. Successful pushes to `main` also publish
-a rolling **preview** with the six tested binaries and an `update.json`
-manifest. Pull requests validate without publishing. No container images are
-published.
+an immutable **preview** for that commit with the six tested binaries and an
+`update.json` manifest. Pull requests validate without publishing. No container
+images are published.
+
+Routine stable releases advance the last number within the current version
+line: `v0.6.0`, `v0.6.1`, `v0.6.2`. Moving to `v0.7.0` or `v1.0.0` is a
+deliberate product decision, not an automatic consequence of publishing.
+Previews retain the current snapshot version and use the full commit for
+their unique build identity; testing does not consume stable version numbers.
 
 ## Test new builds without a stable release
 
 Push reviewed changes to `main`. Once checks, browser tests and all six builds
-pass, CI updates the `preview` prerelease automatically. The dashboard's
-version link opens **Updates**; select **Latest tested preview**, check, then
+pass, CI creates the `preview-<full commit>` prerelease automatically. The
+dashboard's version link opens **Updates**; select **Latest tested preview**, check, then
 choose **Update and restart**. Preview identity uses the commit, so newer
-snapshots do not need a version bump or manual Git tag. The first preview feed
+snapshots do not need a version bump or manual Git tag. The first preview
 becomes available after this workflow has been pushed and completed.
 
 The manifest follows the same version/download/size/SHA-256 approach used by
 [Listen2Me](https://github.com/hangry-labs/Listen2Me), with platform selection
-for this Go application. Binary asset names
-include the commit and are uploaded before the rolling manifest. An older CI
-run cannot replace a newer main preview. Stable release tags remain separate.
+for this Go application. Each build is staged as a draft with all binaries,
+notices, checksums and manifest attached, then published once. Published tags
+and assets stay unchanged. The updater discovers the most recently published
+immutable preview with a manifest among the 500 most recent releases, skipping
+drafts, incomplete releases and the legacy `preview` tag. It pins the manifest
+and binary to the selected commit's release. An older CI run is skipped if
+`main` has advanced. Stable release tags remain separate.
 
 Updates are fetched and verified by the dashboard host, which must have internet
 access and write permission to the installation folder. The updater validates
@@ -63,8 +74,9 @@ procedures that can drift.
 
 Qualify changes during development. The normal CI workflow checks Go and UI
 behavior on Linux, Windows and macOS, runs Linux race tests and Chromium
-regressions, and cross-builds all six supported targets. The release workflow
-runs Go/UI checks again before packaging.
+regressions, and cross-builds all six supported targets. Offline release tests
+exercise draft staging, retries and immutable manifests without contacting
+GitHub. The release workflow runs Go/UI and release tests again before packaging.
 
 Before promotion, review the version history and checks, use a clean `main`
 synchronized with `origin/main`, and confirm the intended stable tag is unused.
@@ -97,12 +109,14 @@ unused and runs `tools/check`, then:
 
 1. Removes `-SNAPSHOT` from `nodrama/VERSION` and refreshes Windows resources.
 2. Commits the release and creates its annotated stable tag.
-3. Bumps the minor version to `vX.Y.0-SNAPSHOT`, refreshes resources and commits.
+3. Advances the last number to `vX.Y.(Z+1)-SNAPSHOT`, refreshes resources and commits.
 4. Atomically pushes `main` and that exact annotated tag to `origin`.
 
 For example, `v0.6.0-SNAPSHOT` promotes to `v0.6.0` and opens
-`v0.7.0-SNAPSHOT`. The command returns after the Git push; it does not wait for
-GitHub Actions to build or publish downloads.
+`v0.6.1-SNAPSHOT`. To start a different version line, deliberately change
+`nodrama/VERSION` and the README snapshot section before promotion, and refresh
+Windows resources with `task windows-res`. The command returns after the Git
+push; it does not wait for GitHub Actions to build or publish downloads.
 
 The tool does not update README release history or published download pointers;
 review those explicitly. `NEXT_VERSION` and `SKIP_VALIDATION` overrides are not
@@ -134,9 +148,13 @@ checksums match, and a downloaded binary reports the intended `--version`.
 Then update the README's latest published release and publication date. A tag
 or successful branch CI run alone does not establish download availability.
 
-Keep published release identities stable. Use a new version for corrections.
-The current workflow uses `--clobber` when uploading to an existing release,
-so rerunning a published tag can replace its assets; avoid that operation.
+Both workflows create a draft, upload the complete asset set and then publish,
+so repository release immutability can remain enabled. A retry can replace
+assets only while the release is still a draft. Rerunning a published tag skips
+publication and leaves its tag and assets untouched. Use a new patch version
+or preview commit for corrections; do not move tags or overwrite published
+downloads. The empty legacy `preview` release does not need to be modified for
+new previews to work.
 
 ## Windows resources, signing and Winget
 

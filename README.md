@@ -273,7 +273,9 @@ Useful flags:
 The version label opens **Updates**, where you can check stable releases or the
 latest tested preview and choose **Update and restart**. Preview builds follow
 successful `main` CI builds and use commit identity, so testing new work does
-not require a manually tagged release. Downloads are verified, the previous
+not require a manually tagged release. Each preview is an immutable release;
+the updater discovers the newest published build. Routine stable releases
+advance the last number within the current version line. Downloads are verified, the previous
 binary is retained and settings persist. Restarting clears in-memory history
 and peaks. The dashboard host needs internet access and a writable installation
 folder. See the [release guide](docs/RELEASING.md) for publication details.
@@ -339,8 +341,9 @@ published as a `v0.6.0` release. Build from source to try them.
   motion. Refresh expanded history charts while open, respecting pause and the
   selected window. Show separate dashboard and llama.cpp uptimes, and highlight
   the navigation section currently in view.
-- Add verified stable/preview updates from the UI, rolling tested builds after
-  main CI, and a dry-run/atomic-push stable release task.
+- Add verified stable/preview updates from the UI, immutable tested builds after
+  main CI, and a dry-run/atomic-push stable release task. Stage assets before
+  publication and keep routine stable releases within the current version line.
 - Convert raster source artwork and icons to WebP; retain native Windows icon
   resources. Document brand restrictions and bundled third-party notices.
 

@@ -12,6 +12,9 @@ jobs:
   release:
     name: build release binaries
     runs-on: ubuntu-latest
+    concurrency:
+      group: stable-publication-${{ github.ref_name }}
+      cancel-in-progress: false
     defaults:
       run:
         working-directory: nodrama
@@ -26,6 +29,8 @@ jobs:
           node-version: "22"
       - name: Check Go and UI
         run: go run ./tools/check
+      - name: Check release staging and manifests
+        run: python3 -m unittest discover -s ../scripts -p 'test_*.py'
       - name: Build archives
         env:
           CGO_ENABLED: "0"
@@ -218,8 +223,14 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/* --clobber
+          if draft="$(gh release view "$TAG" --json isDraft --jq .isDraft)"; then
+            if [ "$draft" != "true" ]; then
+              echo "Already published $TAG; leaving its tag and assets unchanged."
+              exit 0
+            fi
           else
-            gh release create "$TAG" dist/* --generate-notes --title "$TAG"
+            gh release create "$TAG" --draft --verify-tag --generate-notes --title "$TAG"
           fi
+          test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true
+          gh release upload "$TAG" dist/* --clobber
+          gh release edit "$TAG" --draft=false --latest

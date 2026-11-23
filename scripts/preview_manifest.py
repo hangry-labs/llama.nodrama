@@ -1,4 +1,4 @@
-"""Describe the six CI binaries for the rolling preview updater."""
+"""Describe the six CI binaries in an immutable per-commit preview release."""
 from pathlib import Path
 import hashlib
 import json
@@ -19,7 +19,7 @@ def manifest(directory, version, commit):
             published = f"llama-nodrama-{system}-{architecture}-{commit}" + (".exe" if system == "windows" else "")
             path = path.rename(directory / published)
             assets.append({"name": published, "os": system, "arch": architecture,
-                           "url": "https://github.com/hangry-labs/llama.nodrama/releases/download/preview/" + published,
+                           "url": f"https://github.com/hangry-labs/llama.nodrama/releases/download/preview-{commit}/" + published,
                            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "bytes": path.stat().st_size})
     return {"schemaVersion": 1, "version": version, "commit": commit, "assets": assets}
 

@@ -34,7 +34,8 @@ func run() error {
 		if len(matches) != 4 {
 			return fmt.Errorf("expected snapshot version")
 		}
-		fmt.Printf("Would release v%s.%s.%s, open v%s.%d.0-SNAPSHOT, and atomically push main with the release tag. No files or refs changed.\n", matches[1], matches[2], matches[3], matches[1], mustAtoi(matches[2])+1)
+		release, next := releaseVersions(matches)
+		fmt.Printf("Would release %s, open %s, and atomically push main with the release tag. No files or refs changed.\n", release, next)
 		return nil
 	}
 	if out, err := gitOutput("status", "--porcelain"); err != nil {
@@ -53,10 +54,7 @@ func run() error {
 		return fmt.Errorf("%s must contain vX.Y.Z-SNAPSHOT, got %q", versionFile, current)
 	}
 
-	major := mustAtoi(matches[1])
-	minor := mustAtoi(matches[2])
-	release := fmt.Sprintf("v%d.%d.%s", major, minor, matches[3])
-	next := fmt.Sprintf("v%d.%d.0-SNAPSHOT", major, minor+1)
+	release, next := releaseVersions(matches)
 	branch, err := gitOutput("branch", "--show-current")
 	if err != nil {
 		return err
@@ -126,6 +124,12 @@ func run() error {
 
 func writeVersion(version string) error {
 	return os.WriteFile(versionFile, []byte(version+"\n"), 0o644)
+}
+
+func releaseVersions(matches []string) (release, next string) {
+	release = fmt.Sprintf("v%s.%s.%s", matches[1], matches[2], matches[3])
+	next = fmt.Sprintf("v%s.%s.%d-SNAPSHOT", matches[1], matches[2], mustAtoi(matches[3])+1)
+	return release, next
 }
 
 func refreshWindowsResources() error {

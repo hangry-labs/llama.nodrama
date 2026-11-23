@@ -92,9 +92,13 @@ func resolveUpdate(ctx context.Context, client *http.Client, channel string, cur
 		return plan, errors.New("choose stable or preview")
 	}
 	if channel == "preview" {
-		data, err := updateGet(ctx, client, RepositoryURL+"/releases/download/preview/update.json", 1<<20)
+		release, err := latestPreview(ctx, client)
 		if err != nil {
-			return plan, fmt.Errorf("preview unavailable: %w (a successful main build must publish it first)", err)
+			return plan, fmt.Errorf("preview unavailable: %w", err)
+		}
+		data, err := updateGet(ctx, client, previewDownloadURL(release.Tag, "update.json"), 1<<20)
+		if err != nil {
+			return plan, err
 		}
 		var manifest updateManifest
 		if err = json.Unmarshal(data, &manifest); err != nil {
@@ -106,9 +110,15 @@ func resolveUpdate(ctx context.Context, client *http.Client, channel string, cur
 		if _, err = hex.DecodeString(manifest.Commit); err != nil {
 			return plan, errors.New("invalid build commit")
 		}
+		if release.Tag != "preview-"+manifest.Commit {
+			return plan, errors.New("preview manifest does not match release commit")
+		}
 		plan.Version, plan.Commit = manifest.Version, manifest.Commit
 		for _, asset := range manifest.Assets {
 			if asset.OS == runtime.GOOS && asset.Arch == runtime.GOARCH {
+				if asset.URL != previewDownloadURL(release.Tag, asset.Name) || asset.Format != "" || !release.hasAsset(asset.Name, asset.URL, asset.Bytes) {
+					return plan, errors.New("preview binary does not belong to selected release")
+				}
 				plan.Asset = asset
 				break
 			}
@@ -312,9 +322,8 @@ func registerSelfUpdate(mux *http.ServeMux, info BuildInfo, restart chan<- struc
 		defer cancel()
 		plan, err := resolveUpdate(ctx, client, r.URL.Query().Get("channel"), info)
 		if err != nil {
-			var upstream *updateHTTPError
-			if r.URL.Query().Get("channel") == "preview" && errors.As(err, &upstream) && upstream.status == http.StatusNotFound {
-				writeJSON(w, map[string]any{"channel": "preview", "available": false, "error": "The preview feed will be available after the next successful main CI build publishes it."})
+			if errors.Is(err, errNoPreview) {
+				writeJSON(w, map[string]any{"channel": "preview", "available": false, "error": "An immutable preview will be available after the next successful main CI build publishes it."})
 				return
 			}
 			http.Error(w, err.Error(), http.StatusBadGateway)
