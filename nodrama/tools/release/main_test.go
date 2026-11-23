@@ -1,17 +1,25 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestRoutineReleaseKeepsVersionLine(t *testing.T) {
-	for _, tc := range []struct{ current, release, next string }{
-		{"v0.6.0-SNAPSHOT", "v0.6.0", "v0.6.1-SNAPSHOT"},
-		{"v0.6.9-SNAPSHOT", "v0.6.9", "v0.6.10-SNAPSHOT"},
-		{"v0.7.0-SNAPSHOT", "v0.7.0", "v0.7.1-SNAPSHOT"},
-		{"v1.2.3-SNAPSHOT", "v1.2.3", "v1.2.4-SNAPSHOT"},
+	for _, tc := range []struct{ current, line string }{
+		{"v0.6.0-SNAPSHOT", "v0.6.x (starting at v0.6.0)"},
+		{"v0.6.9-SNAPSHOT", "v0.6.x (starting at v0.6.9)"},
+		{"v0.7.0-SNAPSHOT", "v0.7.x (starting at v0.7.0)"},
+		{"v1.2.3", "v1.2.x (starting at v1.2.3)"},
 	} {
-		release, next := releaseVersions(snapshotVersionPattern.FindStringSubmatch(tc.current))
-		if release != tc.release || next != tc.next {
-			t.Errorf("%s: release=%s next=%s", tc.current, release, next)
+		line, err := releaseLine(tc.current)
+		if err != nil || line != tc.line {
+			t.Errorf("%s: line=%s err=%v", tc.current, line, err)
+		}
+	}
+	for _, source := range []string{"main", "v0.6.0-beta", "v1.2", "v01.2.3", strings.Repeat("a", 40)} {
+		if _, err := releaseLine(source); err == nil {
+			t.Errorf("accepted %q", source)
 		}
 	}
 }

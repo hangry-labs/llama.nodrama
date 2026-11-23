@@ -197,8 +197,7 @@ function setBuildDisplay(build) {
   const repoURL = 'https://github.com/hangry-labs/llama.nodrama';
   const available = !!plan?.available;
   node.classList.toggle("update-available", available);
-  node.href = available && plan.commit ? repoURL + '/releases/tag/preview-' + plan.commit
-    : available ? repoURL + '/releases/tag/' + encodeURIComponent(plan.version) : repoURL;
+  node.href = available ? repoURL + '/releases/tag/' + encodeURIComponent(plan.version) : repoURL;
   node.textContent = version;
   node.title = t('update.title') + ' · ' + t('update.current', { version })
     + (plan ? ' · ' + t('update.latest', { version: plan.version }) : '');

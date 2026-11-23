@@ -61,8 +61,8 @@ test('header shows both uptimes and highlights the visible section', async ({ pa
 
 test('updates check only on refresh, highlight versions and install only on Update now', async ({ page }) => {
   let installs = 0, checks = 0;
-  await page.route('**/api/update/check?**', route => { checks++; return route.fulfill({ json: {
-    channel: new URL(route.request().url()).searchParams.get('channel'), version: 'v0.6.1', commit: 'a'.repeat(40), available: true,
+  await page.route('**/api/update/check*', route => { checks++; return route.fulfill({ json: {
+    channel: 'stable', version: 'v0.6.1', available: true,
     asset: { bytes: 123 },
   } }); });
   await page.route('**/api/update/install', route => { installs++; return route.fulfill({ status: 400, body: 'Synthetic verification failure' }); });
@@ -73,7 +73,7 @@ test('updates check only on refresh, highlight versions and install only on Upda
   await page.locator('#version-display').click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.locator('[role=status]')).toContainText('Click refresh');
-  await dialog.getByRole('combobox').selectOption('stable');
+  await expect(dialog.getByRole('combobox')).toHaveCount(0);
   expect(checks).toBe(0);
   expect(installs).toBe(0);
   await expect(dialog).toContainText('history and peaks reset');
@@ -96,22 +96,22 @@ test('updates check only on refresh, highlight versions and install only on Upda
   expect(checks).toBe(1);
 });
 
-test('header refresh checks once and channel changes clear stale candidates without checking', async ({ page }) => {
+test('refresh checks regular releases and clears the highlight when up to date', async ({ page }) => {
   let checks = 0;
-  await page.route('**/api/update/check?**', route => {
+  await page.route('**/api/update/check*', route => {
     checks++;
-    return route.fulfill({ json: { channel: 'preview', version: 'v0.6.0-SNAPSHOT', available: checks === 1 } });
+    return route.fulfill({ json: { channel: 'stable', version: 'v0.6.1', available: checks === 1 } });
   });
   await page.goto('/');
   await page.locator('#update-check').click();
   const dialog = page.getByRole('dialog');
   await expect(page.locator('#version-display')).toHaveClass(/update-available/);
-  await dialog.getByRole('combobox').selectOption('stable');
-  await expect(page.locator('#update-now')).toBeHidden();
-  await expect(page.locator('#version-display')).not.toHaveClass(/update-available/);
+  await expect(dialog.getByRole('combobox')).toHaveCount(0);
   expect(checks).toBe(1);
   await dialog.getByRole('button', { name: /Check for updates/ }).click();
-  await expect(dialog.locator('[role=status]')).toContainText('No newer build');
+  await expect(dialog.locator('[role=status]')).toContainText('Up to date');
+  await expect(page.locator('#update-now')).toBeHidden();
+  await expect(page.locator('#version-display')).not.toHaveClass(/update-available/);
   expect(checks).toBe(2);
   await expect(dialog.getByRole('button', { name: 'Update now', exact: true })).toBeHidden();
 });

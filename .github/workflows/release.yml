@@ -1,48 +1,70 @@
 name: release
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_call:
 
 permissions:
   contents: write
 
 jobs:
   release:
-    name: build release binaries
+    name: build and publish regular release
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'hangry-labs/llama.nodrama'
     runs-on: ubuntu-latest
     concurrency:
-      group: stable-publication-${{ github.ref_name }}
+      group: regular-release-publication
       cancel-in-progress: false
     defaults:
       run:
         working-directory: nodrama
     steps:
       - uses: actions/checkout@v4
+      - name: Plan regular patch release
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          latest="$(gh api repos/$GITHUB_REPOSITORY/commits/main --jq .sha)"
+          if [ "$latest" != "$BUILD_COMMIT" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Main has advanced; the newer run will publish."
+            exit 0
+          fi
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$RUNNER_TEMP/releases.json"
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" > "$RUNNER_TEMP/tags.json"
+          python3 ../scripts/release_version.py "$RUNNER_TEMP/releases.json" "$RUNNER_TEMP/tags.json"
       - uses: actions/setup-go@v5
+        if: steps.plan.outputs.skip != 'true'
         with:
           go-version: "1.25.x"
           cache-dependency-path: nodrama/go.mod
       - uses: actions/setup-node@v4
+        if: steps.plan.outputs.skip != 'true'
         with:
           node-version: "22"
       - name: Check Go and UI
+        if: steps.plan.outputs.skip != 'true'
         run: go run ./tools/check
       - name: Check release staging and manifests
+        if: steps.plan.outputs.skip != 'true'
         run: python3 -m unittest discover -s ../scripts -p 'test_*.py'
       - name: Build archives
+        if: steps.plan.outputs.skip != 'true'
         env:
           CGO_ENABLED: "0"
           COMMIT: ${{ github.sha }}
-          TAG: ${{ github.ref_name }}
+          RELEASE_VERSION: ${{ steps.plan.outputs.version }}
           WINDOWS_CODESIGN_PFX_BASE64: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
           WINDOWS_CODESIGN_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PASSWORD }}
         run: |
           set -euo pipefail
           mkdir -p dist
-          version="$(cat VERSION)"
-          test "$version" = "$TAG" || { echo "VERSION ($version) must match tag ($TAG)"; exit 1; }
+          version="$RELEASE_VERSION"
+          # Only this runner checkout changes: binary and Windows metadata must
+          # contain the actual numbered release, not the source snapshot floor.
+          printf '%s\n' "$version" > VERSION
           build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           build() {
             goos="$1"
@@ -65,6 +87,7 @@ jobs:
             GOOS="$goos" GOARCH="$goarch" go build -trimpath \
               -ldflags "${strip_flags} -X main.version=${version} -X main.commit=${COMMIT} -X main.date=${build_date}" \
               -o "$out" .
+            if [ "$goos/$goarch" = linux/amd64 ]; then "$out" --version | grep -F "$version"; fi
             if [ "$goos" = "windows" ] && [ -n "${WINDOWS_CODESIGN_PFX_BASE64:-}" ]; then
               if ! command -v osslsigncode >/dev/null 2>&1; then
                 sudo apt-get update
@@ -215,21 +238,31 @@ jobs:
           cp "${GITHUB_WORKSPACE}/LICENSE" dist/LICENSE
           cp "${GITHUB_WORKSPACE}/BRAND_ASSETS.md" dist/BRAND_ASSETS.md
           cp "${GITHUB_WORKSPACE}/THIRD_PARTY_NOTICES.md" dist/THIRD_PARTY_NOTICES.md
+          BUILD_COMMIT="$COMMIT" python3 ../scripts/release_manifest.py dist
           rm -f dist/SHA256SUMS
-          (cd dist && sha256sum LICENSE BRAND_ASSETS.md THIRD_PARTY_NOTICES.md HangryLabs.LlamaNodrama.winget.zip llama-nodrama-* > SHA256SUMS)
+          (cd dist && sha256sum LICENSE BRAND_ASSETS.md THIRD_PARTY_NOTICES.md HangryLabs.LlamaNodrama.winget.zip update.json llama-nodrama-* > SHA256SUMS)
       - name: Publish GitHub Release
+        if: steps.plan.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          BUILD_COMMIT: ${{ github.sha }}
+          TAG: ${{ steps.plan.outputs.version }}
+          PREVIOUS_TAG: ${{ steps.plan.outputs.previous }}
         run: |
           set -euo pipefail
+          latest="$(gh api repos/$GITHUB_REPOSITORY/commits/main --jq .sha)"
+          if [ "$latest" != "$BUILD_COMMIT" ]; then exit 0; fi
           if draft="$(gh release view "$TAG" --json isDraft --jq .isDraft)"; then
+            target="$(gh release view "$TAG" --json targetCommitish --jq .targetCommitish)"
+            test "$target" = "$BUILD_COMMIT" || { echo "Release $TAG belongs to another commit."; exit 1; }
             if [ "$draft" != "true" ]; then
               echo "Already published $TAG; leaving its tag and assets unchanged."
               exit 0
             fi
           else
-            gh release create "$TAG" --draft --verify-tag --generate-notes --title "$TAG"
+            notes_args=()
+            if [ -n "$PREVIOUS_TAG" ]; then notes_args=(--notes-start-tag "$PREVIOUS_TAG"); fi
+            gh release create "$TAG" --draft --target "$BUILD_COMMIT" --generate-notes "${notes_args[@]}" --title "llama.nodrama $TAG"
           fi
           test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true
           gh release upload "$TAG" dist/* --clobber

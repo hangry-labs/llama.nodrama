@@ -43,12 +43,6 @@ type updateAsset struct {
 	Arch   string `json:"arch"`
 	Format string `json:"format,omitempty"`
 }
-type updateManifest struct {
-	Schema  int           `json:"schemaVersion"`
-	Version string        `json:"version"`
-	Commit  string        `json:"commit"`
-	Assets  []updateAsset `json:"assets"`
-}
 type updatePlan struct {
 	Channel   string      `json:"channel"`
 	Version   string      `json:"version"`
@@ -87,90 +81,63 @@ func updateGet(ctx context.Context, client *http.Client, raw string, limit int64
 	return data, nil
 }
 func resolveUpdate(ctx context.Context, client *http.Client, channel string, current BuildInfo) (updatePlan, error) {
-	plan := updatePlan{Channel: channel, Current: current}
-	if channel != "stable" && channel != "preview" {
-		return plan, errors.New("choose stable or preview")
+	// Older browser tabs can still request the removed preview channel.
+	if channel == "" || channel == "preview" {
+		channel = "stable"
 	}
-	if channel == "preview" {
-		release, err := latestPreview(ctx, client)
-		if err != nil {
-			return plan, fmt.Errorf("preview unavailable: %w", err)
+	plan := updatePlan{Channel: channel, Current: current}
+	if channel != "stable" {
+		return plan, errors.New("only regular releases are supported")
+	}
+	data, err := updateGet(ctx, client, LatestReleaseAPI, 1<<20)
+	if err != nil {
+		return plan, err
+	}
+	var release struct {
+		Tag        string `json:"tag_name"`
+		Draft      bool   `json:"draft"`
+		Prerelease bool   `json:"prerelease"`
+		Immutable  bool   `json:"immutable"`
+		Assets     []struct {
+			Name string `json:"name"`
+			URL  string `json:"browser_download_url"`
+			Size int64  `json:"size"`
+		} `json:"assets"`
+	}
+	if err = json.Unmarshal(data, &release); err != nil {
+		return plan, err
+	}
+	if _, ok := parseReleaseVersion(release.Tag); !ok || strings.Contains(release.Tag, "-") || release.Draft || release.Prerelease || !release.Immutable {
+		return plan, errors.New("expected a published immutable numbered release")
+	}
+	plan.Version = release.Tag
+	plan.Available = compareReleaseVersions(release.Tag, current.Version) > 0
+	format := "tar.gz"
+	if runtime.GOOS == "windows" {
+		format = "zip"
+	}
+	name := "llama-nodrama-" + runtime.GOOS + "-" + runtime.GOARCH + "." + format
+	var sumsURL string
+	for _, asset := range release.Assets {
+		if asset.Name == name {
+			plan.Asset = updateAsset{Name: name, URL: asset.URL, Bytes: asset.Size, OS: runtime.GOOS, Arch: runtime.GOARCH, Format: format}
 		}
-		data, err := updateGet(ctx, client, previewDownloadURL(release.Tag, "update.json"), 1<<20)
-		if err != nil {
-			return plan, err
+		if asset.Name == "SHA256SUMS" {
+			sumsURL = asset.URL
 		}
-		var manifest updateManifest
-		if err = json.Unmarshal(data, &manifest); err != nil {
-			return plan, err
-		}
-		if manifest.Schema != 1 || len(manifest.Commit) != 40 || manifest.Version == "" {
-			return plan, errors.New("invalid update manifest")
-		}
-		if _, err = hex.DecodeString(manifest.Commit); err != nil {
-			return plan, errors.New("invalid build commit")
-		}
-		if release.Tag != "preview-"+manifest.Commit {
-			return plan, errors.New("preview manifest does not match release commit")
-		}
-		plan.Version, plan.Commit = manifest.Version, manifest.Commit
-		for _, asset := range manifest.Assets {
-			if asset.OS == runtime.GOOS && asset.Arch == runtime.GOARCH {
-				if asset.URL != previewDownloadURL(release.Tag, asset.Name) || asset.Format != "" || !release.hasAsset(asset.Name, asset.URL, asset.Bytes) {
-					return plan, errors.New("preview binary does not belong to selected release")
-				}
-				plan.Asset = asset
-				break
-			}
-		}
-		plan.Available = manifest.Commit != current.Commit
-	} else {
-		data, err := updateGet(ctx, client, LatestReleaseAPI, 1<<20)
-		if err != nil {
-			return plan, err
-		}
-		var release struct {
-			Tag    string `json:"tag_name"`
-			Assets []struct {
-				Name string `json:"name"`
-				URL  string `json:"browser_download_url"`
-				Size int64  `json:"size"`
-			} `json:"assets"`
-		}
-		if err = json.Unmarshal(data, &release); err != nil {
-			return plan, err
-		}
-		if _, ok := parseReleaseVersion(release.Tag); !ok || strings.Contains(release.Tag, "-") {
-			return plan, errors.New("invalid stable release")
-		}
-		plan.Version = release.Tag
-		plan.Available = compareReleaseVersions(release.Tag, current.Version) > 0
-		format := "tar.gz"
-		if runtime.GOOS == "windows" {
-			format = "zip"
-		}
-		name := "llama-nodrama-" + runtime.GOOS + "-" + runtime.GOARCH + "." + format
-		var sumsURL string
-		for _, asset := range release.Assets {
-			if asset.Name == name {
-				plan.Asset = updateAsset{Name: name, URL: asset.URL, Bytes: asset.Size, OS: runtime.GOOS, Arch: runtime.GOARCH, Format: format}
-			}
-			if asset.Name == "SHA256SUMS" {
-				sumsURL = asset.URL
-			}
-		}
-		if !officialUpdateURL(sumsURL) {
-			return plan, errors.New("release has no official checksum file")
-		}
-		sums, err := updateGet(ctx, client, sumsURL, 1<<20)
-		if err != nil {
-			return plan, err
-		}
-		for _, line := range strings.Split(string(sums), "\n") {
-			fields := strings.Fields(line)
-			if len(fields) == 2 && strings.TrimPrefix(fields[1], "*") == name {
-				plan.Asset.SHA256 = fields[0]
-			}
+	}
+	baseURL := RepositoryURL + "/releases/download/" + release.Tag + "/"
+	if sumsURL != baseURL+"SHA256SUMS" || plan.Asset.URL != baseURL+name {
+		return plan, errors.New("release has no official checksum file")
+	}
+	sums, err := updateGet(ctx, client, sumsURL, 1<<20)
+	if err != nil {
+		return plan, err
+	}
+	for _, line := range strings.Split(string(sums), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && strings.TrimPrefix(fields[1], "*") == name {
+			plan.Asset.SHA256 = fields[0]
 		}
 	}
 	hash, err := hex.DecodeString(plan.Asset.SHA256)
@@ -322,10 +289,7 @@ func registerSelfUpdate(mux *http.ServeMux, info BuildInfo, restart chan<- struc
 		defer cancel()
 		plan, err := resolveUpdate(ctx, client, r.URL.Query().Get("channel"), info)
 		if err != nil {
-			if errors.Is(err, errNoPreview) {
-				writeJSON(w, map[string]any{"channel": "preview", "available": false, "error": "An immutable preview will be available after the next successful main CI build publishes it."})
-				return
-			}
+
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
 		}

@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,10 +13,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"testing"
-	"time"
 )
 
 type updateTransport func(*http.Request) (*http.Response, error)
@@ -29,116 +26,57 @@ func updateTestClient(data []byte) *http.Client {
 	})}
 }
 
-func TestResolvePreviewIdentityAndValidation(t *testing.T) {
-	commit := strings.Repeat("a", 40)
-	tag := "preview-" + commit
-	manifest := updateManifest{Schema: 1, Version: "v0.6.0-SNAPSHOT", Commit: commit, Assets: []updateAsset{{Name: "binary", OS: runtime.GOOS, Arch: runtime.GOARCH, URL: previewDownloadURL(tag, "binary"), SHA256: strings.Repeat("a", 64), Bytes: 1024}}}
-	release := previewFixture(tag)
-	release.Assets = append(release.Assets, previewReleaseAsset{Name: "binary", URL: manifest.Assets[0].URL, Size: 1024})
+func TestResolveRegularReleaseAndLegacyChannel(t *testing.T) {
+	const version = "v0.6.1"
+	format := "tar.gz"
+	if runtime.GOOS == "windows" {
+		format = "zip"
+	}
+	name := "llama-nodrama-" + runtime.GOOS + "-" + runtime.GOARCH + "." + format
+	base := RepositoryURL + "/releases/download/" + version + "/"
+	binaryURL, sumsURL := base+name, base+"SHA256SUMS"
+	immutable := true
 	client := func() *http.Client {
 		return &http.Client{Transport: updateTransport(func(r *http.Request) (*http.Response, error) {
-			var value any
+			var data []byte
 			switch r.URL.String() {
-			case strings.TrimSuffix(LatestReleaseAPI, "/latest") + "?per_page=100&page=1":
-				value = []previewRelease{release}
-			case previewDownloadURL(tag, "update.json"):
-				value = manifest
+			case LatestReleaseAPI:
+				data, _ = json.Marshal(map[string]any{"tag_name": version, "immutable": immutable, "assets": []map[string]any{
+					{"name": name, "browser_download_url": binaryURL, "size": 1024},
+					{"name": "SHA256SUMS", "browser_download_url": sumsURL},
+				}})
+			case sumsURL:
+				data = []byte(strings.Repeat("a", 64) + "  " + name + "\n")
 			default:
 				t.Fatalf("unexpected request %s", r.URL)
 			}
-			data, _ := json.Marshal(value)
-			return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(data)), Header: make(http.Header)}, nil
-		})}
-	}
-	for _, current := range []string{commit, strings.Repeat("b", 40)} {
-		plan, err := resolveUpdate(context.Background(), client(), "preview", BuildInfo{Commit: current})
-		if err != nil || plan.Available != (current != commit) {
-			t.Fatalf("plan=%#v err=%v", plan, err)
-		}
-	}
-	for _, raw := range []string{"http://github.com/hangry-labs/llama.nodrama/releases/download/preview/a", "https://example.com/a", "https://github.com/other/repo/releases/download/tag/a"} {
-		if officialUpdateURL(raw) {
-			t.Fatalf("accepted %s", raw)
-		}
-	}
-	for _, raw := range []string{"https://example.com/other-binary", previewDownloadURL("preview", "binary"), previewDownloadURL("preview-"+strings.Repeat("b", 40), "binary")} {
-		manifest.Assets[0].URL = raw
-		if _, err := resolveUpdate(context.Background(), client(), "preview", BuildInfo{}); err == nil {
-			t.Fatalf("accepted binary from another release: %s", raw)
-		}
-	}
-	manifest.Assets[0].URL = previewDownloadURL(tag, "binary")
-	manifest.Commit = strings.Repeat("b", 40)
-	if _, err := resolveUpdate(context.Background(), client(), "preview", BuildInfo{}); err == nil {
-		t.Fatal("accepted manifest from another commit")
-	}
-	manifest.Commit = commit
-	release.Assets = release.Assets[:1]
-	if _, err := resolveUpdate(context.Background(), client(), "preview", BuildInfo{}); err == nil {
-		t.Fatal("accepted binary absent from immutable release")
-	}
-}
-
-func previewFixture(tag string) previewRelease {
-	return previewRelease{Tag: tag, Prerelease: true, Immutable: true, PublishedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), Assets: []previewReleaseAsset{{Name: "update.json", URL: previewDownloadURL(tag, "update.json"), Size: 1000}}}
-}
-
-func TestLatestPreviewDiscovery(t *testing.T) {
-	old := previewFixture("preview-" + strings.Repeat("a", 40))
-	newest := previewFixture("preview-" + strings.Repeat("b", 40))
-	newest.PublishedAt = old.PublishedAt.Add(time.Hour)
-	for _, invalid := range []string{"legacy", "draft", "mutable", "stable", "missing manifest", "external manifest", "wrong tag", "unpublished"} {
-		t.Run(invalid, func(t *testing.T) {
-			bad := previewFixture("preview-" + strings.Repeat("c", 40))
-			bad.PublishedAt = newest.PublishedAt.Add(time.Hour)
-			switch invalid {
-			case "legacy":
-				bad.Tag = "preview"
-			case "draft":
-				bad.Draft = true
-			case "mutable":
-				bad.Immutable = false
-			case "stable":
-				bad.Prerelease = false
-			case "missing manifest":
-				bad.Assets = nil
-			case "external manifest":
-				bad.Assets[0].URL = "https://example.com/update.json"
-			case "wrong tag":
-				bad.Tag = "preview-" + strings.Repeat("z", 40)
-			case "unpublished":
-				bad.PublishedAt = time.Time{}
-			}
-			// Deliberately out of publication order, with a newer invalid candidate.
-			data, _ := json.Marshal([]previewRelease{old, bad, newest})
-			got, err := latestPreview(context.Background(), updateTestClient(data))
-			if err != nil || got.Tag != newest.Tag {
-				t.Fatalf("got=%s err=%v", got.Tag, err)
-			}
-		})
-	}
-	t.Run("pagination", func(t *testing.T) {
-		pages := 0
-		client := &http.Client{Transport: updateTransport(func(r *http.Request) (*http.Response, error) {
-			pages++
-			if r.URL.Query().Get("page") != strconv.Itoa(pages) {
-				t.Fatalf("unexpected page %s", r.URL)
-			}
-			items := make([]previewRelease, 100)
-			items[0] = old
-			if pages == 2 {
-				items = []previewRelease{newest}
-			}
-			data, _ := json.Marshal(items)
 			return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(data))}, nil
 		})}
-		got, err := latestPreview(context.Background(), client)
-		if err != nil || got.Tag != newest.Tag || pages != 2 {
-			t.Fatalf("got=%s pages=%d err=%v", got.Tag, pages, err)
+	}
+	for _, channel := range []string{"", "stable", "preview"} {
+		for _, current := range []string{"v0.6.0-SNAPSHOT", "v0.6.0", version, "v0.6.2"} {
+			plan, err := resolveUpdate(context.Background(), client(), channel, BuildInfo{Version: current})
+			wantAvailable := compareReleaseVersions(version, current) > 0
+			if err != nil || plan.Channel != "stable" || plan.Version != version || plan.Asset.URL != base+name || plan.Available != wantAvailable {
+				t.Fatalf("channel=%q current=%s plan=%#v err=%v", channel, current, plan, err)
+			}
 		}
-	})
-	if _, err := latestPreview(context.Background(), updateTestClient([]byte(`[]`))); !errors.Is(err, errNoPreview) {
-		t.Fatalf("empty feed err=%v", err)
+	}
+	for _, raw := range []string{"https://example.com/binary", RepositoryURL + "/releases/download/v0.5.0/" + name} {
+		binaryURL = raw
+		if _, err := resolveUpdate(context.Background(), client(), "stable", BuildInfo{}); err == nil {
+			t.Fatalf("accepted asset from another release: %s", raw)
+		}
+	}
+	binaryURL = base + name
+	sumsURL = RepositoryURL + "/releases/download/v0.5.0/SHA256SUMS"
+	if _, err := resolveUpdate(context.Background(), client(), "stable", BuildInfo{}); err == nil {
+		t.Fatal("accepted checksum file from another release")
+	}
+	sumsURL = base + "SHA256SUMS"
+	immutable = false
+	if _, err := resolveUpdate(context.Background(), client(), "stable", BuildInfo{}); err == nil {
+		t.Fatal("accepted mutable release")
 	}
 }
 
@@ -156,7 +94,7 @@ func TestInstallUpdateValidatesBeforeReplacingExecutable(t *testing.T) {
 		t.Fatal(err)
 	}
 	hash := sha256.Sum256(data)
-	plan := updatePlan{Asset: updateAsset{URL: RepositoryURL + "/releases/download/preview/test", SHA256: hex.EncodeToString(hash[:]), Bytes: int64(len(data))}}
+	plan := updatePlan{Asset: updateAsset{URL: RepositoryURL + "/releases/download/v0.6.1/test", SHA256: hex.EncodeToString(hash[:]), Bytes: int64(len(data))}}
 	bad := append([]byte(nil), data...)
 	bad[len(bad)-1] ^= 1
 	if err := installUpdate(context.Background(), updateTestClient(bad), plan, target); err == nil {
@@ -177,7 +115,7 @@ func TestInstallUpdateValidatesBeforeReplacingExecutable(t *testing.T) {
 	wrongCommit := plan
 	wrongCommit.Commit = strings.Repeat("0", 40)
 	if err := installUpdate(context.Background(), updateTestClient(data), wrongCommit, target); err == nil {
-		t.Fatal("accepted different preview commit")
+		t.Fatal("accepted different build commit")
 	}
 	if err := installUpdate(context.Background(), updateTestClient(data), plan, target); err != nil {
 		t.Fatal(err)

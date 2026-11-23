@@ -7,7 +7,7 @@
 # llama.nodrama
 
 Development version **v0.6.0-SNAPSHOT**. See the [version history](#version-history).
-The latest published release is [v0.5.0](https://github.com/hangry-labs/llama.nodrama/releases/tag/v0.5.0).
+Download the [latest published release](https://github.com/hangry-labs/llama.nodrama/releases/latest).
 
 `llama.nodrama` is a small Go dashboard for operating `llama.cpp` servers. It
 exists because running `llama.cpp` with multiple slots should not feel like
@@ -28,20 +28,19 @@ obvious without turning monitoring itself into another project.
 
 ## Quick Start
 
-Install published **v0.5.0**. The dashboard is a single binary for
+Install the latest published release. The dashboard is a single binary for
 Linux, macOS and Windows; it connects to an existing `llama.cpp` server.
 
 Linux and macOS:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/hangry-labs/llama.nodrama/v0.5.0/install.sh | LLAMA_NODRAMA_VERSION=v0.5.0 sh
+curl -fsSL https://raw.githubusercontent.com/hangry-labs/llama.nodrama/main/install.sh | sh
 ```
 
 Windows PowerShell:
 
 ```powershell
-$env:LLAMA_NODRAMA_VERSION = "v0.5.0"
-irm https://raw.githubusercontent.com/hangry-labs/llama.nodrama/v0.5.0/install.ps1 | iex
+irm https://raw.githubusercontent.com/hangry-labs/llama.nodrama/main/install.ps1 | iex
 ```
 
 The Windows installer copies `llama-nodrama.exe` to a user-local install
@@ -50,18 +49,18 @@ session is updated too, so `llama-nodrama --help` should work immediately after
 install.
 
 <details markdown="1">
-<summary><strong>Follow the newest published release</strong></summary>
+<summary><strong>Pin a particular published release</strong></summary>
 
-Omit the version override to let the installers select GitHub's latest stable
-release. This selection moves as new releases are published.
+Set a version override to keep a specific release. This example pins the
+previously published `v0.5.0`; choose the tag you need from GitHub Releases.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/hangry-labs/llama.nodrama/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/hangry-labs/llama.nodrama/v0.5.0/install.sh | LLAMA_NODRAMA_VERSION=v0.5.0 sh
 ```
 
 ```powershell
-Remove-Item Env:LLAMA_NODRAMA_VERSION -ErrorAction SilentlyContinue
-irm https://raw.githubusercontent.com/hangry-labs/llama.nodrama/main/install.ps1 | iex
+$env:LLAMA_NODRAMA_VERSION = "v0.5.0"
+irm https://raw.githubusercontent.com/hangry-labs/llama.nodrama/v0.5.0/install.ps1 | iex
 ```
 
 </details>
@@ -275,14 +274,14 @@ Useful flags:
 
 The version label shows only the installed version and opens **Updates**.
 Click the adjacent **↻** button, or **Check for updates** in the dialog, to
-check stable releases or the latest tested preview. Opening the dialog or
-changing its channel does not check automatically. When a newer build is found,
+check the latest published version. Opening the dialog does not check
+automatically. When a newer version is found,
 the version highlights and **Update now** appears. Installation starts only
-when you click it. Preview builds follow
-successful `main` CI builds and use commit identity, so testing new work does
-not require a manually tagged release. Each preview is an immutable release;
-the updater discovers the newest published build. Routine stable releases
-advance the last number within the current version line. Downloads are verified, the previous
+when you click it. Successful `main` CI builds publish normal immutable releases
+with increasing patch numbers: `v0.6.0`, `v0.6.1`, `v0.6.2`. No manual tag or
+separate preview channel is needed. The binaries and Windows properties contain
+the actual release version. Larger version-line changes remain deliberate.
+Downloads are verified, the previous
 binary is retained and settings persist. Restarting clears in-memory history
 and peaks. The dashboard host needs internet access and a writable installation
 folder. See the [release guide](docs/RELEASING.md) for publication details.
@@ -348,9 +347,10 @@ published as a `v0.6.0` release. Build from source to try them.
   motion. Refresh expanded history charts while open, respecting pause and the
   selected window. Show separate dashboard and llama.cpp uptimes, and highlight
   the navigation section currently in view.
-- Add verified stable/preview updates from the UI, immutable tested builds after
-  main CI, and a dry-run/atomic-push stable release task. Stage assets before
-  publication and keep routine stable releases within the current version line.
+- Publish normal immutable patch releases after successful main CI, with matching
+  binary/Windows versions, platform archives and update metadata. Stage all assets
+  in a draft before publication; skip published commits on retries. Use one
+  latest-release update flow and a nonmutating release-readiness command.
 - Make update checks explicit through refresh, show only version numbers and
   offer **Update now** after detecting a newer build. Merge server uptime into
   connection status and remove uptime history. Keep long chart sampling

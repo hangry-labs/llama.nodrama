@@ -97,7 +97,7 @@ const state = {
   healthy: false,
   pollers: [],          /* {name, abort, timer} */
   lastUpdate: null,
-  updates: { channel: null, plan: null, phase: null, error: '', listeners: new Set() },
+  updates: { plan: null, phase: null, error: '', listeners: new Set() },
   ui: {
     bootDone: false,
     logEnabled: false,

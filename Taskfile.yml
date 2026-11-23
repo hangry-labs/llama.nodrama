@@ -44,7 +44,7 @@ tasks:
       - powershell -NoProfile -Command "Remove-Item Env:GOOS,Env:GOARCH -ErrorAction SilentlyContinue; go-winres make --arch amd64,arm64"
 
   release:
-    desc: Promote a stable release, open the next snapshot, and push atomically (DRY_RUN=1 previews)
+    desc: Check readiness for automatic main releases (DRY_RUN=1 shows version policy)
     dir: nodrama
     vars:
       DRY_RUN: '{{.DRY_RUN | default "0"}}'

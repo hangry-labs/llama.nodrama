@@ -83,7 +83,7 @@ Flags útiles:
 --version    print build version and exit
 ```
 
-La barra superior muestra la versión instalada. Abre **Actualizaciones** desde esa etiqueta y pulsa **Buscar actualizaciones**, o usa el botón **↻**. La comprobación es manual. Si hay una versión estable o vista previa más reciente, la versión se resalta y aparece **Actualizar ahora**. La instalación solo empieza al pulsarlo; los ajustes se conservan, pero el historial en memoria y los máximos se reinician.
+La barra superior muestra la versión instalada. Abre **Actualizaciones** desde esa etiqueta y pulsa **Buscar actualizaciones**, o usa el botón **↻**. La comprobación es manual. Si hay una versión publicada más reciente, la versión se resalta y aparece **Actualizar ahora**. La instalación solo empieza al pulsarlo; los ajustes se conservan, pero el historial en memoria y los máximos se reinician.
 
 Los logs de ejecución usan niveles explícitos (`INFO`, `WARN`, `ERROR`). Define `LLAMA_NODRAMA_DEBUG=1` para incluir logs detallados de endpoint probe.
 

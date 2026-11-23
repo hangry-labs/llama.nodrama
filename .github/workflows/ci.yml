@@ -68,6 +68,7 @@ jobs:
 
   cross-build:
     name: build ${{ matrix.goos }}/${{ matrix.goarch }}
+    if: github.event_name == 'pull_request'
     needs: [test, browser]
     runs-on: ubuntu-latest
     strategy:
@@ -127,46 +128,11 @@ jobs:
           name: llama-nodrama-${{ matrix.goos }}-${{ matrix.goarch }}
           path: nodrama/dist/*
 
-  preview:
-    name: publish tested preview
-    needs: cross-build
+  release:
+    name: publish regular patch release
+    needs: [test, browser]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'hangry-labs/llama.nodrama'
-    runs-on: ubuntu-latest
     permissions:
       contents: write
-    concurrency:
-      group: preview-publication
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: llama-nodrama-*
-          merge-multiple: true
-          path: preview
-      - name: Prepare checksums and update manifest
-        env:
-          BUILD_COMMIT: ${{ github.sha }}
-        run: python3 scripts/preview_manifest.py preview
-      - name: Publish immutable tested preview
-        env:
-          GH_TOKEN: ${{ github.token }}
-          BUILD_COMMIT: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          # Do not promote an older, slower workflow over current main.
-          latest="$(gh api repos/$GITHUB_REPOSITORY/commits/main --jq .sha)"
-          if [ "$latest" != "$BUILD_COMMIT" ]; then exit 0; fi
-          tag="preview-$BUILD_COMMIT"
-          if draft="$(gh release view "$tag" --json isDraft --jq .isDraft)"; then
-            if [ "$draft" != "true" ]; then
-              echo "Already published $tag; leaving its tag and assets unchanged."
-              exit 0
-            fi
-          else
-            gh release create "$tag" --draft --target "$BUILD_COMMIT" --prerelease --latest=false --title "Tested preview ${BUILD_COMMIT:0:12}" --notes "Tested main build $BUILD_COMMIT. Settings persist; restarting resets in-memory telemetry history."
-          fi
-          # Only drafts may be resumed. Publishing locks the complete asset set.
-          test "$(gh release view "$tag" --json isDraft --jq .isDraft)" = true
-          gh release upload "$tag" preview/* --clobber
-          gh release edit "$tag" --draft=false --prerelease --latest=false
+    uses: ./.github/workflows/release.yml
+    secrets: inherit
