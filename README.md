@@ -321,6 +321,9 @@ published as a `v0.6.0` release. Build from source to try them.
   concurrency and responsive behavior. Make demo activity internally consistent.
 - Keep Go source checkouts in LF format on Windows as well as Linux/macOS, so
   Git's CRLF conversion does not cause the CI formatting check to fail.
+- Keep long history charts visible when older and recent samples use different
+  intervals. Preserve actual collection gaps and the selected time span when
+  reducing the number of plotted points.
 - Convert raster source artwork and icons to WebP; retain native Windows icon
   resources. Document brand restrictions and bundled third-party notices.
 

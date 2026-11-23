@@ -102,11 +102,12 @@ func Run(ctx context.Context, cfg Config, info BuildInfo) error {
 		since := time.Now().Add(-time.Duration(hours) * time.Hour)
 		points := dashboard.MetricHistory(metric, since, maxPoints)
 		payload := map[string]any{
-			"metric":   metric,
-			"hours":    hours,
-			"max":      maxPoints,
-			"points":   points,
-			"pointSec": int(metricLongInterval.Seconds()),
+			"metric":       metric,
+			"hours":        hours,
+			"max":          maxPoints,
+			"points":       points,
+			"pointSec":     int(metricLongInterval.Seconds()),
+			"explicitGaps": true,
 		}
 		if change := dashboard.CounterHistoryChange(metric, time.Duration(hours)*time.Hour); change != nil {
 			payload["change"] = change

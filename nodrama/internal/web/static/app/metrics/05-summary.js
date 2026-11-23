@@ -43,7 +43,7 @@ function chartGeometry(points, options = {}) {
   const ceiling = max > min ? max : min + Math.max(1, Math.abs(min) * 0.1);
   const start = data[0]?.t || 0, end = data[data.length - 1]?.t || start;
   const intervals = data.slice(1).map((point, index) => point.t - data[index].t).filter(value => value > 0).sort((a, b) => a - b);
-  const cadence = intervals[Math.floor(intervals.length / 2)] || 1000;
+  const cadence = options.explicitGaps ? Infinity : intervals[Math.floor(intervals.length / 2)] || 1000;
   const view = { start, end, height, min, max: ceiling };
   const vertices = chartVertices(data, view, cadence);
   return { data, vertices, width, ...view, cadence };
@@ -54,13 +54,13 @@ function chartVertices(data, view, cadence) {
     t: point.t, v: point.v,
     x: 5 + (point.t - view.start) / Math.max(1, view.end - view.start) * 390,
     y: view.height - 5 - Math.max(0, Math.min(1, (point.v - view.min) / (view.max - view.min))) * (view.height - 10),
-    start: index === 0 || point.t - data[index - 1].t > cadence * 3,
+    start: index === 0 || !!point.gapBefore || point.t - data[index - 1].t > cadence * 3,
   }));
 }
 
 function sameChartGeometry(a, b) {
   return a && a.height === b.height && a.min === b.min && a.max === b.max && a.cadence === b.cadence
-    && a.data.length === b.data.length && a.data.every((point, index) => point.t === b.data[index].t && point.v === b.data[index].v);
+    && a.data.length === b.data.length && a.data.every((point, index) => point.t === b.data[index].t && point.v === b.data[index].v && !!point.gapBefore === !!b.data[index].gapBefore);
 }
 
 // Retain sample identity while the time window moves. Outgoing samples stay
@@ -74,11 +74,11 @@ function chartTransition(from, to, drawn, view = from) {
   const firstVisible = drawn.findIndex(point => point.x >= 5);
   const outgoing = drawn.slice(Math.max(0, firstVisible - 1)).filter(point => point.t < to.start);
   const points = outgoing.map(point => ({ t: point.t, from: point.v, to: point.v }));
-  for (const point of to.data) points.push({ t: point.t, from: previous.get(point.t)?.v ?? point.v, to: point.v });
+  for (const point of to.data) points.push({ t: point.t, from: previous.get(point.t)?.v ?? point.v, to: point.v, gapBefore: point.gapBefore });
   return fraction => {
     const current = {};
     for (const key of ["start", "end", "height", "min", "max"]) current[key] = view[key] + (to[key] - view[key]) * fraction;
-    const samples = points.map(point => ({ t: point.t, v: point.from + (point.to - point.from) * fraction }));
+    const samples = points.map(point => ({ t: point.t, v: point.from + (point.to - point.from) * fraction, gapBefore: point.gapBefore }));
     return { view: current, vertices: chartVertices(samples, current, to.cadence) };
   };
 }

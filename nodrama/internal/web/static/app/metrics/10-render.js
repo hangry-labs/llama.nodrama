@@ -104,7 +104,7 @@ function openMetricHistory(metric) {
           el("span", null, t(label)), el("strong", null, value),
         ]));
       }
-      updateSparkline(chart, points, { min: summaryMetric ? undefined : metric.min, max: metric.max, step: metric.step, height: 180, interactive: true,
+      updateSparkline(chart, points, { explicitGaps: payload?.explicitGaps === true, animate: false, min: summaryMetric ? undefined : metric.min, max: metric.max, step: metric.step, height: 180, interactive: true,
         label: t(metric.titleKey) + ". " + t("diagnostics.chart_hint"), formatValue: value => formatMetricHistoryValue(metric, value) });
       const geometry = chart.querySelector("svg").chartModel.geometry;
       for (const value of [geometry.max, (geometry.max + geometry.min) / 2, geometry.min]) {

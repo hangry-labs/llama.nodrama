@@ -58,6 +58,15 @@ test('chart paths break at collection gaps instead of joining unknown data', () 
   assert.equal((paths.area.match(/Z/g) || []).length, 2);
 });
 
+test('explicit history gaps distinguish mixed sampling rates from missing observations', () => {
+  const chart = run(`chartGeometry([{t:0,v:0},{t:110000,v:9},{t:220000,v:0},
+    {t:220250,v:1},{t:220500,v:2},{t:220750,v:0},{t:221000,v:0},
+    {t:900000,v:3,gapBefore:true},{t:900250,v:1}], {explicitGaps:true})`);
+  assert.equal(chart.vertices.filter(p => p.start).length, 2);
+  assert.equal(chart.vertices[1].start, false);
+  assert.equal(chart.vertices[7].start, true);
+});
+
 test('discrete request gauges use steps, with no invented diagonal interpolation', () => {
   const paths = run('chartPaths(chartGeometry([{t:0,v:0},{t:1000,v:2}], {min:0}).vertices,64,true)');
   assert.match(paths.line, /H/);

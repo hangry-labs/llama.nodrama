@@ -52,9 +52,10 @@ type SnapshotHistory struct {
 }
 
 type HistoryPoint struct {
-	T       int64   `json:"t"`
-	V       float64 `json:"v"`
-	ResetAt int64   `json:"resetAt,omitempty"`
+	T         int64   `json:"t"`
+	V         float64 `json:"v"`
+	ResetAt   int64   `json:"resetAt,omitempty"`
+	GapBefore bool    `json:"gapBefore,omitempty"`
 }
 
 type MetricFact struct {
@@ -943,6 +944,10 @@ func (m *Dashboard) copyHistoryLocked() SnapshotHistory {
 }
 
 func (m *Dashboard) MetricHistory(metric string, since time.Time, maxPoints int) []HistoryPoint {
+	poll := time.Duration(m.Settings().PollInterval) * time.Millisecond
+	if poll <= 0 {
+		poll = time.Second
+	}
 	m.historyMu.Lock()
 	defer m.historyMu.Unlock()
 
@@ -958,22 +963,47 @@ func (m *Dashboard) MetricHistory(metric string, since time.Time, maxPoints int)
 	if len(recent) > 0 {
 		recentStart := recent[0].T
 		older := trimHistoryPointsBefore(points, recentStart)
-		if len(recent) >= maxPoints {
-			out := make([]HistoryPoint, len(recent))
-			copy(out, recent)
-			return limitHistoryPoints(out, maxPoints)
-		}
-		older = limitHistoryPoints(older, maxPoints-len(recent))
 		combined := make([]HistoryPoint, 0, len(older)+len(recent))
-		combined = append(combined, older...)
+		combined = append(combined, historyCollectionGaps(older, max(poll, metricLongInterval))...)
+		recent = historyCollectionGaps(recent, poll)
+		if len(older) > 0 && recent[0].T-older[len(older)-1].T > 3*max(poll, metricLongInterval).Milliseconds() {
+			recent[0].GapBefore = true
+		}
 		combined = append(combined, recent...)
 		points = combined
 	} else if len(points) == 0 {
-		points = trimHistoryPoints(m.metricHistory[metric], cutoff)
+		points = historyCollectionGaps(trimHistoryPoints(m.metricHistory[metric], cutoff), poll)
+	} else {
+		points = historyCollectionGaps(points, max(poll, metricLongInterval))
 	}
 	out := make([]HistoryPoint, len(points))
 	copy(out, points)
-	return limitHistoryPoints(out, maxPoints)
+	return sampleHistoryWithGaps(out, maxPoints)
+}
+
+// Identify collection gaps before thinning: peak samples can be far apart even
+// when collection was continuous. Keep these breaks in the returned series.
+func historyCollectionGaps(points []HistoryPoint, cadence time.Duration) []HistoryPoint {
+	out := append([]HistoryPoint(nil), points...)
+	for i := 1; i < len(out); i++ {
+		out[i].GapBefore = out[i].T-out[i-1].T > 3*cadence.Milliseconds()
+	}
+	return out
+}
+
+func sampleHistoryWithGaps(points []HistoryPoint, maxPoints int) []HistoryPoint {
+	out := append([]HistoryPoint(nil), limitHistoryPoints(points, maxPoints)...)
+	index := 0
+	for i := range out {
+		out[i].GapBefore = false
+		for index < len(points) && points[index].T <= out[i].T {
+			if i > 0 && points[index].T > out[i-1].T && points[index].GapBefore {
+				out[i].GapBefore = true
+			}
+			index++
+		}
+	}
+	return out
 }
 
 func trimHistoryPointsBefore(points []HistoryPoint, before int64) []HistoryPoint {
