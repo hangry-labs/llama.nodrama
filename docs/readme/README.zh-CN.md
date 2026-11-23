@@ -83,7 +83,7 @@ go build -o llama-nodrama .
 --version    print build version and exit
 ```
 
-仪表盘顶部栏的版本标签会链接到项目仓库。后端会定期检查最新的 GitHub Release；如果发现更新版本，版本标签会高亮并直接链接到该 release。
+顶部栏显示已安装的版本。点击版本标签打开**更新**并选择**检查更新**，或使用旁边的 **↻** 按钮。更新检查由用户手动触发。发现较新的稳定版或经过测试的预览版后，版本会高亮并显示**立即更新**。只有点击此按钮才开始安装；设置会保留，但重启会清空内存中的历史记录和峰值。
 
 运行时日志使用明确的等级 (`INFO`, `WARN`, `ERROR`)。设置 `LLAMA_NODRAMA_DEBUG=1` 可以包含详细的 endpoint probe 日志。
 

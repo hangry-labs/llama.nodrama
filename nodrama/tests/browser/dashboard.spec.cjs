@@ -19,7 +19,7 @@ for (const mode of ['1', 'router']) {
       await page.goto('/?demo=' + mode);
       await expect(page.locator('header.app .diagnostics-nav')).toHaveCount(1);
       await expect(page.locator('main .diagnostics-nav')).toHaveCount(0);
-      await expect(page.locator('#status-text')).toHaveText('Demo');
+      await expect(page.locator('#status-label')).toHaveText('Demo');
       await expect(page.locator('[data-id="demo-mode"]')).toHaveCount(0);
       await expect(page.locator('#status-text')).toHaveAttribute('title', /synthetic/);
       await expect(page.locator('#metric-predicted_tps .spark-line')).toHaveCount(1);
@@ -80,7 +80,7 @@ test('chart history and help dialogs work with mouse and keyboard', async ({ pag
   await expect(page.locator('[role=dialog] .metric-history-chart')).toHaveCount(0);
 });
 
-test('totals show interval summaries and open history; uptime uses run details', async ({ page }) => {
+test('totals show interval summaries and open history; uptime stays in the status pill', async ({ page }) => {
   await page.goto('/?demo=router');
   await expect(page.locator('.metric-card svg')).toHaveCount(8);
   await expect(page.locator('.metric-counter')).toHaveCount(6);
@@ -106,15 +106,14 @@ test('totals show interval summaries and open history; uptime uses run details',
   await expect(total.locator('.metric-open')).toBeFocused();
 });
 
-test('top-bar uptime opens history and reports stale, paused and missing data', async ({ page }) => {
+test('status uptime has no history action and reports stale, paused and missing data', async ({ page }) => {
   await page.goto('/?demo=router');
   const uptime=page.locator('#server-uptime');
-  await expect(uptime).toBeEnabled();
-  await uptime.focus();
-  await page.keyboard.press('Enter');
-  await expect(page.getByRole('dialog').locator('.history-stat').first()).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(uptime).toBeFocused();
+  await expect(page.locator('#status-text #server-uptime')).toBeVisible();
+  await expect(uptime).not.toHaveAttribute('role', 'button');
+  await uptime.click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await page.evaluate(() => state.history.metrics['nodrama:server_uptime_seconds'])).toBeUndefined();
   await page.getByRole('button',{name:'Pause updates',exact:true}).click();
   await expect(uptime).toHaveAttribute('data-state','paused');
   const value=await page.locator('#server-uptime-value').innerText();
@@ -124,7 +123,7 @@ test('top-bar uptime opens history and reports stale, paused and missing data', 
   await expect(uptime).toHaveAttribute('data-state','stale');
   await expect(uptime).toHaveAttribute('title',/Last observed/);
   await page.goto('/');
-  await expect(uptime).toBeDisabled();
+  await expect(uptime).toBeHidden();
   await expect(page.locator('#server-uptime-value')).toHaveText('—');
 });
 
@@ -238,7 +237,7 @@ test('chat visibility, reasoning controls and cancellation work on mobile', asyn
 
 test('offline mode hides the empty cache bar and reports unavailable upstream', async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('#status-text')).toHaveText('Offline');
+  await expect(page.locator('#status-label')).toHaveText('Offline');
   await expect(page.locator('#cache-bar')).toBeHidden();
   await expect(page.locator('#config-section')).toContainText('No');
   await expect(page.locator('#config-section .option-card')).toHaveCount(0);
@@ -257,7 +256,7 @@ test('top-bar links clear the sticky header and live mode retains Online status'
   })).toBeLessThanOrEqual(0);
   await page.route('**/api/snapshot', route => route.fulfill({ json: { ...snapshot, server: 'http://127.0.0.1:8080' } }));
   await page.goto('/');
-  await expect(page.locator('#status-text')).toHaveText('Online');
+  await expect(page.locator('#status-label')).toHaveText('Online');
   await expect(page.locator('#status-text')).not.toHaveClass(/demo/);
 });
 

@@ -49,7 +49,8 @@ test('expanded history refreshes the selected window and stops on close', async 
 test('header shows both uptimes and highlights the visible section', async ({ page }) => {
   await page.goto('/?demo=1');
   await expect(page.locator('#dashboard-uptime-value')).not.toHaveText('—');
-  await expect(page.locator('#server-uptime > span')).toHaveText('llama.cpp');
+  await expect(page.locator('#status-text #server-uptime-value')).not.toHaveText('—');
+  await expect(page.locator('#server-uptime')).not.toContainText('llama.cpp');
   await expect(page.locator('.nav-chat')).not.toHaveAttribute('aria-current', 'location');
   await page.locator('.nav-chat').click();
   await expect(page.locator('.nav-chat')).toHaveAttribute('aria-current', 'location');
@@ -58,20 +59,73 @@ test('header shows both uptimes and highlights the visible section', async ({ pa
   await expect(page.locator('.nav-chat')).not.toHaveAttribute('aria-current', 'location');
 });
 
-test('update dialog checks preview identity and keeps installation explicit', async ({ page }) => {
-  let installs = 0;
-  await page.route('**/api/update/check?**', route => route.fulfill({ json: {
-    channel: 'preview', version: 'v0.6.0-SNAPSHOT', commit: 'a'.repeat(40), available: true,
+test('updates check only on refresh, highlight versions and install only on Update now', async ({ page }) => {
+  let installs = 0, checks = 0;
+  await page.route('**/api/update/check?**', route => { checks++; return route.fulfill({ json: {
+    channel: new URL(route.request().url()).searchParams.get('channel'), version: 'v0.6.1', commit: 'a'.repeat(40), available: true,
     asset: { bytes: 123 },
-  } }));
+  } }); });
   await page.route('**/api/update/install', route => { installs++; return route.fulfill({ status: 400, body: 'Synthetic verification failure' }); });
   await page.goto('/');
+  await expect(page.locator('#version-display')).toHaveText('v0.6.0-SNAPSHOT');
+  await expect(page.locator('#version-display')).not.toHaveAttribute('title', /built|commit|\d\d:\d\d/);
+  await expect(page.locator('#update-now')).toBeHidden();
   await page.locator('#version-display').click();
   const dialog = page.getByRole('dialog');
-  await expect(dialog.locator('[role=status]')).toContainText('aaaaaaaa');
+  await expect(dialog.locator('[role=status]')).toContainText('Click refresh');
+  await dialog.getByRole('combobox').selectOption('stable');
+  expect(checks).toBe(0);
   expect(installs).toBe(0);
   await expect(dialog).toContainText('history and peaks reset');
-  await dialog.getByRole('button', { name: 'Update and restart', exact: true }).click();
+  await dialog.getByRole('button', { name: /Check for updates/ }).click();
+  await expect(dialog.locator('[role=status]')).toContainText('v0.6.1');
+  await expect(page.locator('#version-display')).toHaveClass(/update-available/);
+  await expect(page.locator('#update-now')).toBeVisible();
+  expect(checks).toBe(1);
+  expect(installs).toBe(0);
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.locator('#version-display').click();
+  await expect(dialog.locator('[role=status]')).toContainText('v0.6.1');
+  expect(checks).toBe(1);
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.setViewportSize({ width: 320, height: 800 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.locator('#update-now').click();
   await expect(dialog.locator('[role=status]')).toContainText('Synthetic verification failure');
   expect(installs).toBe(1);
+  expect(checks).toBe(1);
+});
+
+test('header refresh checks once and channel changes clear stale candidates without checking', async ({ page }) => {
+  let checks = 0;
+  await page.route('**/api/update/check?**', route => {
+    checks++;
+    return route.fulfill({ json: { channel: 'preview', version: 'v0.6.0-SNAPSHOT', available: checks === 1 } });
+  });
+  await page.goto('/');
+  await page.locator('#update-check').click();
+  const dialog = page.getByRole('dialog');
+  await expect(page.locator('#version-display')).toHaveClass(/update-available/);
+  await dialog.getByRole('combobox').selectOption('stable');
+  await expect(page.locator('#update-now')).toBeHidden();
+  await expect(page.locator('#version-display')).not.toHaveClass(/update-available/);
+  expect(checks).toBe(1);
+  await dialog.getByRole('button', { name: /Check for updates/ }).click();
+  await expect(dialog.locator('[role=status]')).toContainText('No newer build');
+  expect(checks).toBe(2);
+  await expect(dialog.getByRole('button', { name: 'Update now', exact: true })).toBeHidden();
+});
+
+test('long history explains peak sampling and retains the current value', async ({ page }) => {
+  const t = Date.now();
+  const points = Array.from({ length: 121 }, (_, i) => ({ t: t - 600000 + i * 5000, v: i === 70 ? 72 : 5 }));
+  points.push({ t: t + 250, v: 0.2 });
+  await page.route('**/api/history/metrics?**', route => route.fulfill({ json: { points, explicitGaps: true, aggregation: 'peak', pointSec: 5 } }));
+  await page.goto('/');
+  await page.locator('#metric-container_cpu .metric-open').click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.locator('.metric-history-modal > [role=status]')).toContainText('5s peak samples');
+  await expect(dialog.locator('.history-stat').first()).toContainText('0.20');
+  await expect(dialog.locator('.history-stat').nth(1)).toContainText('Sample average');
+  expect(await dialog.locator('svg').evaluate(svg => svg.chartModel.geometry.vertices.filter(v => v.start).length)).toBe(1);
 });

@@ -261,10 +261,6 @@ type Dashboard struct {
 	pendingCacheKey string
 	pendingCacheAt  time.Time
 
-	updateMu        sync.Mutex
-	updateInfo      UpdateInfo
-	updateCheckedAt time.Time
-
 	sustainedSince map[string]time.Time
 }
 
@@ -352,7 +348,6 @@ func NewDashboard(client *llamacpp.Client, cfg Config, build BuildInfo) *Dashboa
 			Warnings:       []string{"Waiting for first poll."},
 			Update:         defaultUpdateInfo(build.Version),
 		},
-		updateInfo: defaultUpdateInfo(build.Version),
 	}
 }
 
@@ -638,7 +633,7 @@ func (m *Dashboard) recordMetricHistory(now time.Time, metrics map[string]float6
 	recentCutoff := now.Add(-metricRecentWindow).UnixMilli()
 	longCutoff := now.Add(-metricLongWindow).UnixMilli()
 	for name, value := range metrics {
-		if math.IsNaN(value) || math.IsInf(value, 0) {
+		if name == serverUptimeMetric || math.IsNaN(value) || math.IsInf(value, 0) {
 			continue
 		}
 		fact := m.metricFacts[name]
@@ -966,6 +961,11 @@ func (m *Dashboard) MetricHistory(metric string, since time.Time, maxPoints int)
 		combined := make([]HistoryPoint, 0, len(older)+len(recent))
 		combined = append(combined, historyCollectionGaps(older, max(poll, metricLongInterval))...)
 		recent = historyCollectionGaps(recent, poll)
+		// Long views must use the same cadence on both sides of the recent
+		// retention boundary. Otherwise the last five minutes become a dense band.
+		if len(older) > 0 && !isCounterMetric(metric) && recent[len(recent)-1].T-older[0].T > metricRecentWindow.Milliseconds() {
+			recent = peakHistoryBuckets(recent, metricLongInterval)
+		}
 		if len(older) > 0 && recent[0].T-older[len(older)-1].T > 3*max(poll, metricLongInterval).Milliseconds() {
 			recent[0].GapBefore = true
 		}
@@ -987,6 +987,29 @@ func historyCollectionGaps(points []HistoryPoint, cadence time.Duration) []Histo
 	out := append([]HistoryPoint(nil), points...)
 	for i := 1; i < len(out); i++ {
 		out[i].GapBefore = out[i].T-out[i-1].T > 3*cadence.Milliseconds()
+	}
+	return out
+}
+
+func peakHistoryBuckets(points []HistoryPoint, interval time.Duration) []HistoryPoint {
+	var out []HistoryPoint
+	for start := 0; start < len(points); {
+		bucket := points[start].T / interval.Milliseconds()
+		peak, end := points[start], start+1
+		for end < len(points) && points[end].T/interval.Milliseconds() == bucket && !points[end].GapBefore {
+			if points[end].V >= peak.V {
+				peak = points[end]
+			}
+			end++
+		}
+		peak.GapBefore = points[start].GapBefore
+		out = append(out, peak)
+		start = end
+	}
+	if len(out) > 0 && out[len(out)-1].T != points[len(points)-1].T {
+		latest := points[len(points)-1]
+		latest.GapBefore = false
+		out = append(out, latest)
 	}
 	return out
 }
@@ -1018,15 +1041,23 @@ func limitHistoryPoints(points []HistoryPoint, maxPoints int) []HistoryPoint {
 	if maxPoints <= 0 || len(points) <= maxPoints {
 		return points
 	}
-	bucketSize := int(math.Ceil(float64(len(points)) / float64(maxPoints)))
+	if maxPoints == 1 {
+		return points[len(points)-1:]
+	}
+	if maxPoints == 2 {
+		return []HistoryPoint{points[0], points[len(points)-1]}
+	}
+	// Reserve the range endpoints; sampling peaks must not replace "latest".
+	bucketSize := int(math.Ceil(float64(len(points)-2) / float64(maxPoints-2)))
 	if bucketSize < 1 {
 		bucketSize = 1
 	}
 	out := make([]HistoryPoint, 0, maxPoints)
-	for start := 0; start < len(points); start += bucketSize {
+	out = append(out, points[0])
+	for start := 1; start < len(points)-1; start += bucketSize {
 		end := start + bucketSize
-		if end > len(points) {
-			end = len(points)
+		if end > len(points)-1 {
+			end = len(points) - 1
 		}
 		peak := points[start]
 		for _, point := range points[start+1 : end] {
@@ -1036,6 +1067,7 @@ func limitHistoryPoints(points []HistoryPoint, maxPoints int) []HistoryPoint {
 		}
 		out = append(out, peak)
 	}
+	out = append(out, points[len(points)-1])
 	sort.Slice(out, func(i, j int) bool { return out[i].T < out[j].T })
 	if len(out) > maxPoints {
 		out = out[len(out)-maxPoints:]
@@ -1084,33 +1116,6 @@ func (m *Dashboard) ResetHistory() {
 	m.pendingCacheKey = ""
 	m.pendingCacheAt = time.Time{}
 	m.queryMu.Unlock()
-}
-
-func (m *Dashboard) updateReleaseInfo(ctx context.Context, now time.Time) UpdateInfo {
-	m.updateMu.Lock()
-	if !m.updateCheckedAt.IsZero() && now.Sub(m.updateCheckedAt) < updateCheckInterval {
-		info := m.updateInfo
-		m.updateMu.Unlock()
-		return info
-	}
-	m.updateCheckedAt = now
-	m.updateMu.Unlock()
-
-	info := checkLatestRelease(ctx, m.build.Version)
-
-	m.updateMu.Lock()
-	m.updateInfo = info
-	m.updateMu.Unlock()
-	return info
-}
-
-func (m *Dashboard) currentUpdateInfo() UpdateInfo {
-	m.updateMu.Lock()
-	defer m.updateMu.Unlock()
-	if m.updateInfo.RepoURL == "" {
-		m.updateInfo = defaultUpdateInfo(m.build.Version)
-	}
-	return m.updateInfo
 }
 
 func (m *Dashboard) StartRequest(route, model string, stream bool) string {
@@ -1244,7 +1249,6 @@ func (m *Dashboard) poll(parent context.Context) {
 	pollSlow := m.lastSlowPoll.IsZero() || pollAt.Sub(m.lastSlowPoll) >= slowPollInterval
 	endpoints := copyProbes(previous.Endpoints)
 	lastErrors := copyStringMap(previous.LastErrors)
-	update := m.currentUpdateInfo()
 	warnings := []string{}
 	mode := previous.Mode
 	if mode == "" {
@@ -1427,7 +1431,6 @@ func (m *Dashboard) poll(parent context.Context) {
 	gpuSnapshot := previous.GPU
 	if pollSlow {
 		gpuSnapshot = gpu.Collect(ctx)
-		update = m.updateReleaseInfo(ctx, pollAt)
 		m.lastSlowPoll = pollAt
 	}
 	if probe, ok := endpoints["props"]; ok && !probe.OK {
@@ -1531,7 +1534,7 @@ func (m *Dashboard) poll(parent context.Context) {
 		Warnings:       warnings,
 		RawMetrics:     rawMetrics,
 		LastErrors:     lastErrors,
-		Update:         update,
+		Update:         defaultUpdateInfo(m.build.Version),
 	}
 
 	m.mu.Lock()

@@ -144,7 +144,7 @@ function applySnapshot(snapshot, opts) {
     $("#server-display").textContent = snapshot.server;
     $("#server-display").title = snapshot.server;
   }
-  setBuildDisplay(snapshot && snapshot.build, snapshot && snapshot.update);
+  setBuildDisplay(snapshot && snapshot.build);
 
   if (state.mode === "router") {
     if (!state.selectedModel) {
@@ -189,45 +189,31 @@ function applySnapshot(snapshot, opts) {
   }
 }
 
-function setBuildDisplay(build, update) {
+function setBuildDisplay(build) {
   const node = $("#version-display");
   if (!node) return;
   const version = build && build.version ? String(build.version) : "dev";
-  const buildTime = formatBuildTimestamp(build && build.date);
-  const versionText = buildTime ? "[" + buildTime + "] " + version : version;
-  const repoURL = (update && update.repoUrl) || "https://github.com/hangry-labs/llama.nodrama";
-  const latestVersion = update && update.latestVersion ? String(update.latestVersion) : "";
-  const latestURL = (update && update.latestUrl) || repoURL;
-  const available = !!(update && update.available && latestVersion);
+  const updates = state.updates, plan = updates.plan;
+  const repoURL = 'https://github.com/hangry-labs/llama.nodrama';
+  const available = !!plan?.available;
   node.classList.toggle("update-available", available);
-  node.href = available ? latestURL : repoURL;
-  if (available) {
-    node.textContent = versionText + " · " + t("update.available");
-  } else {
-    node.textContent = versionText;
+  node.href = available && plan.commit ? repoURL + '/releases/tag/preview-' + plan.commit
+    : available ? repoURL + '/releases/tag/' + encodeURIComponent(plan.version) : repoURL;
+  node.textContent = version;
+  node.title = t('update.title') + ' · ' + t('update.current', { version })
+    + (plan ? ' · ' + t('update.latest', { version: plan.version }) : '');
+  const check = $('#update-check'), install = $('#update-now');
+  if (check) {
+    check.title = t('update.check');
+    check.setAttribute('aria-label', t('update.check'));
+    check.disabled = !!updates.phase;
+    check.classList.toggle('checking', updates.phase === 'checking');
   }
-  const details = [];
-  if (build && build.commit) details.push("commit " + build.commit);
-  if (buildTime) details.push("built " + buildTime);
-  if (available) {
-    details.push(t("update.open_release", { version: latestVersion }));
-  } else if (latestVersion) {
-    details.push(t("update.latest", { version: latestVersion }));
-  } else if (update && update.error) {
-    details.push(t("update.check_failed") + ": " + update.error);
-  } else {
-    details.push(t("update.repo"));
+  if (install) {
+    install.hidden = !available;
+    install.disabled = !!updates.phase;
+    install.textContent = t('update.install');
   }
-  node.title = t('update.title') + ' · ' + (details.length ? details.join(" · ") : "local development build");
-}
-
-function formatBuildTimestamp(value) {
-  if (!value) return "";
-  const d = new Date(value);
-  if (!isFinite(d.getTime())) return "";
-  const pad = (n) => String(n).padStart(2, "0");
-  return pad(d.getDate()) + "." + pad(d.getMonth() + 1) + "." + d.getFullYear() + " " +
-         pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
 }
 
 async function refreshSnapshot(opts) {

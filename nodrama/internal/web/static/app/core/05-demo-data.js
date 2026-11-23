@@ -73,6 +73,7 @@ function createDemoData(mode, props, models, v1models, now = () => Date.now()) {
 
   function record(time, current) {
     for (const [name, value] of Object.entries(current.metrics)) {
+      if (name === 'nodrama:server_uptime_seconds') continue;
       const points = history.metrics[name] ||= [];
       points.push({ t: time, v: value });
       if (points.length > 120) points.shift();

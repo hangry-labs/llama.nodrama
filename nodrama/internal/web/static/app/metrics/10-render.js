@@ -15,11 +15,11 @@ function ensureMetricCards() {
     for (const id of group.ids) {
       const metric = METRIC_CARDS.find(card => card.id === id);
       const featured = Object.hasOwn(tones, metric.id);
-      const summaryCard = metric.cumulative || metric.uptime;
+      const summaryCard = metric.cumulative;
       const open = () => openMetricHistory(metric);
       const card = el("div", {
         class: "card metric-card" + (featured ? " metric-featured" : "") + (metric.cumulative ? " metric-related" : " metric-primary")
-          + (metric.cumulative ? " metric-counter" : metric.uptime ? " metric-uptime" : ""), id: "metric-" + metric.id,
+          + (metric.cumulative ? " metric-counter" : ""), id: "metric-" + metric.id,
         role: "group", "aria-label": t(metric.titleKey), data: { tone: tones[metric.id] || "blue" },
         onclick: event => { if (!event.target.closest("button, svg")) open(); },
       }, [
@@ -56,7 +56,7 @@ function showMetricHelp(metric) {
 
 function openMetricHistory(metric) {
   let controller = null, closed = false, timer = null, selectedHours = 24;
-  const summaryMetric = metric.cumulative || metric.uptime;
+  const summaryMetric = metric.cumulative;
   const body = el("div", { class: "metric-history-modal" + (summaryMetric ? " metric-history-counter" : "") });
   const chart = el("div", { class: "metric-history-chart" });
   const yAxis = el("div", { class: "history-y-axis", "aria-hidden": "true" });
@@ -104,10 +104,8 @@ function openMetricHistory(metric) {
           : change?.status === "collecting" ? "diagnostics.collecting" : "diagnostics.counter_reset")
           : "+" + formatMetricHistoryValue(metric, increase)],
         ["metrics.counter_coverage", fmtDuration(change ? change.observedMs / 1000 : stats.duration)]]
-        : metric.uptime ? [["diagnostics.latest", fmtDuration(stats.latest.v)], ["metrics.counter_coverage", fmtDuration(stats.duration)],
-          ["metrics.server_started_label", state.snapshot?.overview?.serverStartedAt ? fmtDateTime(state.snapshot.overview.serverStartedAt) : "—"]]
         : [["diagnostics.latest", formatMetricValue(metric, stats.latest.v)],
-          ["diagnostics.average", formatMetricValue(metric, stats.average)], ["diagnostics.peak", formatMetricValue(metric, stats.max)]];
+          [payload?.aggregation === 'peak' ? 'metrics.sample_average' : 'diagnostics.average', formatMetricValue(metric, stats.average)], ["diagnostics.peak", formatMetricValue(metric, stats.max)]];
       for (const [label, value] of summaries) {
         summary.appendChild(el("div", { class: "history-stat" }, [
           el("span", null, t(label)), el("strong", null, value),
@@ -122,7 +120,8 @@ function openMetricHistory(metric) {
       axis.append(el("span", null, fmtDateTime(stats.first.t)), el("span", null, fmtDateTime(stats.latest.t)));
       status.textContent = t("diagnostics.samples", { count: stats.count }) + " · " + t("diagnostics.range") + ": "
         + formatMetricHistoryValue(metric, stats.min) + " – " + formatMetricHistoryValue(metric, stats.max)
-        + " · " + t("diagnostics.window") + ": " + fmtDuration(stats.duration);
+        + " · " + t("diagnostics.window") + ": " + fmtDuration(stats.duration)
+        + (payload?.aggregation === 'peak' ? ' · ' + t('metrics.peak_samples', { seconds: payload.pointSec }) : '');
     } catch (error) {
       if (!closed && request === controller && !request.signal.aborted) status.textContent = t("error.fetch_failed") + ": " + error.message;
     } finally {
@@ -150,32 +149,30 @@ function renderMetricsDisabled() {
   showBanner("metrics-disabled", t("error.metrics_disabled"), "warn");
 }
 
-function renderHeaderUptime(parsed = state.metrics || {}) {
+function renderHeaderUptime() {
   const started = Date.parse(state.snapshot?.startedAt), observed = Date.parse(state.snapshot?.updatedAt);
   const appUptime = $('#dashboard-uptime-value');
   if (appUptime) {
     appUptime.textContent = Number.isFinite(started) && Number.isFinite(observed) ? fmtDuration(Math.max(0, observed - started) / 1000) : '—';
     $('#dashboard-uptime').title = t('header.dashboard_uptime') + (Number.isFinite(started) ? ' · ' + fmtDateTime(started) : '');
   }
-  const button = $("#server-uptime"), valueNode = $("#server-uptime-value");
-  if (!button || !valueNode) return;
-  const metric = METRIC_CARDS.find(metric => metric.uptime);
-  const value = parsed[metric.metric], available = Number.isFinite(value);
+  const uptime = $("#server-uptime"), valueNode = $("#server-uptime-value"), pill = $('#status-text');
+  if (!uptime || !valueNode || !pill) return;
   const overview = state.snapshot?.overview || {};
+  const value = overview.serverUptimeSeconds, available = Number.isFinite(value);
   const stale = state.ui.snapshotStale || !state.healthy;
   const duration = available ? fmtDuration(value) : "—";
   valueNode.textContent = duration;
-  button.disabled = !available && !state.history?.metrics?.[metric.metric]?.length;
-  button.dataset.state = !available ? "unavailable" : stale ? "stale" : state.paused ? "paused" : "live";
-  const details = [t(metric.titleKey) + ": " + duration];
+  uptime.hidden = !available || !state.healthy;
+  uptime.dataset.state = !available ? "unavailable" : stale ? "stale" : state.paused ? "paused" : "live";
+  const details = [pill.dataset.statusTitle || '', t('metrics.server_uptime') + ": " + duration];
   if (!available) details.push(t("metrics.no_data"));
   if (overview.serverStartedAt) details.push(t("metrics.server_started", { time: fmtDateTime(overview.serverStartedAt) }));
   if (overview.serverUptimeSource) details.push(t("metrics.server_uptime_source", { source: overview.serverUptimeSource }));
   if (stale && state.lastUpdate) details.push(t("diagnostics.observed") + " " + fmtTime(state.lastUpdate));
   if (state.paused) details.push(t("diagnostics.paused"));
-  details.push(t("metrics.history_hint"));
-  button.title = details.join(" · ");
-  button.setAttribute("aria-label", button.title);
+  uptime.title = details.filter(Boolean).join(" · ");
+  pill.title = uptime.title;
 }
 
 function renderCounterSummary(card, metric, changes, available) {
@@ -208,7 +205,6 @@ function renderMetrics(parsed, metricHistory, metricFacts = {}) {
   renderDiagnosticStatus();
   renderHeaderUptime(parsed);
   for (const metric of METRIC_CARDS) {
-    if (metric.uptime) continue;
     const value = parsed[metric.metric];
     const available = Number.isFinite(value);
     const ratio = metric.ratioMetric ? parsed[metric.ratioMetric] || 0 : value;

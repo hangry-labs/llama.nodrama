@@ -33,10 +33,6 @@ const METRIC_CARDS = [
     metric: "llamacpp:requests_deferred",        unit: "",      min: 0,
     warnAt: 1, badAt: 5, peakNote: true,
     helpKey: "metrics.help.deferred" },
-  { id: "server_uptime", titleKey: "metrics.server_uptime",
-    metric: "nodrama:server_uptime_seconds",     unit: "",      min: 0,
-    duration: true, uptime: true,
-    helpKey: "metrics.help.server_uptime" },
   { id: "busy_slots",    titleKey: "metrics.busy_slots",
     metric: "llamacpp:n_busy_slots_per_decode",  unit: "",      min: 0, peakNote: true,
     helpKey: "metrics.help.busy_slots" },
@@ -166,7 +162,7 @@ function formatMetricValue(card, value) {
 }
 
 function formatMetricHistoryValue(card, value, withUnit = true) {
-  if (!card.cumulative && !card.uptime) return formatMetricValue(card, value);
+  if (!card.cumulative) return formatMetricValue(card, value);
   if (!Number.isFinite(value)) return "—";
   const number = value.toLocaleString(undefined, { maximumFractionDigits: 2 });
   return number + (card.duration ? " s" : withUnit && card.unit ? " " + card.unit : "");

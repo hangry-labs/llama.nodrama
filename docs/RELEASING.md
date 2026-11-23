@@ -28,8 +28,10 @@ their unique build identity; testing does not consume stable version numbers.
 
 Push reviewed changes to `main`. Once checks, browser tests and all six builds
 pass, CI creates the `preview-<full commit>` prerelease automatically. The
-dashboard's version link opens **Updates**; select **Latest tested preview**, check, then
-choose **Update and restart**. Preview identity uses the commit, so newer
+dashboard's version link opens **Updates**; select **Latest tested preview**,
+click **Check for updates**, then choose **Update now**. The header's **↻**
+button also starts an explicit check. Opening the dialog or changing its channel
+does not contact GitHub. Preview identity uses the commit, so newer
 snapshots do not need a version bump or manual Git tag. The first preview
 becomes available after this workflow has been pushed and completed.
 

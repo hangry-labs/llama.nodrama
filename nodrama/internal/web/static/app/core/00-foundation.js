@@ -97,6 +97,7 @@ const state = {
   healthy: false,
   pollers: [],          /* {name, abort, timer} */
   lastUpdate: null,
+  updates: { channel: null, plan: null, phase: null, error: '', listeners: new Set() },
   ui: {
     bootDone: false,
     logEnabled: false,
@@ -172,7 +173,8 @@ function initHeader() {
   $("#server-display").title = state.serverBase;
   setBuildDisplay(null, null);
   const settingsButton = $("#settings-button");
-  $("#server-uptime")?.addEventListener("click", () => openMetricHistory(METRIC_CARDS.find(metric => metric.uptime)));
+  $('#update-check')?.addEventListener('click', () => openUpdatesModal({ check: true }));
+  $('#update-now')?.addEventListener('click', () => openUpdatesModal({ install: true }));
   $('#version-display')?.addEventListener('click', event => {
     if (event.ctrlKey || event.metaKey || event.shiftKey) return;
     event.preventDefault(); openUpdatesModal();
@@ -221,9 +223,11 @@ function setStatus(state_, textKey) {
   }
   const demo = !!state.params.demo;
   if (demo) { txt.classList.add("demo"); led.classList.add("demo"); }
-  txt.dataset.i18n = demo ? "header.status.demo" : textKey;
-  txt.textContent = t(txt.dataset.i18n);
-  txt.title = demo ? t(state.params.demo === "router" ? "demo.banner_router" : "demo.banner_single") + " · " + t(textKey) : t(textKey);
+  const label = $('#status-label');
+  label.dataset.i18n = demo ? "header.status.demo" : textKey;
+  label.textContent = t(label.dataset.i18n);
+  txt.dataset.statusTitle = demo ? t(state.params.demo === "router" ? "demo.banner_router" : "demo.banner_single") + " · " + t(textKey) : t(textKey);
+  renderHeaderUptime();
 }
 
 /* Push / clear an error banner. id de-duplicates. */

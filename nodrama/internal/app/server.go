@@ -111,6 +111,9 @@ func Run(ctx context.Context, cfg Config, info BuildInfo) error {
 			"pointSec":     int(metricLongInterval.Seconds()),
 			"explicitGaps": true,
 		}
+		if !isCounterMetric(metric) && len(points) > 1 && points[len(points)-1].T-points[0].T > metricRecentWindow.Milliseconds() {
+			payload["aggregation"] = "peak"
+		}
 		if change := dashboard.CounterHistoryChange(metric, time.Duration(hours)*time.Hour); change != nil {
 			payload["change"] = change
 		}

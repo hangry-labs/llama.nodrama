@@ -192,8 +192,9 @@ Section navigation lives in the top bar. Its status badge shows **Demo** for
 synthetic previews and the current connection state for a real server.
 
 The compact overview keeps all 15 statistics accessible: server uptime lives
-beside the connection status in the top bar, with start time/source in its tooltip
-and history on click. The adjacent **nodrama** value shows the dashboard process
+inside the connection-status pill, with start time/source in its tooltip.
+Uptime is a current value, with no chart or history collection.
+The adjacent **nodrama** value shows the dashboard process
 uptime. History and observed peaks can reset separately when cleared or when
 the monitored server changes. Expanded charts refresh their selected window
 while open; returning to a hidden tab starts from the current curve.
@@ -203,12 +204,14 @@ right. On narrow screens, timelines appear above the summaries. Cumulative total
 current value and observed increases over **1m / 5m / 1h**. A label such as
 `2m / 5m` means only two minutes of that five-minute window have been observed;
 the increase is not extrapolated. Resets and collection gaps show an unknown
-increase, and quiet covered intervals show `+0`. Click a total title or the uptime
-control to open its historical
+increase, and quiet covered intervals show `+0`. Click a total title to open its historical
 overview; totals show observed increase and coverage rather than average/peak.
 The detailed view scales to the observed range and uses full numbers so small
 changes remain visible. Changes follow the counters llama.cpp publishes, which
-can round large totals.
+can round large totals. Long gauge history uses consistent five-second peak
+samples across the older and recent ranges, retaining the latest observation.
+The chart labels this sampling and its sample average; short previews retain
+their full detail. Collection gaps remain visible.
 
 Timeline previews
 retain 5-minute/all-time peaks and show their actual observed
@@ -270,8 +273,12 @@ Useful flags:
 --version    print build version and exit
 ```
 
-The version label opens **Updates**, where you can check stable releases or the
-latest tested preview and choose **Update and restart**. Preview builds follow
+The version label shows only the installed version and opens **Updates**.
+Click the adjacent **↻** button, or **Check for updates** in the dialog, to
+check stable releases or the latest tested preview. Opening the dialog or
+changing its channel does not check automatically. When a newer build is found,
+the version highlights and **Update now** appears. Installation starts only
+when you click it. Preview builds follow
 successful `main` CI builds and use commit identity, so testing new work does
 not require a manually tagged release. Each preview is an immutable release;
 the updater discovers the newest published build. Routine stable releases
@@ -280,8 +287,8 @@ binary is retained and settings persist. Restarting clears in-memory history
 and peaks. The dashboard host needs internet access and a writable installation
 folder. See the [release guide](docs/RELEASING.md) for publication details.
 
-The backend periodically checks the newest GitHub Release; when a newer release
-exists, the version label highlights. Ctrl-click opens its release page.
+Update checks are manual; the backend does not contact GitHub in the background.
+Ctrl-click the version to open the detected release page or repository.
 
 Runtime logs use explicit levels (`INFO`, `WARN`, `ERROR`). Set
 `LLAMA_NODRAMA_DEBUG=1` to include detailed endpoint probe logs.
@@ -344,6 +351,10 @@ published as a `v0.6.0` release. Build from source to try them.
 - Add verified stable/preview updates from the UI, immutable tested builds after
   main CI, and a dry-run/atomic-push stable release task. Stage assets before
   publication and keep routine stable releases within the current version line.
+- Make update checks explicit through refresh, show only version numbers and
+  offer **Update now** after detecting a newer build. Merge server uptime into
+  connection status and remove uptime history. Keep long chart sampling
+  consistent across the recent-history boundary.
 - Convert raster source artwork and icons to WebP; retain native Windows icon
   resources. Document brand restrictions and bundled third-party notices.
 

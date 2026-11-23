@@ -74,7 +74,7 @@ test('eight chat requests queue behind three slots without starving snapshots', 
       try { return (await fetch(`http://127.0.0.1:${port}/api/health`)).ok; } catch { return false; }
     }, { timeout: 10000 }).toBe(true);
     await page.goto(`http://127.0.0.1:${port}/`);
-    await expect(page.locator('#status-text')).toHaveText('Online');
+    await expect(page.locator('#status-label')).toHaveText('Online');
     await page.locator('.nav-chat').click();
     await page.locator('#chat-p-fanout').fill('8');
     await page.locator('#chat-p-fanout').dispatchEvent('input');

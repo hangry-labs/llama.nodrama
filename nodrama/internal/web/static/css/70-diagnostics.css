@@ -21,6 +21,12 @@ header.app .server { background: transparent; border-color: transparent; max-wid
 header.app .version-display { font-size: 11px; }
 header.app .grow { display: none; }
 header.app .version-display { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+header.app .update-check { padding: 0; width: 28px; min-height: 28px; flex: 0 0 auto; font-size: 19px; line-height: 1; color: var(--fg-dim); background: transparent; }
+header.app #update-now { color: var(--accent-2); border-color: #446795; background: #1c3553; font-size: 11px; white-space: nowrap; }
+.update-result-available { color: var(--good); font-weight: 600; }
+.update-current { font-family: var(--mono); }
+#server-uptime { display: inline-flex; border-left: 1px solid currentColor; padding-left: 6px; white-space: nowrap; }
+#server-uptime strong { font: 11px var(--mono); min-width: 6ch; }
 header.app .server { max-width: 180px; }
 .header-uptime { display: inline-flex; align-items: center; justify-content: center; gap: 5px; flex: 0 0 auto; padding: 0 4px; min-height: 24px; background: transparent; border: 0; white-space: nowrap; line-height: 1; }
 .header-uptime > span { font-size: 10px; color: var(--fg-mute); }
@@ -189,7 +195,8 @@ main { max-width: 1700px; margin: 0 auto; padding: 12px 16px; gap: 10px; grid-te
   .header-uptime { order: 4; }
   .header-uptime > span { font-size: 9px; }
   header.app .server { order: 4; flex: 1 1 60px; padding: 0; max-width: none; font-size: 11px; }
-  #version-display { order: 5; max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #version-display { order: 5; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #update-check, #update-now { order: 5; }
   #api-docs-button { order: 6; }
   #settings-button { order: 7; }
   header.app .grow, #last-update { display: none; }
