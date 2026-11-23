@@ -12,8 +12,35 @@ source version. Keep this project's `vX.Y.Z-SNAPSHOT` / `vX.Y.Z` format.
 | Stable `vX.Y.Z` tag | Release source passed to the publishing workflow | Use its GitHub Release after downloads are published and verified |
 | GitHub Releases `latest` | Newest published stable release selected by GitHub | Default used by the install scripts; it is a moving selection |
 
-The current workflow publishes tagged binaries. It does not publish container
-images or snapshot-release downloads.
+Stable tags publish release archives. Successful pushes to `main` also publish
+a rolling **preview** with the six tested binaries and an `update.json`
+manifest. Pull requests validate without publishing. No container images are
+published.
+
+## Test new builds without a stable release
+
+Push reviewed changes to `main`. Once checks, browser tests and all six builds
+pass, CI updates the `preview` prerelease automatically. The dashboard's
+version link opens **Updates**; select **Latest tested preview**, check, then
+choose **Update and restart**. Preview identity uses the commit, so newer
+snapshots do not need a version bump or manual Git tag. The first preview feed
+becomes available after this workflow has been pushed and completed.
+
+The manifest follows the same version/download/size/SHA-256 approach used by
+[Listen2Me](https://github.com/hangry-labs/Listen2Me), with platform selection
+for this Go application. Binary asset names
+include the commit and are uploaded before the rolling manifest. An older CI
+run cannot replace a newer main preview. Stable release tags remain separate.
+
+Updates are fetched and verified by the dashboard host, which must have internet
+access and write permission to the installation folder. The updater validates
+the Go application identity and platform, keeps the previous executable as
+`llama-nodrama.previous` (or `llama-nodrama.exe.previous`) and restarts with the
+same arguments. Settings persist; in-memory history and peaks reset. On Unix,
+restart replaces the process in place so a service manager keeps its main PID.
+Windows launches the replacement after the listener closes. Installations
+without write permission report an error; use the existing administrator or
+package-management process for those deployments.
 
 ## Keep the README current
 
@@ -51,33 +78,40 @@ task check
 Release preparation should not require building distributable archives for
 all platforms locally; GitHub Actions handles those builds.
 
-The current promotion command is:
+Preview a stable promotion without changing files, building binaries, fetching
+refs, committing, tagging or pushing:
+
+```sh
+task release DRY_RUN=1
+```
+
+For a qualified stable candidate, the promotion command is:
 
 ```sh
 task release
 ```
 
 This is a publishing action, not a preview. The current Go tool requires a
-clean working tree, then:
+clean synchronized `main`, fetches remote refs, checks that the stable tag is
+unused and runs `tools/check`, then:
 
 1. Removes `-SNAPSHOT` from `nodrama/VERSION` and refreshes Windows resources.
 2. Commits the release and creates its annotated stable tag.
 3. Bumps the minor version to `vX.Y.0-SNAPSHOT`, refreshes resources and commits.
-4. Pushes `HEAD` and annotated tags to `origin` using `--follow-tags`.
+4. Atomically pushes `main` and that exact annotated tag to `origin`.
 
 For example, `v0.6.0-SNAPSHOT` promotes to `v0.6.0` and opens
 `v0.7.0-SNAPSHOT`. The command returns after the Git push; it does not wait for
 GitHub Actions to build or publish downloads.
 
-The tool does **not** update README history, offer a dry run, enforce `main` /
-remote synchronization, run checks, or push refs atomically. Review these
-conditions before invoking it. Do not pass the reference project's `DRY_RUN`,
-`NEXT_VERSION` or `SKIP_VALIDATION` variables: this task does not implement them.
+The tool does not update README release history or published download pointers;
+review those explicitly. `NEXT_VERSION` and `SKIP_VALIDATION` overrides are not
+implemented. `DRY_RUN=1` previews the version/ref plan even in a dirty checkout.
 
 If a step fails, inspect the working tree and local/remote refs before retrying.
-Do not rerun promotion blindly or move an already published tag. The current
-`--follow-tags` push can include other unpushed annotated tags; inspect those
-before retrying a push and select only the intended refs.
+Do not rerun promotion blindly or move an already published tag. If the atomic
+push fails, inspect refs and use the exact retry command printed by the tool.
+No unrelated annotated tags are pushed.
 
 ## Publication and verification
 

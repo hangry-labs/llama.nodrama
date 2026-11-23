@@ -22,9 +22,9 @@ header.app .version-display { font-size: 11px; }
 header.app .grow { display: none; }
 header.app .version-display { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 header.app .server { max-width: 180px; }
-.header-uptime { display: inline-flex; align-items: baseline; gap: 6px; flex: 0 0 auto; padding: 3px 7px; background: transparent; border-color: #304458; white-space: nowrap; }
+.header-uptime { display: inline-flex; align-items: center; justify-content: center; gap: 5px; flex: 0 0 auto; padding: 0 4px; min-height: 24px; background: transparent; border: 0; white-space: nowrap; line-height: 1; }
 .header-uptime > span { font-size: 10px; color: var(--fg-mute); }
-.header-uptime strong { font: 12px var(--mono); color: var(--fg-dim); }
+.header-uptime strong { font: 12px var(--mono); color: var(--fg-dim); min-width: 6ch; text-align: left; }
 .header-uptime[data-state="stale"] { border-color: #77603f; }
 .header-uptime[data-state="paused"] strong { color: var(--fg-mute); }
 .status-pill.demo:not(.error):not(.offline):not(.warn) { color: var(--accent-2); background: #1a3048; border-color: #3a5b7e; }
@@ -101,8 +101,7 @@ main { max-width: 1700px; margin: 0 auto; padding: 12px 16px; gap: 10px; grid-te
 .counter-interval[data-status="partial"] .counter-window { color: var(--warn); }
 .counter-interval:is([data-status="reset"],[data-status="gap"]) strong { color: var(--warn); font-family: inherit; font-size: 11px; }
 #metrics-section.is-stale .counter-intervals { opacity: .5; }
-.diagnostics-nav .nav-chat { color: #b8d8ff; background: #1c3551; border: 1px solid #365b82; padding: 5px 12px; }
-.diagnostics-nav .nav-chat:hover { background: #284968; }
+.diagnostics-nav a[aria-current="location"] { color: #b8d8ff; background: #1c3551; border-color: #365b82; }
 .card.chat-card { padding: 0; border: 1px solid #4573a2; box-shadow: inset 3px 0 var(--accent); }
 .chat-card .chat-head { background: linear-gradient(100deg, #1d3650, #142235); padding: 11px 14px; border-bottom-color: #365575; }
 .chat-head:hover { background: #213c58; }
@@ -188,7 +187,7 @@ main { max-width: 1700px; margin: 0 auto; padding: 12px 16px; gap: 10px; grid-te
   #status-text { order: 2; }
   #lang-select { order: 3; max-width: 88px; }
   .header-uptime { order: 4; }
-  .header-uptime > span { display: none; }
+  .header-uptime > span { font-size: 9px; }
   header.app .server { order: 4; flex: 1 1 60px; padding: 0; max-width: none; font-size: 11px; }
   #version-display { order: 5; max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #api-docs-button { order: 6; }

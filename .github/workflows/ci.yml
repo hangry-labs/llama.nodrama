@@ -123,3 +123,41 @@ jobs:
         with:
           name: llama-nodrama-${{ matrix.goos }}-${{ matrix.goarch }}
           path: nodrama/dist/*
+
+  preview:
+    name: publish tested preview
+    needs: cross-build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'hangry-labs/llama.nodrama'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: preview-publication
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: llama-nodrama-*
+          merge-multiple: true
+          path: preview
+      - name: Prepare checksums and update manifest
+        env:
+          BUILD_COMMIT: ${{ github.sha }}
+        run: python3 scripts/preview_manifest.py preview
+      - name: Publish rolling preview assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # An older, slower workflow must never replace a newer main preview.
+          latest="$(gh api repos/$GITHUB_REPOSITORY/commits/main --jq .sha)"
+          if [ "$latest" != "$BUILD_COMMIT" ]; then exit 0; fi
+          if ! gh release view preview >/dev/null 2>&1; then
+            gh release create preview --target "$BUILD_COMMIT" --prerelease --latest=false --title "Latest tested preview" --notes "Rolling build from main. Settings persist; restarting resets in-memory telemetry history."
+          fi
+          # Publish immutable build filenames before changing the rolling feed.
+          gh release upload preview preview/llama-nodrama-* preview/SHA256SUMS preview/LICENSE preview/BRAND_ASSETS.md preview/THIRD_PARTY_NOTICES.md --clobber
+          gh release upload preview preview/update.json --clobber
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/preview" -f sha="$BUILD_COMMIT" -F force=true

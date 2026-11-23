@@ -218,7 +218,7 @@ function setBuildDisplay(build, update) {
   } else {
     details.push(t("update.repo"));
   }
-  node.title = details.length ? details.join(" · ") : "local development build";
+  node.title = t('update.title') + ' · ' + (details.length ? details.join(" · ") : "local development build");
 }
 
 function formatBuildTimestamp(value) {

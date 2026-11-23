@@ -64,7 +64,10 @@ function ensureRootScaffold() {
       if (id === "log" && !section?.firstElementChild) { showLogHelp(); return; }
       if (id === "chat" && !chat.open) { chat.open = true; applyChatOpenState(); }
       const target = section?.firstElementChild || section;
-      target?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
+      requestAnimationFrame(() => {
+        document.documentElement.style.setProperty('--app-header-height', Math.ceil(document.querySelector('header.app').getBoundingClientRect().height) + 'px');
+        target?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
+      });
     } }, t(label)));
   }
   root.appendChild(el("section", { id: "metrics-section", class: "full", "aria-label": t("diagnostics.overview") }));
@@ -86,6 +89,25 @@ function ensureRootScaffold() {
                                style: "display: contents;" }));
   root.appendChild(el("div", { id: "guidance-section", class: "full",
                                style: "display: contents;" }));
+  const updateNavigation = () => {
+    const edge = document.querySelector('header.app').getBoundingClientRect().bottom + 40;
+    let active = navigation.firstElementChild;
+    for (const link of navigation.querySelectorAll('a')) {
+      const section = $(link.getAttribute('href'));
+      const content = section?.firstElementChild || section;
+      if (content?.getClientRects().length && content.getBoundingClientRect().top <= edge) active = link;
+    }
+    for (const link of navigation.querySelectorAll('a')) {
+      if (link === active) link.setAttribute('aria-current', 'location'); else link.removeAttribute('aria-current');
+    }
+  };
+  let navigationFrame = null;
+  const scheduleNavigation = () => {
+    if (navigationFrame === null) navigationFrame = requestAnimationFrame(() => { navigationFrame = null; updateNavigation(); });
+  };
+  window.addEventListener('scroll', scheduleNavigation, { passive: true });
+  window.addEventListener('resize', scheduleNavigation);
+  scheduleNavigation();
 }
 
 function renderDiagnosticStatus() {

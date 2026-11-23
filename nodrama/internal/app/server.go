@@ -48,6 +48,8 @@ func Run(ctx context.Context, cfg Config, info BuildInfo) error {
 	dashboard.Start(ctx)
 
 	mux := http.NewServeMux()
+	restart := make(chan struct{}, 1)
+	registerSelfUpdate(mux, info, restart)
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		web.ServeIndex(w, r)
 	})
@@ -150,6 +152,13 @@ func Run(ctx context.Context, cfg Config, info BuildInfo) error {
 	}()
 
 	select {
+	case <-restart:
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			return err
+		}
+		return ErrRestart
 	case <-ctx.Done():
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()

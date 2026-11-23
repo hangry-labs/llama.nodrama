@@ -24,6 +24,7 @@ function sparkline(data, options = {}) {
   const markerLine = part("path", "spark-marker-line");
   const marker = part("ellipse", "spark-marker");
   const model = svg.chartModel = { grid, area, line, latest, markerLine, marker, clipRect, frame: null, selectedTime: null };
+  model.visible = false;
   const hide = () => {
     model.selectedTime = null; model.pointer = null;
     marker.setAttribute("hidden", ""); markerLine.setAttribute("hidden", ""); hideSparkTooltip();
@@ -89,7 +90,11 @@ function sparkline(data, options = {}) {
 function updateSparkline(host, data, options = {}) {
   let svg = host.querySelector("svg");
   if (!svg || !svg.chartModel) {
-    host.replaceChildren(sparkline(data, options));
+    svg = sparkline(data, options);
+    host.replaceChildren(svg);
+    const rect = svg.getBoundingClientRect();
+    svg.chartModel.visible = !document.hidden && rect.bottom > 0 && rect.top < innerHeight;
+    svg.chartModel.visibilityEpoch = sparklineVisibilityEpoch;
   } else updateSparklineSVG(svg, data, options);
 }
 
@@ -117,6 +122,11 @@ function updateSparklineSVG(svg, data, options) {
   const reducedMotion = () => motionPreference.matches;
   // A repeated snapshot must not cancel/restart a transition in progress.
   if (sameChartGeometry(previous, geometry) && previousStep === options.step && !reducedMotion()) {
+    const rect = svg.getBoundingClientRect();
+    const visible = !document.hidden && rect.bottom > 0 && rect.top < innerHeight;
+    if (model.visibilityEpoch !== sparklineVisibilityEpoch || !visible) model.finish?.();
+    model.visible = visible;
+    model.visibilityEpoch = sparklineVisibilityEpoch;
     if (model.selectedTime !== null || model.pointer) model.refreshInspection();
     return;
   }
@@ -138,8 +148,12 @@ function updateSparklineSVG(svg, data, options) {
   const rect = svg.getBoundingClientRect();
   const transition = previous && previousStep === options.step
     && chartTransition(previous, geometry, model.drawn, model.view);
-  const animate = transition && !reducedMotion() && !document.hidden && rect.bottom > 0 && rect.top < innerHeight;
   const now = performance.now();
+  const visible = !document.hidden && rect.bottom > 0 && rect.top < innerHeight;
+  const animate = options.animate !== false && transition && !reducedMotion() && visible && model.visible
+    && model.visibilityEpoch === sparklineVisibilityEpoch && now - (model.changedAt ?? now) <= Math.max(2500, (state.params?.poll || 1000) * 2);
+  model.visible = visible;
+  model.visibilityEpoch = sparklineVisibilityEpoch;
   // Linear motion over the observed update interval avoids the old 220ms
   // burst-and-stop on every poll. Late updates have a bounded catch-up time.
   const duration = Math.max(80, Math.min(1500, now - (model.changedAt ?? now)));
@@ -162,6 +176,9 @@ function updateSparklineSVG(svg, data, options) {
 function finishSparklineAnimations() {
   for (const svg of $$("svg")) svg.chartModel?.finish?.();
 }
+
+let sparklineVisibilityEpoch = 0;
+document.addEventListener('visibilitychange', () => { sparklineVisibilityEpoch++; finishSparklineAnimations(); });
 
 function nearestHistoryPoint(data, target) {
   if (!data?.length) return null;

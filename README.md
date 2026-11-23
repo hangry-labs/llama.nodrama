@@ -193,7 +193,11 @@ synthetic previews and the current connection state for a real server.
 
 The compact overview keeps all 15 statistics accessible: server uptime lives
 beside the connection status in the top bar, with start time/source in its tooltip
-and history on click. The eight live timeline cards sit on the left at equal size,
+and history on click. The adjacent **nodrama** value shows the dashboard process
+uptime. History and observed peaks can reset separately when cleared or when
+the monitored server changes. Expanded charts refresh their selected window
+while open; returning to a hidden tab starts from the current curve.
+The eight live timeline cards sit on the left at equal size,
 including Tokens max and Container CPU; the six cumulative summaries sit on the
 right. On narrow screens, timelines appear above the summaries. Cumulative totals show the
 current value and observed increases over **1m / 5m / 1h**. A label such as
@@ -266,9 +270,16 @@ Useful flags:
 --version    print build version and exit
 ```
 
-The version label in the dashboard top bar links to the project repository. The
-backend periodically checks the newest GitHub Release; when a newer release
-exists, the version label highlights and links directly to that release.
+The version label opens **Updates**, where you can check stable releases or the
+latest tested preview and choose **Update and restart**. Preview builds follow
+successful `main` CI builds and use commit identity, so testing new work does
+not require a manually tagged release. Downloads are verified, the previous
+binary is retained and settings persist. Restarting clears in-memory history
+and peaks. The dashboard host needs internet access and a writable installation
+folder. See the [release guide](docs/RELEASING.md) for publication details.
+
+The backend periodically checks the newest GitHub Release; when a newer release
+exists, the version label highlights. Ctrl-click opens its release page.
 
 Runtime logs use explicit levels (`INFO`, `WARN`, `ERROR`). Set
 `LLAMA_NODRAMA_DEBUG=1` to include detailed endpoint probe logs.
@@ -324,6 +335,12 @@ published as a `v0.6.0` release. Build from source to try them.
 - Keep long history charts visible when older and recent samples use different
   intervals. Preserve actual collection gaps and the selected time span when
   reducing the number of plotted points.
+- Snap charts to the current curve after returning to a tab, then resume smooth
+  motion. Refresh expanded history charts while open, respecting pause and the
+  selected window. Show separate dashboard and llama.cpp uptimes, and highlight
+  the navigation section currently in view.
+- Add verified stable/preview updates from the UI, rolling tested builds after
+  main CI, and a dry-run/atomic-push stable release task.
 - Convert raster source artwork and icons to WebP; retain native Windows icon
   resources. Document brand restrictions and bundled third-party notices.
 

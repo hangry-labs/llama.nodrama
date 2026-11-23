@@ -173,6 +173,10 @@ function initHeader() {
   setBuildDisplay(null, null);
   const settingsButton = $("#settings-button");
   $("#server-uptime")?.addEventListener("click", () => openMetricHistory(METRIC_CARDS.find(metric => metric.uptime)));
+  $('#version-display')?.addEventListener('click', event => {
+    if (event.ctrlKey || event.metaKey || event.shiftKey) return;
+    event.preventDefault(); openUpdatesModal();
+  });
   if (settingsButton) {
     settingsButton.title = t("header.settings");
     settingsButton.setAttribute("aria-label", t("header.settings"));

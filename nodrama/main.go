@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -81,7 +82,16 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	executable, executableErr := os.Executable()
+	if executableErr != nil {
+		log.Fatal(executableErr)
+	}
 	if err := app.Run(ctx, cfg, info); err != nil {
+		if errors.Is(err, app.ErrRestart) {
+			if err = restartProcess(executable); err == nil {
+				return
+			}
+		}
 		log.Printf("ERROR startup_failed error=%q", err)
 		os.Exit(1)
 	}

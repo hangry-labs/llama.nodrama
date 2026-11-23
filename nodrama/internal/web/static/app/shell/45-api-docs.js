@@ -12,6 +12,7 @@ const API_DOC_GROUPS = [
       ["GET", "/api/queries", "Tracked recent queries, including running/queued/completed state and cache reuse details when available."],
       ["GET", "/api/history/metrics?metric=nodrama:tokens_predicted_rate&hours=24&max=2000", "Long metric history. Required query: metric. Optional: hours 1-24, max 100-20000."],
       ["GET", "/api/settings", "Current runtime settings: upstream server URL, log path, poll interval, timeout, listen address, and proxy mode."],
+      ["GET", "/api/update/check?channel=preview", "Resolve a stable or preview update for this platform. Preview uses commit identity; downloads include SHA-256 and size metadata."],
       ["GET", "/api/logs/tail?bytes=65536&lines=2000", "Tail of the configured llama.cpp log file. Optional: bytes 1-1048576, lines 1-10000."],
       ["GET", "/server.log?bytes=65536&lines=2000", "Compatibility log-tail endpoint using the same response shape as /api/logs/tail."],
     ],
@@ -20,6 +21,7 @@ const API_DOC_GROUPS = [
     title: "Mutating llama.nodrama API",
     items: [
       ["POST", "/api/settings", "Update runtime server URL, log path, poll interval, or upstream timeout. JSON body."],
+      ["POST", "/api/update/install", "Explicitly verify, replace and restart the dashboard. JSON: channel, version, commit from check. Requires a writable installation folder; resets in-memory history."],
       ["POST", "/api/history/reset", "Clear in-memory metric, slot, prompt-cache, event, and query history."],
     ],
   },

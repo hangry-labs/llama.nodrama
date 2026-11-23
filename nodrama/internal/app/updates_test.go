@@ -12,7 +12,7 @@ func TestCompareReleaseVersions(t *testing.T) {
 		{name: "newer patch", latest: "v0.1.1", current: "v0.1.0", want: 1},
 		{name: "newer minor", latest: "v0.2.0", current: "v0.1.9", want: 1},
 		{name: "same release", latest: "v0.1.0", current: "v0.1.0", want: 0},
-		{name: "same snapshot base", latest: "v0.2.0", current: "v0.2.0-SNAPSHOT", want: 0},
+		{name: "final release upgrades snapshot", latest: "v0.2.0", current: "v0.2.0-SNAPSHOT", want: 1},
 		{name: "older latest", latest: "v0.1.0", current: "v0.2.0-SNAPSHOT", want: -1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

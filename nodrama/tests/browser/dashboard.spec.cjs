@@ -253,8 +253,8 @@ test('top-bar links clear the sticky header and live mode retains Online status'
   await expect.poll(() => page.evaluate(() => {
     const card = document.querySelector('#slots-section .card').getBoundingClientRect();
     const header = document.querySelector('header.app').getBoundingClientRect();
-    return card.top >= header.bottom - 1 && card.top <= header.bottom + 20;
-  })).toBe(true);
+    return Math.max(header.bottom - 1 - card.top, card.top - header.bottom - 20);
+  })).toBeLessThanOrEqual(0);
   await page.route('**/api/snapshot', route => route.fulfill({ json: { ...snapshot, server: 'http://127.0.0.1:8080' } }));
   await page.goto('/');
   await expect(page.locator('#status-text')).toHaveText('Online');

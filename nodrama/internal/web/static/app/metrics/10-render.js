@@ -55,7 +55,7 @@ function showMetricHelp(metric) {
 }
 
 function openMetricHistory(metric) {
-  let controller = null, closed = false;
+  let controller = null, closed = false, timer = null, selectedHours = 24;
   const summaryMetric = metric.cumulative || metric.uptime;
   const body = el("div", { class: "metric-history-modal" + (summaryMetric ? " metric-history-counter" : "") });
   const chart = el("div", { class: "metric-history-chart" });
@@ -72,14 +72,23 @@ function openMetricHistory(metric) {
   }
   body.append(toolbar, summary, plot, axis, status);
   showModal({ title: t(metric.titleKey), bodyNode: body, okLabel: t("common.close"), wide: true,
-    onClose: () => { closed = true; controller?.abort(); } });
+    onClose: () => { closed = true; clearTimeout(timer); controller?.abort(); document.removeEventListener('visibilitychange', visibility); } });
 
-  async function load(hours) {
+  const visibility = () => {
+    clearTimeout(timer); controller?.abort();
+    if (!document.hidden && !closed) {
+      if (state.paused) timer = setTimeout(tick, Math.max(1000, state.params.poll));
+      else void load(selectedHours);
+    }
+  };
+  document.addEventListener('visibilitychange', visibility);
+
+  async function load(hours, background = false) {
+    clearTimeout(timer); selectedHours = hours;
     controller?.abort();
     const request = controller = new AbortController();
     for (const item of buttons) item.button.setAttribute("aria-pressed", String(item.hours === hours));
-    status.textContent = t("common.loading");
-    body.classList.add("is-loading");
+    if (!background) { status.textContent = t("common.loading"); body.classList.add("is-loading"); }
     try {
       const payload = await fetchJSON("/api/history/metrics?metric=" + encodeURIComponent(metric.metric) + "&hours=" + hours + "&max=2000",
         { withModel: false, timeout: 12000, signal: request.signal });
@@ -104,7 +113,7 @@ function openMetricHistory(metric) {
           el("span", null, t(label)), el("strong", null, value),
         ]));
       }
-      updateSparkline(chart, points, { explicitGaps: payload?.explicitGaps === true, animate: false, min: summaryMetric ? undefined : metric.min, max: metric.max, step: metric.step, height: 180, interactive: true,
+      updateSparkline(chart, points, { explicitGaps: payload?.explicitGaps === true, animate: background, min: summaryMetric ? undefined : metric.min, max: metric.max, step: metric.step, height: 180, interactive: true,
         label: t(metric.titleKey) + ". " + t("diagnostics.chart_hint"), formatValue: value => formatMetricHistoryValue(metric, value) });
       const geometry = chart.querySelector("svg").chartModel.geometry;
       for (const value of [geometry.max, (geometry.max + geometry.min) / 2, geometry.min]) {
@@ -116,7 +125,17 @@ function openMetricHistory(metric) {
         + " · " + t("diagnostics.window") + ": " + fmtDuration(stats.duration);
     } catch (error) {
       if (!closed && request === controller && !request.signal.aborted) status.textContent = t("error.fetch_failed") + ": " + error.message;
-    } finally { if (!closed && request === controller) body.classList.remove("is-loading"); }
+    } finally {
+      if (!closed && request === controller) {
+        body.classList.remove("is-loading");
+        if (!document.hidden) timer = setTimeout(() => tick(), Math.max(1000, state.params.poll));
+      }
+    }
+  }
+  function tick() {
+    if (closed || document.hidden) return;
+    if (state.paused) timer = setTimeout(tick, Math.max(1000, state.params.poll));
+    else void load(selectedHours, true);
   }
   void load(24);
 }
@@ -132,6 +151,12 @@ function renderMetricsDisabled() {
 }
 
 function renderHeaderUptime(parsed = state.metrics || {}) {
+  const started = Date.parse(state.snapshot?.startedAt), observed = Date.parse(state.snapshot?.updatedAt);
+  const appUptime = $('#dashboard-uptime-value');
+  if (appUptime) {
+    appUptime.textContent = Number.isFinite(started) && Number.isFinite(observed) ? fmtDuration(Math.max(0, observed - started) / 1000) : '—';
+    $('#dashboard-uptime').title = t('header.dashboard_uptime') + (Number.isFinite(started) ? ' · ' + fmtDateTime(started) : '');
+  }
   const button = $("#server-uptime"), valueNode = $("#server-uptime-value");
   if (!button || !valueNode) return;
   const metric = METRIC_CARDS.find(metric => metric.uptime);

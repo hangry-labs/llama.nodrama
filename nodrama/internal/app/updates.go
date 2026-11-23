@@ -88,6 +88,12 @@ func compareReleaseVersions(latest, current string) int {
 			return -1
 		}
 	}
+	if strings.HasSuffix(current, "-SNAPSHOT") && !strings.Contains(latest, "-") {
+		return 1
+	}
+	if strings.HasSuffix(latest, "-SNAPSHOT") && !strings.Contains(current, "-") {
+		return -1
+	}
 	return 0
 }
 
