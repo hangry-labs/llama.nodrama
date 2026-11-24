@@ -59,13 +59,24 @@ test('header shows both uptimes and highlights the visible section', async ({ pa
   await expect(page.locator('.nav-chat')).not.toHaveAttribute('aria-current', 'location');
 });
 
-test('updates check only on refresh, highlight versions and install only on Update now', async ({ page }) => {
+test('update download shows progress and requires a separate Install version click', async ({ page }) => {
   let installs = 0, checks = 0;
   await page.route('**/api/update/check*', route => { checks++; return route.fulfill({ json: {
     channel: 'stable', version: 'v0.6.1', available: true,
     asset: { bytes: 123 },
   } }); });
   await page.route('**/api/update/install', route => { installs++; return route.fulfill({ status: 400, body: 'Synthetic verification failure' }); });
+  await page.addInitScript(() => {
+    const original = window.fetch.bind(window);
+    window.fetch = (url,options) => {
+      if (url !== '/api/update/download') return original(url,options);
+      const encode = value => new TextEncoder().encode(JSON.stringify(value)+'\n');
+      return Promise.resolve(new Response(new ReadableStream({start(controller) {
+        controller.enqueue(encode({status:'downloading',received:50,total:100}));
+        setTimeout(()=>{controller.enqueue(encode({status:'ready',version:'v0.6.1',token:'verified-token'}));controller.close();},1200);
+      }}),{headers:{'Content-Type':'application/x-ndjson'}}));
+    };
+  });
   await page.goto('/');
   await expect(page.locator('#version-display')).toHaveText('v0.6.0-SNAPSHOT');
   await expect(page.locator('#version-display')).not.toHaveAttribute('title', /built|commit|\d\d:\d\d/);
@@ -91,7 +102,14 @@ test('updates check only on refresh, highlight versions and install only on Upda
   await page.setViewportSize({ width: 320, height: 800 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.locator('#update-now').click();
-  await expect(dialog.locator('[role=status]')).toContainText('Synthetic verification failure');
+  await expect(page.locator('#update-progress')).toBeVisible();
+  await expect(page.locator('#update-progress progress')).toHaveJSProperty('value',50);
+  expect(installs).toBe(0);
+  await expect(page.locator('#update-now')).toHaveText('Install v0.6.1');
+  await expect(page.locator('#update-progress')).toBeHidden();
+  expect(installs).toBe(0);
+  await page.locator('#update-now').click();
+  await expect(page.locator('.update-install-screen [role=status]')).toContainText('Synthetic verification failure');
   expect(installs).toBe(1);
   expect(checks).toBe(1);
 });
@@ -104,6 +122,8 @@ test('refresh checks regular releases and clears the highlight when up to date',
   });
   await page.goto('/');
   await page.locator('#update-check').click();
+  await expect(page.locator('#update-now')).toBeVisible();
+  await page.locator('#version-display').click();
   const dialog = page.getByRole('dialog');
   await expect(page.locator('#version-display')).toHaveClass(/update-available/);
   await expect(dialog.getByRole('combobox')).toHaveCount(0);
@@ -128,4 +148,37 @@ test('long history explains peak sampling and retains the current value', async 
   await expect(dialog.locator('.history-stat').first()).toContainText('0.20');
   await expect(dialog.locator('.history-stat').nth(1)).toContainText('Sample average');
   expect(await dialog.locator('svg').evaluate(svg => svg.chartModel.geometry.vertices.filter(v => v.start).length)).toBe(1);
+});
+
+test('incomplete downloads never expose Install', async ({page}) => {
+  await page.route('**/api/update/check*',r=>r.fulfill({json:{version:'v0.7.26',available:true,asset:{bytes:100}}}));
+  await page.route('**/api/update/download',r=>r.fulfill({contentType:'application/x-ndjson',body:JSON.stringify({status:'downloading',received:50,total:100})+'\n'}));
+  let installs=0;
+  await page.route('**/api/update/install',r=>{installs++;return r.fulfill({json:{}})});
+  await page.goto('/');await page.locator('#update-check').click();
+  await expect(page.locator('#update-now')).toHaveText('Update to v0.7.26');
+  await page.locator('#update-now').click();
+  await expect(page.locator('#update-feedback')).toContainText('Download incomplete');
+  await expect(page.locator('#update-now')).toHaveText('Update to v0.7.26');
+  expect(installs).toBe(0);
+});
+
+test('install screen waits for the installed version then refreshes the page', async ({page})=>{
+  await page.route('**/api/update/check*',r=>r.fulfill({json:{version:'v0.7.26',available:true,asset:{bytes:100}}}));
+  await page.route('**/api/update/download',r=>r.fulfill({contentType:'application/x-ndjson',body:JSON.stringify({status:'ready',version:'v0.7.26',token:'prepared'})+'\n'}));
+  let installed=false;
+  await page.route('**/api/update/install',r=>{expect(r.request().postDataJSON()).toEqual({version:'v0.7.26',token:'prepared'});installed=true;return r.fulfill({json:{status:'restarting'}})});
+  await page.route('**/api/health',r=>r.fulfill({json:{build:{version:installed?'v0.7.26':'v0.6.0'}}}));
+  await page.goto('/');await page.locator('#update-check').click();await page.locator('#update-now').click();
+  await expect(page.locator('#update-now')).toHaveText('Install v0.7.26');
+  await page.locator('#version-display').click();
+  const refreshed=page.waitForEvent('framenavigated',frame=>frame===page.mainFrame());
+  await page.getByRole('dialog').getByRole('button',{name:'Install v0.7.26',exact:true}).click();
+  await expect(page.locator('.update-install-screen')).toBeVisible();
+  await expect(page.locator('.update-install-screen [role=status]')).toContainText('Restarting');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.update-install-screen')).toBeVisible();
+  await expect(page.locator('.update-install-screen')).toBeFocused();
+  await refreshed;
+  await expect(page.locator('.update-install-screen')).toHaveCount(0);
 });

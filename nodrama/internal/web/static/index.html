@@ -29,9 +29,11 @@
   <nav id="top-navigation" class="diagnostics-nav" aria-label="Sections"></nav>
   <span id="last-update" class="last-update" aria-live="polite"></span>
   <span class="grow"></span>
+  <button id="update-now" class="primary" type="button" hidden></button>
+  <span id="update-progress" class="header-update-progress" hidden><progress max="100" value="0"></progress><small></small></span>
   <a id="version-display" class="version-display" href="https://github.com/hangry-labs/llama.nodrama" target="_blank" rel="noopener noreferrer" title=""></a>
   <button id="update-check" class="update-check" type="button">↻</button>
-  <button id="update-now" class="primary" type="button" hidden></button>
+  <span id="update-feedback" class="update-feedback" role="status"></span>
   <span id="server-display" class="server" title=""></span>
   <button id="api-docs-button" class="api-docs-button" title="APIs" aria-label="APIs">APIs</button>
   <button id="settings-button" title="Settings" aria-label="Settings">⚙</button>

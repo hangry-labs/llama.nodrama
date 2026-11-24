@@ -276,8 +276,11 @@ The version label shows only the installed version and opens **Updates**.
 Click the adjacent **↻** button, or **Check for updates** in the dialog, to
 check the latest published version. Opening the dialog does not check
 automatically. When a newer version is found,
-the version highlights and **Update now** appears. Installation starts only
-when you click it. Successful `main` CI builds publish normal immutable releases
+the version highlights and **Update to v…** appears. Click it to download, with
+progress shown in the top bar. Once the download is verified, the button becomes
+**Install v…**. Installation starts only on that separate click. A dedicated
+screen shows installation and reconnection, then refreshes the page.
+Successful `main` CI builds publish normal immutable releases
 with increasing patch numbers: `v0.6.0`, `v0.6.1`, `v0.6.2`. No manual tag or
 separate preview channel is needed. The binaries and Windows properties contain
 the actual release version. Larger version-line changes remain deliberate.
@@ -352,7 +355,8 @@ published as a `v0.6.0` release. Build from source to try them.
   in a draft before publication; skip published commits on retries. Use one
   latest-release update flow and a nonmutating release-readiness command.
 - Make update checks explicit through refresh, show only version numbers and
-  offer **Update now** after detecting a newer build. Merge server uptime into
+  offer a download progress bar followed by a separate **Install v…** action.
+  Show installation/reconnection before refreshing. Merge server uptime into
   connection status and remove uptime history. Keep long chart sampling
   consistent across the recent-history boundary.
 - Convert raster source artwork and icons to WebP; retain native Windows icon

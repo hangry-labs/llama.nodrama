@@ -21,7 +21,8 @@ const API_DOC_GROUPS = [
     title: "Mutating llama.nodrama API",
     items: [
       ["POST", "/api/settings", "Update runtime server URL, log path, poll interval, or upstream timeout. JSON body."],
-      ["POST", "/api/update/install", "Explicitly verify, replace and restart the dashboard. JSON: channel, version, commit from check. Requires a writable installation folder; resets in-memory history."],
+      ["POST", "/api/update/download", "Download and verify a checked version without installing. JSON: version. Streams NDJSON byte progress, then a ready token."],
+      ["POST", "/api/update/install", "Install a prepared download and restart. JSON: version, token from download. Requires a writable installation folder; resets in-memory history."],
       ["POST", "/api/history/reset", "Clear in-memory metric, slot, prompt-cache, event, and query history."],
     ],
   },

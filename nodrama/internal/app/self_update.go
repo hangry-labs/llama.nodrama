@@ -19,8 +19,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
-	"time"
 )
 
 const updateLimit = 64 << 20
@@ -207,11 +205,15 @@ func installUpdate(ctx context.Context, client *http.Client, plan updatePlan, ta
 	if err != nil {
 		return err
 	}
+	return installUpdateData(plan, target, data)
+}
+
+func installUpdateData(plan updatePlan, target string, data []byte) error {
 	sum := sha256.Sum256(data)
 	if int64(len(data)) != plan.Asset.Bytes || !strings.EqualFold(hex.EncodeToString(sum[:]), plan.Asset.SHA256) {
 		return errors.New("update checksum or size mismatch")
 	}
-	data, err = unpackUpdate(data, plan.Asset.Format)
+	data, err := unpackUpdate(data, plan.Asset.Format)
 	if err != nil {
 		return err
 	}
@@ -279,72 +281,4 @@ func installUpdate(ctx context.Context, client *http.Client, plan updatePlan, ta
 		return fmt.Errorf("install failed: %v; rollback: %v", err, rollback)
 	}
 	return nil
-}
-
-func registerSelfUpdate(mux *http.ServeMux, info BuildInfo, restart chan<- struct{}) {
-	client := &http.Client{Timeout: 2 * time.Minute}
-	var lock sync.Mutex
-	mux.HandleFunc("GET /api/update/check", func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
-		defer cancel()
-		plan, err := resolveUpdate(ctx, client, r.URL.Query().Get("channel"), info)
-		if err != nil {
-
-			http.Error(w, err.Error(), http.StatusBadGateway)
-			return
-		}
-		writeJSON(w, plan)
-	})
-	mux.HandleFunc("POST /api/update/install", func(w http.ResponseWriter, r *http.Request) {
-		if origin := r.Header.Get("Origin"); origin != "" {
-			u, err := url.Parse(origin)
-			if err != nil || u.Host != r.Host {
-				http.Error(w, "origin mismatch", 403)
-				return
-			}
-		}
-		if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
-			http.Error(w, "cross-site update denied", 403)
-			return
-		}
-		if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
-			http.Error(w, "expected JSON", 415)
-			return
-		}
-		if !lock.TryLock() {
-			http.Error(w, "update already running", 409)
-			return
-		}
-		defer lock.Unlock()
-		var request struct {
-			Channel string `json:"channel"`
-			Version string `json:"version"`
-			Commit  string `json:"commit"`
-		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&request); err != nil {
-			http.Error(w, "invalid update request", 400)
-			return
-		}
-		plan, err := resolveUpdate(r.Context(), client, request.Channel, info)
-		if err == nil && (!plan.Available || plan.Version != request.Version || plan.Commit != request.Commit) {
-			err = errors.New("build changed; check for updates again")
-		}
-		var target string
-		if err == nil {
-			target, err = os.Executable()
-		}
-		if err == nil {
-			err = installUpdate(r.Context(), client, plan, target)
-		}
-		if err != nil {
-			http.Error(w, err.Error(), 400)
-			return
-		}
-		writeJSON(w, map[string]string{"status": "restarting"})
-		_ = http.NewResponseController(w).Flush()
-		select {
-		case restart <- struct{}{}:
-		default:
-		}
-	})
 }

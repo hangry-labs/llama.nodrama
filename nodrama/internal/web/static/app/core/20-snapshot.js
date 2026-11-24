@@ -209,10 +209,23 @@ function setBuildDisplay(build) {
     check.classList.toggle('checking', updates.phase === 'checking');
   }
   if (install) {
-    install.hidden = !available;
+    install.hidden = !available || updates.phase === 'downloading';
     install.disabled = !!updates.phase;
-    install.textContent = t('update.install');
+    install.textContent = t(updates.token ? 'update.install_version' : 'update.download_version', { version: plan?.version || '' });
   }
+  const progress = $('#update-progress'), feedback = $('#update-feedback');
+  if (progress) {
+    progress.hidden = updates.phase !== 'downloading';
+    const percent = updates.total ? Math.min(100, Math.floor(updates.received / updates.total * 100)) : 0;
+    progress.querySelector('progress').value = percent;
+    progress.querySelector('progress').setAttribute('aria-label', t('update.downloading'));
+    progress.querySelector('small').textContent = percent + '%';
+  }
+  if (feedback) {
+    feedback.textContent = updates.error || (updates.phase === 'checking' ? t('common.loading') : updates.plan && !available ? t('update.no_newer') : '');
+    feedback.title = feedback.textContent;
+  }
+
 }
 
 async function refreshSnapshot(opts) {

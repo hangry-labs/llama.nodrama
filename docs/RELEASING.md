@@ -72,8 +72,16 @@ regular release rather than a legacy preview tag. The install scripts and
 
 The version label opens **Updates** without contacting GitHub. Click **↻** or
 **Check for updates** to check the latest regular release. A newer version
-highlights the label and exposes **Update now**. Only that explicit click starts
-download, verification, replacement and restart. There is one release stream.
+highlights the label and exposes **Update to v…**. Clicking downloads the archive
+with byte progress in the top bar, without replacing the running application.
+After checksum verification the button becomes **Install v…**. Only that separate
+click replaces the application and restarts it; an installation screen waits for
+the installed version and refreshes the page. There is one release stream.
+
+The prepared download is held in bounded server memory and pinned to its version
+and checksum. Install uses those same bytes even if another release is published
+meanwhile. Restarting the dashboard discards prepared downloads; download again
+if the application reports that the staged download is no longer available.
 
 The dashboard host needs internet access and write permission to the installation
 folder. The updater validates source URLs, size, SHA-256, application identity

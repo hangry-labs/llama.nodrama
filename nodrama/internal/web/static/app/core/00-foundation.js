@@ -97,7 +97,7 @@ const state = {
   healthy: false,
   pollers: [],          /* {name, abort, timer} */
   lastUpdate: null,
-  updates: { plan: null, phase: null, error: '', listeners: new Set() },
+  updates: { plan: null, token: null, received: 0, total: 0, phase: null, error: '', listeners: new Set() },
   ui: {
     bootDone: false,
     logEnabled: false,
@@ -173,8 +173,8 @@ function initHeader() {
   $("#server-display").title = state.serverBase;
   setBuildDisplay(null, null);
   const settingsButton = $("#settings-button");
-  $('#update-check')?.addEventListener('click', () => openUpdatesModal({ check: true }));
-  $('#update-now')?.addEventListener('click', () => openUpdatesModal({ install: true }));
+  $('#update-check')?.addEventListener('click', () => void checkForUpdates());
+  $('#update-now')?.addEventListener('click', () => void (state.updates.token ? installCheckedUpdate() : downloadCheckedUpdate()));
   $('#version-display')?.addEventListener('click', event => {
     if (event.ctrlKey || event.metaKey || event.shiftKey) return;
     event.preventDefault(); openUpdatesModal();

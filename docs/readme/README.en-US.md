@@ -83,7 +83,7 @@ Useful flags:
 --version    print build version and exit
 ```
 
-The top bar shows the installed version. Open **Updates** from that label and click **Check for updates**, or use the adjacent **↻** button. Checks are manual. When a newer numbered release is found, the version highlights and **Update now** appears. Installation starts only when clicked; settings persist, while in-memory history and peaks reset on restart.
+The top bar shows the installed version and a small refresh button. Refresh checks for a newer release. **Update to v…** downloads it with a progress bar; after verification, **Install v…** applies that same download. An installation screen waits for restart and refreshes the page. Settings persist; in-memory history and peaks reset.
 
 Runtime logs use explicit levels (`INFO`, `WARN`, `ERROR`). Set `LLAMA_NODRAMA_DEBUG=1` to include detailed endpoint probe logs.
 
